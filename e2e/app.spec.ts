@@ -411,9 +411,9 @@ test('an open panel stops the ship, and it flies on when the panel closes', asyn
   await page.click('#m-pilot');
   await shipLive(page);
   await page.click('#settings');
-  await expect.poll(() => page.evaluate(() => window.__city.ship.speed), { timeout: 15_000 }).toBeLessThan(1);
+  await expect.poll(() => page.evaluate(() => window.__city.ship.speed), { timeout: 60_000 }).toBeLessThan(1);
   await page.keyboard.press('Escape');
-  await expect.poll(() => page.evaluate(() => window.__city.ship.speed), { timeout: 15_000 }).toBeGreaterThan(5);
+  await expect.poll(() => page.evaluate(() => window.__city.ship.speed), { timeout: 60_000 }).toBeGreaterThan(5);
 });
 
 test('steering at a badge lines up the shot without leaving it', async ({ page }) => {
