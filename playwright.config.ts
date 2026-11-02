@@ -4,7 +4,9 @@ const PORT = 4173;
 
 export default defineConfig({
   testDir: 'e2e',
-  timeout: 45_000,
+  // CI has no GPU, so frames crawl under software rendering
+  timeout: 120_000,
+  expect: { timeout: 20_000 },
   fullyParallel: false,
   workers: 1,
   reporter: 'list',
