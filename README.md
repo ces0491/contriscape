@@ -70,7 +70,7 @@ GitHub allows a token 5,000 GraphQL points an hour. A username not in the cache 
 ## Deploying
 
 1. Create a Vercel project from this repo. The framework preset is Vite.
-2. Add `GITHUB_TOKEN` to the project's environment variables.
+2. Add `GITHUB_TOKEN` to the project's environment variables, then redeploy, because new variables only reach new deployments.
 3. Add a Vercel Firewall rate-limit rule on `/api/contributions`, keyed on IP. The Hobby plan allows one.
 4. Add the custom domain and create the DNS record Vercel gives you.
 

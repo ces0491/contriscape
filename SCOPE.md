@@ -14,7 +14,7 @@ Let anyone enter a GitHub username and fly through a 3D city of that person's pu
 - [x] Missing users, rate limits and outages each show a clear message
 - [x] Unit tests, browser tests under the production CSP, lint and typecheck all pass
 - [x] Name confirmed by Ces
-- [ ] Deployed to production with a real token, verified on the live URL
+- [x] Deployed to production with a real token, verified on the live URL
 - [ ] Tested on a real phone and on a low-end GPU
 
 ## Out of scope
@@ -38,3 +38,4 @@ Ces, after flying a stranger's city on the live URL from a phone and a laptop.
 
 - 2026-11-02: initial scope
 - 2026-11-02: named contriscape
+- 2026-11-02: deployed to contriscape.sheetsolved.com
