@@ -15,6 +15,12 @@ const RING_RADIUS = 13;
 /** U-turns past the end of a block are at least this wide, which keeps them to a gentle bank. */
 const TURN_WIDTH = 14;
 const WALL_HEIGHT = 6;
+/**
+ * The ship flies above this share of a year's days, so roofs show at their different heights and the tallest towers
+ * rise past it. Any higher and it stops flying between the towers.
+ */
+const ABOVE = 0.65;
+const LOWEST_LEVEL = 2.8;
 const MAX_BANK = 0.85;
 /** Radians a second. The ship slows for any corner that would turn it faster. */
 const MAX_TURN_RATE = 2;
@@ -61,6 +67,13 @@ const smooth = (k: number) => k * k * (3 - 2 * k);
 /** Speed among the towers. One passes every 2.5 units, so this is about three towers a second. */
 const paceAt = (cal: Calendar, day: number) => 10 - 3 * Math.sqrt(cal.windowSum(day) / cal.busiestWindow);
 
+/** The height the ship holds through a year. Flying level makes the horizon a mark: anything above it is taller than the ship. */
+export function flightLevel(map: CityMap, year: number): number {
+  const { a, b } = map.cal.span(year);
+  const tops = map.top.slice(a, b + 1).sort();
+  return Math.max(LOWEST_LEVEL, tops[Math.floor((tops.length - 1) * ABOVE)]);
+}
+
 /** Picks an alley per week: it sweeps across the block, prefers tall walls either side, and hops where towers are low. */
 export function alleyRoute(map: CityMap, year: number): number[] {
   const { cal } = map;
@@ -69,7 +82,7 @@ export function alleyRoute(map: CityMap, year: number): number[] {
   const switchCost = 12;
   const crossCost = 0.6;
   const sweep = 1.5;
-  // A wall taller than the ship is wall enough, so extra height isn't worth a hop over the rooftops
+  // Taller walls aren't worth a hop over the rooftops, because one hop can lift the ship for much of a year
   const side = (w: number, r: number) => Math.min(WALL_HEIGHT, map.heightAt(year, w, r));
   const wall = (w: number, a: number) =>
     side(w, a - 1) + side(w, a) - sweep * Math.abs(a - (3.5 + 2.5 * Math.sin(w * 0.22 + year)));
@@ -115,13 +128,14 @@ function runPoints(map: CityMap, year: number, route: number[], phase: number): 
   const { a, b } = cal.span(year);
   const jan1 = cal.dateOf(a).getUTCDay();
   const end = route.length;
+  const level = flightLevel(map, year);
   const out: Waypoint[] = [];
   for (let w = 0; ; w += 2) {
     const W = Math.min(w, end);
     const day = Math.min(b, a + W * 7 - jan1 + LEAD);
     out.push({
       x: W * CELL,
-      y: 2.8 + 0.6 * Math.sin(W * 0.37 + phase),
+      y: level + 0.6 * Math.sin(W * 0.37 + phase),
       z: map.blockZ(year) + route[Math.min(W, end - 1)] * CELL,
       day,
       pace: paceAt(cal, day),
@@ -149,7 +163,8 @@ function uTurn(x: number, z0: number, z1: number, dir: number, day: number, pace
 function ringPoints(map: CityMap, tower: number, last: Waypoint, day: number): Waypoint[] {
   const { cx, cz, top } = map;
   const radius = Math.max(RING_RADIUS, cz[tower] - last.z + 12);
-  const swing = uTurn(Math.max(last.x + 8, cx[tower] + 10), last.z, cz[tower] - radius, 1, day, 10, 5);
+  const height = Math.max(6, last.y);
+  const swing = uTurn(Math.max(last.x + 8, cx[tower] + 10), last.z, cz[tower] - radius, 1, day, 10, height);
   const turns = 0.9;
   const steps = 24;
   const entry = -Math.PI / 2;
@@ -159,7 +174,7 @@ function ringPoints(map: CityMap, tower: number, last: Waypoint, day: number): W
     const a = entry - t * turns * Math.PI * 2;
     ring.push({
       x: cx[tower] + Math.cos(a) * radius,
-      y: 6 + t * (top[tower] + 4),
+      y: height + t * Math.max(0, top[tower] + 10 - height),
       z: cz[tower] + Math.sin(a) * radius,
       // Keeps counting past the end of the data, so the last towers finish their rise
       day: day + t * RISE * 5,
@@ -228,7 +243,8 @@ function routeAll(map: CityMap, centre: Vector3): Route {
     const route = alleyRoute(map, y);
     const entry = map.blockZ(y) + route[0] * CELL;
     const { a, b } = cal.span(y);
-    wp.push(...uTurn(-5, Math.max(previousZ, entry + TURN_WIDTH), entry, -1, a, 10, 3.4));
+    const level = flightLevel(map, y);
+    wp.push(...uTurn(-5, Math.max(previousZ, entry + TURN_WIDTH), entry, -1, a, 10, Math.max(3.4, level)));
     wp.push(...runPoints(map, y, route, i * 1.7));
     if (i === runs.length - 1) return;
 
@@ -236,7 +252,7 @@ function routeAll(map: CityMap, centre: Vector3): Route {
     const street = map.streetFor(y);
     const X = route.length * CELL;
     wp.push(
-      ...uTurn(X + 5, exit, Math.min(street, exit - TURN_WIDTH), 1, b, 10, 4.2).map((p, k) => ({
+      ...uTurn(X + 5, exit, Math.min(street, exit - TURN_WIDTH), 1, b, 10, Math.max(4.2, level)).map((p, k) => ({
         ...p,
         x: Math.max(p.x, WIDTH + k / 9),
       })),
@@ -265,10 +281,11 @@ function routeYear(map: CityMap, year: number, centre: Vector3): Route {
   const route = alleyRoute(map, year);
   const entry = map.blockZ(year) + route[0] * CELL;
   const { a, b } = map.cal.span(year);
+  const level = flightLevel(map, year);
   const wp: Waypoint[] = [
-    { x: -70, y: 24, z: entry + 34, day: a, pace: 30, gaze: 0 },
-    { x: -34, y: 9, z: entry + 10, day: a, pace: 20, gaze: 0 },
-    { x: -8, y: 3.6, z: entry, day: a, pace: 12, gaze: 0 },
+    { x: -70, y: Math.max(24, level + 12), z: entry + 34, day: a, pace: 30, gaze: 0 },
+    { x: -34, y: Math.max(9, level + 4), z: entry + 10, day: a, pace: 20, gaze: 0 },
+    { x: -8, y: Math.max(3.6, level), z: entry, day: a, pace: 12, gaze: 0 },
     ...runPoints(map, year, route, 0),
   ];
   wp.push(...finale(map, year, wp[wp.length - 1], b));

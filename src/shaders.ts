@@ -154,6 +154,15 @@ export const BADGE_GLOW_FRAGMENT = /* glsl */ `varying float vLit;
 void main(){float r=length(gl_PointCoord-.5)*2.;float a=smoothstep(1.,.68,r)*smoothstep(.5,.66,r);
 gl_FragColor=vec4(vec3(1.,.68,.22)*vLit*a*.7,1.);}`;
 
+export const BLAST_VERTEX = /* glsl */ `varying vec3 vN,vV;
+void main(){vec4 mv=modelViewMatrix*vec4(position,1.);vN=normalize(normalMatrix*normal);vV=normalize(-mv.xyz);
+gl_Position=projectionMatrix*mv;}`;
+
+/** White at the heart and red at the rim, fading to nothing at the edge so a ball of fire has no outline. */
+export const BLAST_FRAGMENT = /* glsl */ `uniform float uFade;varying vec3 vN,vV;
+void main(){float core=pow(max(dot(normalize(vN),normalize(vV)),0.),1.8);
+gl_FragColor=vec4(mix(vec3(1.5,.32,.06),vec3(3.,2.1,1.),core)*core*uFade,1.);}`;
+
 export const FINISH_VERTEX = /* glsl */ `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
 
 export const FINISH_FRAGMENT = /* glsl */ `uniform sampler2D tDiffuse;uniform float uFlash,uRed;varying vec2 vUv;

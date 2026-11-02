@@ -12,8 +12,7 @@ const HOVER = 2.1;
 const STACK = 2.1;
 /** Keeps the white in the artwork under the bloom threshold, so a badge stays readable up close. */
 const FACE_TINT = new THREE.Color(0.8, 0.8, 0.8);
-const WAITING_RIM = new THREE.Color(1.6, 1.15, 0.45);
-const EARNED_RIM = new THREE.Color(0.2, 0.75, 0.32);
+const RIM = new THREE.Color(1.6, 1.15, 0.45);
 
 function readEarned(key: string): Set<string> {
   try {
@@ -30,7 +29,6 @@ export class Badges {
   private readonly key: string;
   private readonly places: THREE.Vector3[] = [];
   private readonly tokens: THREE.Group[] = [];
-  private readonly rims: THREE.MeshBasicMaterial[] = [];
   private readonly canvases: HTMLCanvasElement[] = [];
   private readonly textures: THREE.CanvasTexture[] = [];
   private readonly glow = new THREE.BufferGeometry();
@@ -50,6 +48,7 @@ export class Badges {
     const edge = new THREE.CylinderGeometry(RADIUS, RADIUS, THICKNESS, 40);
     edge.rotateX(Math.PI / 2);
     const face = new THREE.CircleGeometry(RADIUS, 40);
+    const rim = new THREE.MeshBasicMaterial({ color: RIM });
     milestones.forEach(({ id, day }) => {
       const level = stacked.get(day) ?? 0;
       stacked.set(day, level + 1);
@@ -61,8 +60,6 @@ export class Badges {
       this.canvases.push(canvas);
       const texture = new THREE.CanvasTexture(canvas);
       this.textures.push(texture);
-      const rim = new THREE.MeshBasicMaterial({ color: WAITING_RIM.clone() });
-      this.rims.push(rim);
       const art = new THREE.MeshBasicMaterial({ map: texture, color: FACE_TINT });
 
       const token = new THREE.Group();
@@ -150,14 +147,12 @@ export class Badges {
 
   update(time: number, play: number): void {
     this.milestones.forEach((badge, i) => {
-      const earned = this.earned.has(badge.id);
-      const shown = badge.day <= play;
+      // An earned badge has been blown up, until a reset brings it back
+      const standing = badge.day <= play && !this.earned.has(badge.id);
       const token = this.tokens[i];
-      token.visible = shown;
+      token.visible = standing;
       token.rotation.y = time * 1.1 + i;
-      token.scale.setScalar(earned ? 0.72 : 1);
-      this.rims[i].color.copy(earned ? EARNED_RIM : WAITING_RIM);
-      this.lit[i] = shown && !earned ? 1 : 0;
+      this.lit[i] = standing ? 1 : 0;
     });
     this.glow.attributes.aLit.needsUpdate = true;
   }

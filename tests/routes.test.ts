@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Contributions } from '../shared/contract';
 import { Calendar } from '../src/calendar';
 import { CELL, CityMap, DEPTH, TOWER } from '../src/map';
-import { buildRoute, lengthAtDay, newPose, poseAt, RISE, type Route } from '../src/routes';
+import { alleyRoute, buildRoute, flightLevel, lengthAtDay, newPose, poseAt, RISE, type Route } from '../src/routes';
 
 const SNAPSHOT = '2026-11-02';
 const SHIP_HALF_SPAN = 0.42;
@@ -115,6 +115,41 @@ describe('alley flying', () => {
       return walls >= 2;
     });
     expect(among.length / samples.length).toBeGreaterThan(0.1);
+  });
+});
+
+describe('flight level', () => {
+  const cal = new Calendar(FIXTURES['every day extremely busy']);
+  const map = new CityMap(cal);
+  const level = flightLevel(map, 2024);
+
+  it('flies over most of a busy year and leaves the tallest towers above the ship', () => {
+    const { a, b } = cal.span(2024);
+    const tops = Array.from(map.top.slice(a, b + 1));
+    const under = tops.filter((top) => top < level).length / tops.length;
+    expect(under).toBeGreaterThan(0.6);
+    expect(under).toBeLessThan(0.7);
+  });
+
+  it('holds that height down the alleys of a busy year', () => {
+    const alleys = alleyRoute(map, 2024);
+    const { samples } = buildRoute(map, 2024, new Vector3());
+    const end = samples.findIndex((s) => s.p.x >= alleys.length * CELL - 1);
+    const run = samples.slice(0, end).filter((s) => s.p.x > 0);
+    const held = run.filter((s) => Math.abs(s.p.y - level) < 2);
+    expect(held.length / run.length).toBeGreaterThan(0.9);
+  });
+
+  it('stays down near the street in a quiet year', () => {
+    const quiet = new CityMap(new Calendar(FIXTURES['one contribution ever']));
+    expect(flightLevel(quiet, 2024)).toBeLessThan(3);
+  });
+
+  it('keeps to its alley rather than hop tall towers for a taller wall', () => {
+    const rowOf = (y: number, d: number) => new Date(Date.UTC(y, 0, 1 + d)).getUTCDay();
+    const bands = history(2025, (y, d) => ((d < 180 ? rowOf(y, d) <= 2 : rowOf(y, d) >= 4) ? 100 : 20));
+    const alleys = alleyRoute(new CityMap(new Calendar(bands)), 2025);
+    expect(new Set(alleys).size).toBe(1);
   });
 });
 

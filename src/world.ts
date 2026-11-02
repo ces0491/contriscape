@@ -37,7 +37,6 @@ export interface World {
   scene: THREE.Scene;
   towers: THREE.InstancedMesh;
   shared: Shared;
-  beaconCount: number;
   dust: THREE.LineSegments;
   dustVelocity: THREE.Vector3;
   warpLines: THREE.LineSegments;
@@ -139,7 +138,7 @@ function addGround(scene: THREE.Scene, map: CityMap, shared: Shared): void {
   scene.add(ground);
 }
 
-function addBeacons(scene: THREE.Scene, map: CityMap, shared: Shared): number {
+function addBeacons(scene: THREE.Scene, map: CityMap, shared: Shared): void {
   const { counts } = map.cal;
   const busiest = counts
     .map((c, i) => [c, i] as const)
@@ -172,7 +171,6 @@ function addBeacons(scene: THREE.Scene, map: CityMap, shared: Shared): number {
   beacons.frustumCulled = false;
   beacons.renderOrder = 3;
   scene.add(beacons);
-  return busiest.length;
 }
 
 function addTraffic(scene: THREE.Scene, map: CityMap, shared: Shared, random: () => number): void {
@@ -373,7 +371,7 @@ export function createWorld(map: CityMap, renderer: THREE.WebGLRenderer, camera:
   stars.renderOrder = -9;
   scene.add(stars);
 
-  const beaconCount = addBeacons(scene, map, shared);
+  addBeacons(scene, map, shared);
   addTraffic(scene, map, shared, random);
 
   const dustVelocity = new THREE.Vector3();
@@ -418,7 +416,6 @@ export function createWorld(map: CityMap, renderer: THREE.WebGLRenderer, camera:
     scene,
     towers,
     shared,
-    beaconCount,
     dust,
     dustVelocity,
     warpLines,

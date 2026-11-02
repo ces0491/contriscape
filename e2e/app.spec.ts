@@ -27,8 +27,11 @@ interface CityDebug {
   mode: string;
   zoom: number;
   endFlight: () => void;
-  ship: { live: boolean; speed: number; yaw: number; pitch: number; pos: { x: number } };
+  ship: { live: boolean; speed: number; yaw: number; pitch: number; pos: { x: number; y: number } };
+  camera: { matrixWorld: { elements: number[] } };
   weapons: { activeBolts: number };
+  badges: { tokens: { visible: boolean }[] };
+  blasts: { active: boolean }[];
   fighter: { visible: boolean; children: { material: { color: { getHexString(): string } } }[] };
   shared: { uRamp: { value: { b: number }[] } };
 }
@@ -45,6 +48,14 @@ async function stubApi(page: Page, reply: { status?: number; body: unknown; head
 }
 
 const cityReady = (page: Page) => expect(page.locator('body')).not.toHaveClass(/empty/, { timeout: 20_000 });
+
+const shipLive = (page: Page) =>
+  expect.poll(() => page.evaluate(() => window.__city.ship.live), { timeout: 30_000 }).toBe(true);
+
+async function pickYear(page: Page, key: string) {
+  await page.click('#year');
+  await page.click(`#years button[data-key="${key}"]`);
+}
 
 /** Fails a test on anything the production CSP blocks, and on uncaught errors. */
 function watchForFaults(page: Page): string[] {
@@ -159,11 +170,26 @@ test('flies an account with no contributions', async ({ page }) => {
   await page.goto('/newcomer');
   await cityReady(page);
   await expect(page.locator('#note')).toContainText('No public contributions yet');
-  await page.click('#years button[data-key="2026"]');
+  await pickYear(page, '2026');
   await page.waitForTimeout(600);
   await page.click('#m-orbit');
   await expect(page.locator('#busiest')).toHaveText('None');
   expect(faults).toEqual([]);
+});
+
+test('autopilot flies a busy year high enough to look down on most of its towers', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await pickYear(page, '2026');
+  await page.evaluate(() => {
+    const scrub = document.getElementById('scrub') as HTMLInputElement;
+    scrub.value = String(Math.round((Number(scrub.min) + Number(scrub.max)) / 2));
+    scrub.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await expect.poll(() => page.evaluate(() => window.__city.ship.pos.y), { timeout: 30_000 }).toBeGreaterThan(8);
+  const lookingUp = () => page.evaluate(() => -window.__city.camera.matrixWorld.elements[9]);
+  await expect.poll(lookingUp, { timeout: 30_000 }).toBeLessThan(-0.1);
 });
 
 test('copies a link to the city', async ({ page, context }) => {
@@ -256,14 +282,20 @@ test('scroll zooms in Orbit, including over the controls', async ({ page }) => {
   await expect.poll(distance).toBeGreaterThan(closer + 5);
 });
 
-test('the wheel scrolls the year buttons when a long history overflows them', async ({ page }) => {
+test('a long history keeps its years in one panel', async ({ page }) => {
   const years = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [String(2007 + i), year(10, () => 1)]));
   await stubApi(page, { body: { ...busy('veteran'), years } });
   await page.goto('/veteran');
   await cityReady(page);
-  await page.hover('#years button:nth-child(3)');
-  await page.mouse.wheel(0, 300);
-  await expect.poll(() => page.evaluate(() => document.getElementById('years')?.scrollLeft)).toBeGreaterThan(100);
+  await expect(page.locator('#year')).toHaveText('All years');
+  await expect(page.locator('#years')).toBeHidden();
+
+  await page.click('#year');
+  await expect(page.locator('#years button')).toHaveCount(21);
+  await page.click('#years button[data-key="2015"]');
+  await expect(page.locator('#yearPanel')).toBeHidden();
+  await expect(page.locator('#year')).toHaveText('2015');
+  await expect(page.locator('#scopeLabel')).toContainText('2015');
 });
 
 test('names its two main buttons by what they do', async ({ page }) => {
@@ -307,28 +339,122 @@ test('pilot can invert the Y axis, and the choice is remembered', async ({ page 
   await stubApi(page, { body: busy('octo-dev') });
   await page.goto('/octo-dev');
   await cityReady(page);
-  await expect(page.locator('#invert')).toBeHidden();
   await page.click('#m-pilot');
-  await expect.poll(() => page.evaluate(() => window.__city.ship.live), { timeout: 30_000 }).toBe(true);
+  await shipLive(page);
+  await page.click('#settings');
   await expect(page.locator('#invert')).toHaveAttribute('aria-pressed', 'false');
+  await page.keyboard.press('Escape');
 
   const pitchChange = async () => {
-    await page.mouse.move(720, 450);
-    await page.waitForTimeout(300);
     const before = await page.evaluate(() => window.__city.ship.pitch);
-    await page.mouse.move(720, 200);
-    await page.waitForTimeout(1200);
-    await page.mouse.move(720, 450);
+    await page.keyboard.down('ArrowUp');
+    await page.waitForTimeout(400);
+    await page.keyboard.up('ArrowUp');
     return (await page.evaluate(() => window.__city.ship.pitch)) - before;
   };
   expect(await pitchChange()).toBeGreaterThan(0);
+  await page.click('#settings');
   await page.click('#invert');
+  await page.keyboard.press('Escape');
   expect(await pitchChange()).toBeLessThan(0);
 
   await page.reload();
   await cityReady(page);
-  await page.click('#m-pilot');
+  await page.click('#settings');
   await expect(page.locator('#invert')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('the mouse only steers once it is switched on, and the choice is remembered', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#m-pilot');
+  await shipLive(page);
+
+  const turnWithMouse = async () => {
+    await page.mouse.move(720, 400);
+    await page.waitForTimeout(200);
+    const before = await page.evaluate(() => window.__city.ship.yaw);
+    await page.mouse.move(1200, 400);
+    await page.waitForTimeout(600);
+    const after = await page.evaluate(() => window.__city.ship.yaw);
+    await page.mouse.move(720, 400);
+    return after - before;
+  };
+  expect(await turnWithMouse()).toBe(0);
+  await page.keyboard.press('m');
+  expect(await turnWithMouse()).toBeLessThan(-0.05);
+
+  await page.reload();
+  await cityReady(page);
+  await page.click('#settings');
+  await expect(page.locator('#mouseSteer')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('a ship on the ground levels out, so its shots still fly', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#m-pilot');
+  await shipLive(page);
+  await page.keyboard.down('ArrowDown');
+  await expect.poll(() => page.evaluate(() => window.__city.ship.pos.y), { timeout: 30_000 }).toBeLessThan(0.75);
+  await page.keyboard.down('Space');
+  await expect.poll(() => page.evaluate(() => window.__city.weapons.activeBolts)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => window.__city.ship.pitch)).toBeGreaterThanOrEqual(0);
+});
+
+test('an open panel stops the ship, and it flies on when the panel closes', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#m-pilot');
+  await shipLive(page);
+  await page.click('#settings');
+  await expect.poll(() => page.evaluate(() => window.__city.ship.speed), { timeout: 15_000 }).toBeLessThan(1);
+  await page.keyboard.press('Escape');
+  await expect.poll(() => page.evaluate(() => window.__city.ship.speed), { timeout: 15_000 }).toBeGreaterThan(5);
+});
+
+test('steering at a badge lines up the shot without leaving it', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#badges');
+  await page.locator('#badgeList button').first().click();
+  await shipLive(page);
+
+  const pose = () => page.evaluate(() => ({ x: window.__city.ship.pos.x, yaw: window.__city.ship.yaw }));
+  const before = await pose();
+  await page.keyboard.down('ArrowLeft');
+  await page.waitForTimeout(500);
+  await page.keyboard.up('ArrowLeft');
+  const after = await pose();
+  expect(after.yaw).toBeGreaterThan(before.yaw);
+  expect(Math.abs(after.x - before.x)).toBeLessThan(0.2);
+  expect(await page.evaluate(() => window.__city.ship.speed)).toBeLessThan(0.5);
+});
+
+test('a shot badge blows up, and a reset brings it back', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#badges');
+  await page.locator('#badgeList button').first().click();
+  await shipLive(page);
+  await expect.poll(() => page.evaluate(() => window.__city.badges.tokens[0].visible)).toBe(true);
+
+  await page.keyboard.down('Space');
+  await expect(page.locator('#toast')).toContainText('Badge earned', { timeout: 30_000 });
+  await page.keyboard.up('Space');
+  expect(await page.evaluate(() => window.__city.blasts.some((blast) => blast.active))).toBe(true);
+  await expect.poll(() => page.evaluate(() => window.__city.badges.tokens[0].visible)).toBe(false);
+  await expect.poll(() => page.evaluate(() => window.__city.blasts.some((blast) => blast.active))).toBe(false);
+
+  await page.click('#badges');
+  await page.click('#badgeReset');
+  await page.click('#badgeReset');
+  await expect.poll(() => page.evaluate(() => window.__city.badges.tokens[0].visible)).toBe(true);
 });
 
 test('shooting a badge earns it, and it stays earned', async ({ page }) => {
@@ -446,7 +572,7 @@ test('colours can be changed, are remembered, and go back to the default', async
   const green = await topStop();
   expect(await hull()).toBe('9aa5b2');
 
-  await page.click('#colours');
+  await page.click('#settings');
   await page.getByRole('button', { name: 'Blue buildings' }).click();
   await expect.poll(topStop).toBeGreaterThan(green);
   expect(await accent()).not.toBe('#39d353');
@@ -461,7 +587,7 @@ test('colours can be changed, are remembered, and go back to the default', async
   await cityReady(page);
   expect(await topStop()).toBeGreaterThan(green);
   expect(await hull()).toBe('c8463c');
-  await page.click('#colours');
+  await page.click('#settings');
   await expect(page.getByLabel('Custom ship trim colour')).toHaveValue('#123456');
 
   await page.click('#colourReset');
@@ -497,7 +623,8 @@ test('each panel closes from its own button', async ({ page }) => {
   await cityReady(page);
   for (const [button, panel] of [
     ['#badges', '#badgePanel'],
-    ['#colours', '#colourPanel'],
+    ['#year', '#yearPanel'],
+    ['#settings', '#settingsPanel'],
     ['#guide', '#guidePanel'],
   ]) {
     await page.click(button);
@@ -569,7 +696,7 @@ test('the tool buttons all fit the narrowest phone in December, in Pilot', async
   await page.goto('/octo-dev');
   await cityReady(page);
   await page.tap('#m-pilot');
-  for (const id of ['#review', '#badges', '#colours', '#guide', '#invert']) {
+  for (const id of ['#review', '#year', '#badges', '#settings', '#guide']) {
     const box = await page.locator(id).boundingBox();
     expect(box?.x, id).toBeGreaterThanOrEqual(0);
     expect((box?.x ?? 0) + (box?.width ?? 0), id).toBeLessThanOrEqual(320);

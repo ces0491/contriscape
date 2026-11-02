@@ -369,17 +369,13 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.chips {
-  display: flex;
-  gap: 8px;
-  min-width: 0;
-}
 .tools {
   display: flex;
   flex: none;
   gap: 6px;
 }
-.tools button {
+.tools button,
+.toggles button {
   appearance: none;
   padding: 6px 10px;
   border: 1px solid var(--rule);
@@ -390,10 +386,10 @@ body {
   white-space: nowrap;
   cursor: pointer;
 }
-.tools button:hover {
+.tools button:hover,
+.toggles button:hover {
   color: var(--ink);
 }
-.tools button[aria-pressed='true'],
 .tools button[aria-expanded='true'] {
   border-color: var(--sodium);
   color: var(--ink);
@@ -404,20 +400,14 @@ body {
   color: var(--night);
 }
 .years {
-  display: flex;
-  flex: 1 1 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
   gap: 6px;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.years::-webkit-scrollbar {
-  display: none;
 }
 .years button {
   appearance: none;
   display: flex;
-  flex: none;
+  justify-content: space-between;
   align-items: baseline;
   gap: 0.6em;
   padding: 6px 10px;
@@ -445,7 +435,7 @@ body {
 
 .track {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
 }
@@ -667,8 +657,25 @@ button:focus-visible {
   outline: 2px solid var(--sodium);
   outline-offset: 2px;
 }
-#colourPanel {
+#settingsPanel {
   width: min(372px, calc(100vw - 32px));
+}
+.toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.toggles button::after {
+  content: ': off';
+  color: var(--ink-3);
+}
+.toggles button[aria-pressed='true'] {
+  border-color: var(--sodium);
+  color: var(--ink);
+}
+.toggles button[aria-pressed='true']::after {
+  content: ': on';
+  color: var(--sodium);
 }
 #colourReset {
   margin-top: 14px;
@@ -820,7 +827,7 @@ body.empty .brand {
   display: none;
 }
 
-/* Pilot needs the view, so the deck shrinks to the date, years and timeline */
+/* Pilot needs the view, so the deck shrinks to the date, timeline and buttons */
 body.piloting .stats,
 body.piloting .note {
   display: none;
@@ -886,13 +893,11 @@ body.piloting #date {
   :root {
     --header: 104px;
   }
-  .chips {
-    flex-direction: column;
-  }
-  .years {
-    flex: none;
+  .track {
+    grid-template-columns: auto minmax(0, 1fr);
   }
   .tools {
+    grid-column: 1 / -1;
     flex-wrap: wrap;
   }
   .brand {

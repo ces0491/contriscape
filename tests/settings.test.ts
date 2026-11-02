@@ -1,8 +1,76 @@
+import { Camera, InstancedMesh, Matrix4, Scene, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
+import { Blast } from '../src/blast';
 import { COLOUR_ROWS, DEFAULT_COLOURS, luma, readColours, towerPalette, type Rgb } from '../src/colours';
+import { keyTurn } from '../src/steering';
 import { COCKPIT_BELOW, nextZoom, ZOOM_MAX, ZOOM_MIN } from '../src/zoom';
 
 const NOTCH = Math.exp(100 * 0.0016);
+
+describe('keyTurn', () => {
+  const FRAME = 1 / 60;
+  const held = (frames: number, goal = 1, from = 0) => {
+    let turn = from;
+    for (let n = 0; n < frames; n++) turn = keyTurn(turn, goal, FRAME);
+    return turn;
+  };
+
+  it('keeps a tap to a small part of a full turn', () => {
+    expect(held(4)).toBeLessThan(0.25);
+  });
+
+  it('builds to a full turn while held', () => {
+    expect(held(120)).toBeGreaterThan(0.99);
+  });
+
+  it('stops dead when the key is let go', () => {
+    expect(keyTurn(held(60), 0, FRAME)).toBe(0);
+  });
+
+  it('starts small again in the other direction', () => {
+    expect(held(1, -1, 0.9)).toBeGreaterThan(-0.1);
+  });
+});
+
+describe('Blast', () => {
+  const start = () => {
+    const scene = new Scene();
+    const blast = new Blast(scene, () => 0.7);
+    return { blast, group: scene.children[0] };
+  };
+  const pieceAt = (group: Scene['children'][number], index: number) => {
+    const pieces = group.children.find((child): child is InstancedMesh => child instanceof InstancedMesh);
+    const matrix = new Matrix4();
+    pieces?.getMatrixAt(index, matrix);
+    return new Vector3().setFromMatrixPosition(matrix);
+  };
+
+  it('waits out of sight until a badge is shot', () => {
+    const { blast, group } = start();
+    expect(blast.active).toBe(false);
+    expect(group.visible).toBe(false);
+  });
+
+  it('goes off where the badge was and throws its pieces outward', () => {
+    const { blast, group } = start();
+    const at = new Vector3(5, 12, -3);
+    blast.start(at);
+    expect(group.position).toEqual(at);
+    blast.update(0.1, new Camera());
+    const near = pieceAt(group, 0).length();
+    blast.update(0.1, new Camera());
+    expect(near).toBeGreaterThan(0);
+    expect(pieceAt(group, 0).length()).toBeGreaterThan(near);
+  });
+
+  it('clears itself away', () => {
+    const { blast, group } = start();
+    blast.start(new Vector3());
+    for (let n = 0; n < 100; n++) blast.update(0.05, new Camera());
+    expect(blast.active).toBe(false);
+    expect(group.visible).toBe(false);
+  });
+});
 
 describe('nextZoom', () => {
   it('leaves the cockpit on one notch of a mouse wheel', () => {

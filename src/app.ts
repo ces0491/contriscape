@@ -7,6 +7,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import type { Contributions } from '../shared/contract';
 import { APP_NAME } from './brand';
 import { Badges } from './badges';
+import { Blast } from './blast';
 import { Calendar, describeCount, MONTHS } from './calendar';
 import { COLOUR_ROWS, DEFAULT_COLOURS, readColours, towerPalette, type Colours } from './colours';
 import { buildFighter, Weapons } from './fighter';
@@ -16,6 +17,7 @@ import { findMilestones, type Milestone } from './milestones';
 import { reviewFacts, reviewTitle, reviewYear } from './review';
 import { buildRoute, lengthAtDay, newPose, poseAt, RISE, type Route } from './routes';
 import { FINISH_FRAGMENT, FINISH_VERTEX } from './shaders';
+import { keyTurn } from './steering';
 import { createWorld, SETTLED_OFFSET } from './world';
 import { COCKPIT_BELOW, nextZoom } from './zoom';
 
@@ -23,13 +25,22 @@ type Mode = 'fly' | 'pilot' | 'orbit';
 
 const JUMP_SECONDS = 1.5;
 const SHIP_RADIUS = 0.3;
+const FLOOR = 0.7;
 const CHASE_DISTANCE = 2.4;
+/** How far below the route ahead the autopilot looks, per unit of altitude, so the view tips down onto the roofs. */
+const LOOK_DOWN = 0.15;
+const MAX_LOOK_DOWN = 2;
 const INVERT_KEY = 'contriscape:invert-y';
+const MOUSE_KEY = 'contriscape:mouse-steer';
 const COLOUR_KEY = 'contriscape:colours';
 const REVIEW_HASH = '#your-year';
 const CAPTION_SECONDS = 4;
 const BADGE_APPROACH = 10;
 const PARKED_SECONDS = 6;
+/** How long the ship stays put to watch a badge go up. */
+const BLAST_WATCH = 1.4;
+/** Two badges can share a day, so two can go up at once. */
+const BLASTS = 2;
 const CRUISE = 17;
 const BRAKE = 6;
 const BOOST = 46;
@@ -41,9 +52,26 @@ const smooth = (k: number) => k * k * (3 - 2 * k);
 const element = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
 /** Each panel, by the id of the button that opens it. */
-const PANELS = { badges: 'badgePanel', colours: 'colourPanel', guide: 'guidePanel' };
+const PANELS = { year: 'yearPanel', badges: 'badgePanel', settings: 'settingsPanel', guide: 'guidePanel' };
 type Panel = keyof typeof PANELS;
 const PANEL_NAMES = Object.keys(PANELS) as Panel[];
+
+function recall(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === '1';
+  } catch {
+    // Blocked storage just means the default.
+    return false;
+  }
+}
+
+function remember(key: string, on: boolean): void {
+  try {
+    localStorage.setItem(key, on ? '1' : '0');
+  } catch {
+    // Private windows can refuse storage. The choice still holds for this visit.
+  }
+}
 
 /** Builds the city and starts the render loop. Throws if WebGL is unavailable. */
 export function startApp(data: Contributions): void {
@@ -89,6 +117,7 @@ export function startApp(data: Contributions): void {
   scene.add(sun);
   const weapons = new Weapons(scene, Math.random);
   const badges = new Badges(scene, map, findMilestones(cal), cal.login, shared);
+  const blasts = Array.from({ length: BLASTS }, () => new Blast(scene, Math.random));
 
   const composer = new EffectComposer(
     renderer,
@@ -126,12 +155,13 @@ export function startApp(data: Contributions): void {
   let zoomGoal = 1;
   let reach = 1;
   let parkedUntil = 0;
-  let invertY = false;
-  try {
-    invertY = localStorage.getItem(INVERT_KEY) === '1';
-  } catch {
-    // Blocked storage just means the default.
-  }
+  let aiming = false;
+  let panelOpen = false;
+  let invertY = recall(INVERT_KEY);
+  let mouseSteer = recall(MOUSE_KEY);
+  let keyX = 0;
+  let keyY = 0;
+  let nextBlast = 0;
   let reviewing = false;
   let nextBeat = 0;
   let captionUntil = 0;
@@ -305,11 +335,14 @@ export function startApp(data: Contributions): void {
 
     const d = chaseDistance();
     poseAt(route, Math.min(route.len, route.s + 8), ahead);
-    v3.copy(ahead.p).lerp(pt.g, pt.gaze);
+    v3.copy(ahead.p);
+    v3.y -= Math.min(MAX_LOOK_DOWN, v3.y * LOOK_DOWN);
+    v3.lerp(pt.g, pt.gaze);
     if (d > 0) {
       poseAt(route, Math.max(0, route.s - d), behind);
       v2.copy(behind.p);
-      v2.y += 0.2 * d + 0.12;
+      // High enough to keep the ship below the middle of a view that tips down
+      v2.y += 0.4 * d + 0.12;
       chasePoint(pt.p, v2, dt, v1);
     } else {
       v1.copy(pt.p);
@@ -405,29 +438,31 @@ export function startApp(data: Contributions): void {
   }
   function updatePilot(dt: number): void {
     if (!ship.live) return;
-    let sx = stick.x;
-    let sy = stick.y;
     // WASD and the arrow keys are the same controls
     const left = keys.has('KeyA') || keys.has('ArrowLeft');
     const right = keys.has('KeyD') || keys.has('ArrowRight');
     const up = keys.has('KeyW') || keys.has('ArrowUp');
     const down = keys.has('KeyS') || keys.has('ArrowDown');
-    if (left) sx = -1;
-    if (right) sx = 1;
-    if (up) sy = -1;
-    if (down) sy = 1;
+    const turning = Number(right) - Number(left);
+    const climbing = Number(down) - Number(up);
+    keyX = keyTurn(keyX, turning, dt);
+    keyY = keyTurn(keyY, climbing, dt);
+    let sx = turning ? keyX : stick.x;
+    let sy = climbing ? keyY : stick.y;
     if (invertY) sy = -sy;
-    // Holds steady after arriving at a badge, so there's time to take the shot
     const boosting = keys.has('ShiftLeft') || keys.has('ShiftRight');
-    if (left || right || up || down || boosting) parkedUntil = 0;
-    const parked = time < parkedUntil;
-    if (parked) {
+    if (boosting) parkedUntil = 0;
+    // Holds steady at a badge. Lining up the shot extends the hold, because moving off would overshoot the badge.
+    if (aiming && time < parkedUntil && (turning || climbing)) parkedUntil = time + PARKED_SECONDS;
+    // An open panel stops the ship, so nothing goes wrong while the mouse is busy with it
+    const holding = panelOpen || time < parkedUntil;
+    if (panelOpen) {
       sx = 0;
       sy = 0;
     }
-    ship.yaw -= sx * 1.7 * dt;
-    ship.pitch = clamp(ship.pitch - sy * 1.3 * dt, -1.3, 1.3);
-    const wanted = parked ? 0 : boosting ? BOOST : keys.has('KeyC') ? BRAKE : CRUISE;
+    ship.yaw -= sx * 2 * dt;
+    ship.pitch = clamp(ship.pitch - sy * 1.5 * dt, -1.3, 1.3);
+    const wanted = holding ? 0 : boosting ? BOOST : keys.has('KeyC') ? BRAKE : CRUISE;
     ship.speed += (wanted - ship.speed) * (1 - Math.exp(-2.4 * dt));
 
     q1.setFromEuler(e1.set(ship.pitch, ship.yaw, 0, 'YXZ'));
@@ -442,9 +477,11 @@ export function startApp(data: Contributions): void {
     const steps = Math.ceil((ship.vel.length() * dt) / 0.35);
     for (let n = 0; n < steps; n++) {
       ship.pos.addScaledVector(ship.vel, dt / steps);
-      ship.pos.y = clamp(ship.pos.y, 0.7, 190);
+      ship.pos.y = clamp(ship.pos.y, FLOOR, 190);
       collide();
     }
+    // The street stops a dive, and levelling off keeps the guns pointing along it instead of into it
+    if (ship.pos.y <= FLOOR) ship.pitch = Math.max(0, ship.pitch);
     ship.pos.x = clamp(ship.pos.x, -300, WIDTH + 300);
     ship.pos.z = clamp(ship.pos.z, -300, map.depth + 300);
 
@@ -515,7 +552,7 @@ export function startApp(data: Contributions): void {
     fly: touch ? 'Pinch to zoom' : 'Scroll to zoom, all the way in for the cockpit',
     pilot: touch
       ? 'Drag to steer · Pinch to zoom · Shoot gold badges to earn them'
-      : 'Mouse, WASD or arrows steer · Shift boost · C brake · Q E down, up · Click or Space fires · I inverts Y · Scroll to zoom',
+      : 'WASD or arrows steer · Space fires · Shift boost · C brake · The Guide has the rest',
     orbit: touch ? 'Drag to rotate · Pinch to zoom' : 'Drag to rotate · Scroll to zoom',
   };
   function showHint(m: Mode): void {
@@ -533,6 +570,10 @@ export function startApp(data: Contributions): void {
   function syncPlay(): void {
     element('play').textContent = mode !== 'fly' ? 'Replay' : paused ? 'Play' : 'Pause';
   }
+  function syncCursor(): void {
+    const steering = mode === 'pilot' && mouseSteer;
+    canvas.style.cursor = steering ? 'crosshair' : mode === 'orbit' ? 'grab' : 'default';
+  }
   function spawnYear(): number {
     return scope.key === 'all' ? lastYear : scope.key;
   }
@@ -548,8 +589,7 @@ export function startApp(data: Contributions): void {
     showHint(next);
     document.body.classList.toggle('piloting', next === 'pilot');
     element('fire').hidden = !(touch && next === 'pilot');
-    element('invert').hidden = next !== 'pilot';
-    canvas.style.cursor = next === 'pilot' ? 'crosshair' : next === 'orbit' ? 'grab' : 'default';
+    syncCursor();
     keys.clear();
     stick.set(0, 0);
     firing = false;
@@ -578,6 +618,7 @@ export function startApp(data: Contributions): void {
     document.querySelectorAll<HTMLElement>('#years button').forEach((b) => {
       b.setAttribute('aria-pressed', String(b.dataset.key === String(key)));
     });
+    element('year').textContent = key === 'all' ? 'All years' : String(key);
     hud.setScope(scope);
     if (mode === 'fly') {
       startFlight(0);
@@ -595,11 +636,14 @@ export function startApp(data: Contributions): void {
   function setInvert(on: boolean): void {
     invertY = on;
     element('invert').setAttribute('aria-pressed', String(on));
-    try {
-      localStorage.setItem(INVERT_KEY, on ? '1' : '0');
-    } catch {
-      // Private windows can refuse storage. The choice still holds for this visit.
-    }
+    remember(INVERT_KEY, on);
+  }
+  function setMouseSteer(on: boolean): void {
+    mouseSteer = on;
+    element('mouseSteer').setAttribute('aria-pressed', String(on));
+    remember(MOUSE_KEY, on);
+    stick.set(0, 0);
+    syncCursor();
   }
 
   /* ---------- panels ---------- */
@@ -608,6 +652,7 @@ export function startApp(data: Contributions): void {
       element(PANELS[name]).hidden = name !== open;
       element(name).setAttribute('aria-expanded', String(name === open));
     });
+    panelOpen = open !== null;
     standDownReset();
   }
 
@@ -666,7 +711,12 @@ export function startApp(data: Contributions): void {
     );
   }
   function earn(badge: Milestone): void {
-    parkedUntil = 0;
+    aiming = false;
+    parkedUntil = Math.min(parkedUntil, time + BLAST_WATCH);
+    if (!reduced) {
+      blasts[nextBlast++ % BLASTS].start(badges.position(badges.milestones.indexOf(badge)));
+      shake = 0.4;
+    }
     hud.showToast(
       `Badge earned: ${badge.name}`,
       `${badge.detail} · ${cal.formatShort(badge.day)}`,
@@ -696,7 +746,9 @@ export function startApp(data: Contributions): void {
       ship.slide.set(0, 0, 0);
       ship.live = true;
       snap = true;
-      parkedUntil = time + PARKED_SECONDS;
+      // A badge already blown up leaves nothing to wait for
+      aiming = !badges.isEarned(index);
+      parkedUntil = aiming ? time + PARKED_SECONDS : 0;
     };
     if (mode !== 'pilot') setMode('pilot');
     ship.live = false;
@@ -783,6 +835,7 @@ export function startApp(data: Contributions): void {
     }
     if (mode === 'pilot') {
       if (e.pointerType === 'mouse') {
+        if (!mouseSteer) return;
         const r = canvas.getBoundingClientRect();
         stickFrom(e.clientX, e.clientY, r.left + r.width / 2, r.top + r.height / 2, Math.min(r.width, r.height) * 0.5);
       } else if (pointer) {
@@ -833,12 +886,6 @@ export function startApp(data: Contributions): void {
       // Panels scroll themselves
       if ((e.target as Element).closest('.panel')) return;
       e.preventDefault();
-      // A long history overflows the year buttons, and the wheel is how a desktop user reaches the rest
-      const chips = element('years');
-      if (chips.scrollWidth > chips.clientWidth && (e.target as Element).closest('#years')) {
-        chips.scrollLeft += e.deltaX + e.deltaY;
-        return;
-      }
       if (mode === 'orbit') {
         if (e.target !== canvas) {
           canvas.dispatchEvent(new WheelEvent('wheel', { deltaY: e.deltaY, deltaMode: e.deltaMode, cancelable: true }));
@@ -864,6 +911,7 @@ export function startApp(data: Contributions): void {
     }
     if (mode === 'pilot' && !typing && !e.metaKey && !e.ctrlKey) {
       if (e.code === 'KeyI' && !e.repeat) setInvert(!invertY);
+      if (e.code === 'KeyM' && !e.repeat) setMouseSteer(!mouseSteer);
       keys.add(e.code);
       if (e.code.startsWith('Arrow')) e.preventDefault();
     }
@@ -882,6 +930,10 @@ export function startApp(data: Contributions): void {
   element('play').addEventListener('click', togglePlay);
   element('invert').addEventListener('click', (e) => {
     setInvert(!invertY);
+    (e.currentTarget as HTMLElement).blur();
+  });
+  element('mouseSteer').addEventListener('click', (e) => {
+    setMouseSteer(!mouseSteer);
     (e.currentTarget as HTMLElement).blur();
   });
   PANEL_NAMES.forEach((name) => {
@@ -932,9 +984,8 @@ export function startApp(data: Contributions): void {
   const snapshot = new Date(`${cal.snapshot}T00:00:00Z`);
   const quiet = cal.total ? '' : 'No public contributions yet. ';
   element('note').textContent =
-    `${quiet}Height is the square root of daily contributions. Red lights: the ${world.beaconCount} busiest days. ` +
-    `Public GitHub contribution calendar, ${snapshot.getUTCDate()} ${MONTHS[snapshot.getUTCMonth()]} ${snapshot.getUTCFullYear()}. ` +
-    'Not affiliated with GitHub.';
+    `${quiet}Public GitHub contributions to ${snapshot.getUTCDate()} ${MONTHS[snapshot.getUTCMonth()]} ` +
+    `${snapshot.getUTCFullYear()}. Not affiliated with GitHub.`;
   const chips = element('years');
   const addChip = (key: 'all' | number, text: string, total: number) => {
     const button = document.createElement('button');
@@ -946,11 +997,14 @@ export function startApp(data: Contributions): void {
     button.append(text, count);
     button.addEventListener('click', () => {
       stopReview();
+      showPanel(null);
       setScope(key);
     });
     chips.append(button);
   };
   element('invert').setAttribute('aria-pressed', String(invertY));
+  element('mouseSteer').setAttribute('aria-pressed', String(mouseSteer));
+  element('mouseSteer').hidden = touch;
   hud.renderColours(COLOUR_ROWS, (key, hex) => setColours({ ...colours, [key]: hex }));
   paintScene();
   drawBadges();
@@ -1080,6 +1134,7 @@ export function startApp(data: Contributions): void {
     shared.uPlay.value = play;
 
     badges.update(time, play);
+    blasts.forEach((blast) => blast.update(dt, camera));
     updateCaption();
     world.followCamera(camera);
     camera.updateMatrixWorld();
@@ -1117,6 +1172,7 @@ export function startApp(data: Contributions): void {
         map,
         towerAt,
         badges,
+        blasts,
         endFlight,
         get mode() {
           return mode;
