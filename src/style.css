@@ -532,6 +532,14 @@ body.piloting #date {
   :root {
     --header: 104px;
   }
+  .brand {
+    flex: 1 1 0;
+  }
+  .brand p {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .lookup {
     order: 3;
     flex: 1 1 100%;

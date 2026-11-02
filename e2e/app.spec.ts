@@ -243,5 +243,9 @@ test('fits a phone without sideways scrolling', async ({ browser }) => {
   }));
   expect(scroll).toBeLessThanOrEqual(client);
   await expect(page.locator('#loginInput')).toBeVisible();
+
+  const hint = await page.locator('#hint').boundingBox();
+  const lookup = await page.locator('#lookup').boundingBox();
+  expect(hint?.y).toBeGreaterThanOrEqual((lookup?.y ?? 0) + (lookup?.height ?? 0));
   await context.close();
 });
