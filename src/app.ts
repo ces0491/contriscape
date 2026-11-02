@@ -6,10 +6,13 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import type { Contributions } from '../shared/contract';
 import { APP_NAME } from './brand';
+import { Badges } from './badges';
 import { Calendar, describeCount, MONTHS } from './calendar';
 import { buildFighter, Weapons } from './fighter';
 import { Hud, type Scope } from './hud';
 import { CityMap, DEPTH, PLINTH, TOWER, WIDTH } from './map';
+import { findMilestones, type Milestone } from './milestones';
+import { reviewFacts, reviewTitle, reviewYear } from './review';
 import { buildRoute, lengthAtDay, newPose, poseAt, RISE, type Route } from './routes';
 import { FINISH_FRAGMENT, FINISH_VERTEX } from './shaders';
 import { createWorld, SETTLED_OFFSET } from './world';
@@ -22,8 +25,12 @@ const CHASE_DISTANCE = 2.4;
 const ZOOM_MIN = 0.05;
 const ZOOM_MAX = 18;
 const COCKPIT_BELOW = 0.12;
+const INVERT_KEY = 'contriscape:invert-y';
+const REVIEW_HASH = '#your-year';
+const CAPTION_SECONDS = 4;
+const BADGE_APPROACH = 10;
+const PARKED_SECONDS = 6;
 const CRUISE = 17;
-const FAST = 30;
 const BRAKE = 6;
 const BOOST = 46;
 /** The largest city a single view frames well. Older years sit behind the opening camera. */
@@ -76,13 +83,14 @@ export function startApp(data: Contributions): void {
   sun.position.set(-0.5, 0.8, 0.6);
   scene.add(sun);
   const weapons = new Weapons(scene, Math.random);
+  const badges = new Badges(scene, map, findMilestones(cal), cal.login, shared);
 
   const composer = new EffectComposer(
     renderer,
     new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: pixelRatio < 2 ? 4 : 2 }),
   );
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.5, 0.72, 0.62);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.38, 0.6, 0.74);
   composer.addPass(bloom);
   const finish = new ShaderPass({
     uniforms: { tDiffuse: { value: null }, uFlash: { value: 0 }, uRed: { value: 0 } },
@@ -111,6 +119,18 @@ export function startApp(data: Contributions): void {
   let snap = false;
   let zoom = 1;
   let zoomGoal = 1;
+  let reach = 1;
+  let parkedUntil = 0;
+  let invertY = false;
+  try {
+    invertY = localStorage.getItem(INVERT_KEY) === '1';
+  } catch {
+    // Blocked storage just means the default.
+  }
+  let reviewing = false;
+  let nextBeat = 0;
+  let captionUntil = 0;
+  const review = reviewYear(cal, lastYear);
   let shake = 0;
   let redAlert = 0;
   let hitGlow = 0;
@@ -196,10 +216,10 @@ export function startApp(data: Contributions): void {
     return inside && p.y < standing(i) ? i : -1;
   };
 
-  /** Walks from a towards b, stopping short of any tower. */
-  function clearFrom(a: THREE.Vector3, b: THREE.Vector3, out: THREE.Vector3): THREE.Vector3 {
-    out.copy(a);
+  /** How far from a towards b is clear of towers, as a fraction of the way. */
+  function clearReach(a: THREE.Vector3, b: THREE.Vector3): number {
     const steps = Math.min(16, Math.ceil(a.distanceTo(b) / 0.7));
+    let clear = 0;
     for (let k = 1; k <= steps; k++) {
       v4.lerpVectors(a, b, k / steps);
       let blocked = false;
@@ -207,9 +227,16 @@ export function startApp(data: Contributions): void {
         if (v4.y < standing(i) + 0.24) blocked = true;
       });
       if (blocked) break;
-      out.copy(v4);
+      clear = k / steps;
     }
-    return out;
+    return clear;
+  }
+
+  /** The chase position: eases in when a tower gets in the way and back out slowly, so the view never steps. */
+  function chasePoint(ship: THREE.Vector3, wanted: THREE.Vector3, dt: number, out: THREE.Vector3): THREE.Vector3 {
+    const clear = clearReach(ship, wanted);
+    reach = snap ? clear : reach + (clear - reach) * (1 - Math.exp(-(clear < reach ? 9 : 2.5) * dt));
+    return out.lerpVectors(ship, wanted, reach);
   }
 
   /* ---------- hyperspace ---------- */
@@ -247,7 +274,7 @@ export function startApp(data: Contributions): void {
     paused = false;
     holdSeconds = holdFor;
   }
-  function aimCamera(pos: THREE.Vector3, look: THREE.Vector3, roll: number, dt: number): void {
+  function aimCamera(pos: THREE.Vector3, look: THREE.Vector3, roll: number, dt: number, follow = 22, turn = 12): void {
     m1.lookAt(pos, look, UP);
     q1.setFromRotationMatrix(m1).multiply(q2.setFromAxisAngle(ROLL_AXIS, roll));
     if (snap) {
@@ -256,8 +283,8 @@ export function startApp(data: Contributions): void {
       snap = false;
       return;
     }
-    camera.position.lerp(pos, 1 - Math.exp(-22 * dt));
-    camera.quaternion.slerp(q1, 1 - Math.exp(-12 * dt));
+    camera.position.lerp(pos, 1 - Math.exp(-follow * dt));
+    camera.quaternion.slerp(q1, 1 - Math.exp(-turn * dt));
   }
   function poseFromRoute(route: Route & { s: number }, dt: number): void {
     const pt = poseAt(route, route.s, here);
@@ -272,17 +299,18 @@ export function startApp(data: Contributions): void {
     fighter.quaternion.copy(ship.quat).multiply(q2.setFromAxisAngle(ROLL_AXIS, pt.roll + pt.spin));
 
     const d = chaseDistance();
-    poseAt(route, Math.min(route.len, route.s + 5), ahead);
+    poseAt(route, Math.min(route.len, route.s + 8), ahead);
     v3.copy(ahead.p).lerp(pt.g, pt.gaze);
     if (d > 0) {
       poseAt(route, Math.max(0, route.s - d), behind);
       v2.copy(behind.p);
       v2.y += 0.2 * d + 0.12;
-      clearFrom(pt.p, v2, v1);
+      chasePoint(pt.p, v2, dt, v1);
     } else {
       v1.copy(pt.p);
     }
-    aimCamera(v1, v3, pt.roll * (d > 0 ? 0.42 : 0.8), dt);
+    // The route is already smooth, so the camera rides it exactly. Filtering again would add lag that shifts with frame time.
+    aimCamera(v1, v3, pt.roll * (d > 0 ? 0.3 : 0.6), dt, Infinity, 6);
   }
   function updateFlight(dt: number): void {
     if (!flight) return;
@@ -311,9 +339,11 @@ export function startApp(data: Contributions): void {
     poseFromRoute(flight, dt);
   }
   function endFlight(): void {
+    const finished = reviewing && review;
     camera.position.copy(viewFor());
     camera.lookAt(scope.key === 'all' ? LANDING_AIM : focusFor());
     setMode('orbit');
+    if (finished) hud.showSummary(reviewTitle(review.year), reviewFacts(review, cal));
   }
 
   /* ---------- pilot ---------- */
@@ -372,24 +402,33 @@ export function startApp(data: Contributions): void {
     if (!ship.live) return;
     let sx = stick.x;
     let sy = stick.y;
-    if (keys.has('ArrowLeft')) sx = -1;
-    if (keys.has('ArrowRight')) sx = 1;
-    if (keys.has('ArrowUp')) sy = -1;
-    if (keys.has('ArrowDown')) sy = 1;
+    // WASD and the arrow keys are the same controls
+    const left = keys.has('KeyA') || keys.has('ArrowLeft');
+    const right = keys.has('KeyD') || keys.has('ArrowRight');
+    const up = keys.has('KeyW') || keys.has('ArrowUp');
+    const down = keys.has('KeyS') || keys.has('ArrowDown');
+    if (left) sx = -1;
+    if (right) sx = 1;
+    if (up) sy = -1;
+    if (down) sy = 1;
+    if (invertY) sy = -sy;
+    // Holds steady after arriving at a badge, so there's time to take the shot
+    const boosting = keys.has('ShiftLeft') || keys.has('ShiftRight');
+    if (left || right || up || down || boosting) parkedUntil = 0;
+    const parked = time < parkedUntil;
+    if (parked) {
+      sx = 0;
+      sy = 0;
+    }
     ship.yaw -= sx * 1.7 * dt;
     ship.pitch = clamp(ship.pitch - sy * 1.3 * dt, -1.3, 1.3);
-    const boosting = keys.has('ShiftLeft') || keys.has('ShiftRight');
-    const wanted = boosting ? BOOST : keys.has('KeyW') ? FAST : keys.has('KeyS') ? BRAKE : CRUISE;
+    const wanted = parked ? 0 : boosting ? BOOST : keys.has('KeyC') ? BRAKE : CRUISE;
     ship.speed += (wanted - ship.speed) * (1 - Math.exp(-2.4 * dt));
 
     q1.setFromEuler(e1.set(ship.pitch, ship.yaw, 0, 'YXZ'));
     ship.quat.copy(q1);
     ship.fwd.set(0, 0, -1).applyQuaternion(q1);
-    v2.set(
-      (keys.has('KeyD') ? 9 : 0) - (keys.has('KeyA') ? 9 : 0),
-      (keys.has('KeyE') ? 8 : 0) - (keys.has('KeyQ') ? 8 : 0),
-      0,
-    );
+    v2.set(0, (keys.has('KeyE') ? 8 : 0) - (keys.has('KeyQ') ? 8 : 0), 0);
     ship.slide.lerp(v2, 1 - Math.exp(-7 * dt));
     v2.copy(ship.slide).applyQuaternion(q1);
     ship.vel.copy(ship.fwd).multiplyScalar(ship.speed).add(v2);
@@ -404,7 +443,7 @@ export function startApp(data: Contributions): void {
     ship.pos.x = clamp(ship.pos.x, -300, WIDTH + 300);
     ship.pos.z = clamp(ship.pos.z, -300, map.depth + 300);
 
-    ship.bank += (-sx * 1.05 - ship.slide.x * 0.075 - ship.bank) * (1 - Math.exp(-5 * dt));
+    ship.bank += (-sx * 1.05 - ship.bank) * (1 - Math.exp(-5 * dt));
     fighter.position.copy(ship.pos);
     fighter.quaternion.copy(ship.quat).multiply(q2.setFromAxisAngle(ROLL_AXIS, ship.bank));
 
@@ -413,7 +452,7 @@ export function startApp(data: Contributions): void {
     if (d > 0) {
       v2.copy(ship.pos).addScaledVector(ship.fwd, -d);
       v2.y += 0.2 * d + 0.12;
-      clearFrom(ship.pos, v2, v1);
+      chasePoint(ship.pos, v2, dt, v1);
     } else {
       v1.copy(ship.pos);
     }
@@ -470,8 +509,8 @@ export function startApp(data: Contributions): void {
   const HINTS: Record<Mode, string> = {
     fly: touch ? 'Pinch to zoom' : 'Scroll to zoom, all the way in for the cockpit',
     pilot: touch
-      ? 'Drag to steer · Pinch to zoom'
-      : 'Mouse steers · W faster · S brake · A D slide · Q E lift · Shift boost · Click or Space fires · Scroll to zoom',
+      ? 'Drag to steer · Pinch to zoom · Shoot gold badges to earn them'
+      : 'Mouse, WASD or arrows steer · Shift boost · C brake · Q E down, up · Click or Space fires · I inverts Y · Scroll to zoom',
     orbit: touch ? 'Drag to rotate · Pinch to zoom' : 'Drag to rotate · Scroll to zoom',
   };
   function showHint(m: Mode): void {
@@ -487,13 +526,14 @@ export function startApp(data: Contributions): void {
     glide = { from: camera.position.clone(), to: viewFor(), t: 0 };
   }
   function syncPlay(): void {
-    element('play').textContent = mode !== 'fly' ? 'Fly' : paused ? 'Play' : 'Pause';
+    element('play').textContent = mode !== 'fly' ? 'Replay' : paused ? 'Play' : 'Pause';
   }
   function spawnYear(): number {
     return scope.key === 'all' ? lastYear : scope.key;
   }
   function setMode(next: Mode, holdFor = 0): void {
     const wasFlying = mode === 'fly' && arrived && !(jump && jump.t < 0.5);
+    if (next !== 'fly') stopReview();
     mode = next;
     glide = null;
     controls.enabled = next === 'orbit';
@@ -503,6 +543,7 @@ export function startApp(data: Contributions): void {
     showHint(next);
     document.body.classList.toggle('piloting', next === 'pilot');
     element('fire').hidden = !(touch && next === 'pilot');
+    element('invert').hidden = next !== 'pilot';
     canvas.style.cursor = next === 'pilot' ? 'crosshair' : next === 'orbit' ? 'grab' : 'default';
     keys.clear();
     stick.set(0, 0);
@@ -546,6 +587,99 @@ export function startApp(data: Contributions): void {
       glideOut();
     }
   }
+  function setInvert(on: boolean): void {
+    invertY = on;
+    element('invert').setAttribute('aria-pressed', String(on));
+    try {
+      localStorage.setItem(INVERT_KEY, on ? '1' : '0');
+    } catch {
+      // Private windows can refuse storage. The choice still holds for this visit.
+    }
+  }
+
+  /* ---------- badges ---------- */
+  function drawBadges(): void {
+    hud.renderBadges(
+      badges.milestones.map((m, i) => ({
+        name: m.name,
+        detail: m.detail,
+        date: cal.formatShort(m.day),
+        earned: badges.isEarned(i),
+        picture: badges.picture(i),
+      })),
+      visitBadge,
+    );
+  }
+  function earn(badge: Milestone): void {
+    parkedUntil = 0;
+    hud.showToast(
+      `Badge earned: ${badge.name}`,
+      `${badge.detail} · ${cal.formatShort(badge.day)}`,
+      badges.pictureFor(badge.id),
+    );
+    drawBadges();
+  }
+  function toggleBadgeList(open: boolean): void {
+    element('badgePanel').hidden = !open;
+    element('badges').setAttribute('aria-expanded', String(open));
+  }
+  /** Lines the ship up in front of a badge, clear of towers and aimed straight at it. */
+  function visitBadge(index: number): void {
+    toggleBadgeList(false);
+    const target = badges.position(index);
+    const clearAt = (height: number) => {
+      for (let k = 0; k <= 20; k++) {
+        v2.set(target.x, height + ((target.y - height) * k) / 20, target.z + (BADGE_APPROACH * (20 - k)) / 20);
+        if (towerAt(v2) >= 0) return false;
+      }
+      return true;
+    };
+    let height = target.y;
+    while (height < target.y + 40 && !clearAt(height)) height += 1.5;
+    const arrive = () => {
+      ship.pos.set(target.x, height, target.z + BADGE_APPROACH);
+      ship.yaw = 0;
+      ship.pitch = Math.atan2(target.y - height, BADGE_APPROACH);
+      ship.bank = 0;
+      ship.speed = 0;
+      ship.slide.set(0, 0, 0);
+      ship.live = true;
+      snap = true;
+      parkedUntil = time + PARKED_SECONDS;
+    };
+    if (mode !== 'pilot') setMode('pilot');
+    ship.live = false;
+    if (jump) jump.mid = arrive;
+    else beginJump(arrive);
+  }
+
+  /* ---------- your year ---------- */
+  function stopReview(): void {
+    reviewing = false;
+    hud.hideCaption();
+  }
+  function startReview(): void {
+    if (!review) return;
+    element('summary').hidden = true;
+    toggleBadgeList(false);
+    setScope(review.year);
+    if (mode !== 'fly') setMode('fly');
+    reviewing = true;
+    nextBeat = 0;
+    captionUntil = 0;
+  }
+  function updateCaption(): void {
+    if (!reviewing || !review || !arrived || time < captionUntil) return;
+    const beat = review.beats[nextBeat];
+    if (beat && play >= beat.day) {
+      hud.showCaption(beat.title, beat.detail);
+      nextBeat++;
+      captionUntil = time + CAPTION_SECONDS;
+    } else {
+      hud.hideCaption();
+    }
+  }
+
   function togglePlay(): void {
     if (mode !== 'fly') {
       setMode('fly');
@@ -676,6 +810,7 @@ export function startApp(data: Contributions): void {
       return;
     }
     if (mode === 'pilot' && !typing && !e.metaKey && !e.ctrlKey) {
+      if (e.code === 'KeyI' && !e.repeat) setInvert(!invertY);
       keys.add(e.code);
       if (e.code.startsWith('Arrow')) e.preventDefault();
     }
@@ -692,6 +827,24 @@ export function startApp(data: Contributions): void {
     });
   });
   element('play').addEventListener('click', togglePlay);
+  element('invert').addEventListener('click', (e) => {
+    setInvert(!invertY);
+    (e.currentTarget as HTMLElement).blur();
+  });
+  element('badges').addEventListener('click', () => toggleBadgeList(element('badgePanel').hasAttribute('hidden')));
+  element('summaryClose').addEventListener('click', () => {
+    element('summary').hidden = true;
+  });
+  element('summaryShare').addEventListener('click', (e) => {
+    const button = e.currentTarget as HTMLElement;
+    void navigator.clipboard
+      .writeText(`${location.origin}/${cal.login}${REVIEW_HASH}`)
+      .then(() => {
+        button.textContent = 'Copied';
+      })
+      .catch(() => {});
+  });
+  element('review').addEventListener('click', startReview);
   element('fire').addEventListener('pointerdown', (e) => {
     e.preventDefault();
     firing = true;
@@ -727,9 +880,28 @@ export function startApp(data: Contributions): void {
     const count = document.createElement('small');
     count.textContent = total.toLocaleString('en-ZA').replace(/\s/g, ',');
     button.append(text, count);
-    button.addEventListener('click', () => setScope(key));
+    button.addEventListener('click', () => {
+      stopReview();
+      setScope(key);
+    });
     chips.append(button);
   };
+  element('invert').setAttribute('aria-pressed', String(invertY));
+  drawBadges();
+  void document.fonts.load('800 64px "Mona Sans"').then(() => {
+    badges.repaint();
+    drawBadges();
+  });
+  const credit = document.createElement('a');
+  credit.href = 'https://sheetsolved.com';
+  credit.textContent = 'A Sheet Solved project.';
+  element('note').append(' ', credit);
+  const previewing = location.hash === REVIEW_HASH;
+  if (review && (previewing || new Date().getMonth() === 11)) {
+    const button = element('review');
+    button.textContent = reviewTitle(review.year);
+    button.hidden = false;
+  }
   addChip('all', 'All', cal.total);
   [...years].reverse().forEach((y) => addChip(y, String(y), cal.yearTotal(y)));
 
@@ -804,6 +976,11 @@ export function startApp(data: Contributions): void {
     weapons.update(
       dt,
       (p) => {
+        const badge = badges.hit(p, play);
+        if (badge) {
+          earn(badge);
+          return -1;
+        }
         if (p.y < PLINTH) return -1;
         const day = towerAt(p);
         return day >= 0 ? day : null;
@@ -836,6 +1013,8 @@ export function startApp(data: Contributions): void {
     shared.uHitGlow.value = hitGlow;
     shared.uPlay.value = play;
 
+    badges.update(time, play);
+    updateCaption();
     world.followCamera(camera);
     camera.updateMatrixWorld();
     updateTargeting();
@@ -856,6 +1035,7 @@ export function startApp(data: Contributions): void {
   setScope('all');
   setMode(reduced ? 'orbit' : 'fly', 1.5);
   if (reduced) controls.autoRotate = false;
+  if (previewing && review) startReview();
   requestAnimationFrame(frame);
 
   if (import.meta.env.DEV || import.meta.env.MODE === 'test') {
@@ -869,6 +1049,8 @@ export function startApp(data: Contributions): void {
         cal,
         map,
         towerAt,
+        badges,
+        endFlight,
         get mode() {
           return mode;
         },

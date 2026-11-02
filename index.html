@@ -65,7 +65,7 @@
           autocapitalize="none"
           autocorrect="off"
         />
-        <button type="submit">Fly</button>
+        <button type="submit">Visit</button>
       </form>
       <div class="actions">
         <button id="share" type="button">Copy link</button>
@@ -104,7 +104,14 @@
           </div>
         </dl>
       </div>
-      <div class="years" id="years" role="group" aria-label="Choose a year"></div>
+      <div class="chips">
+        <div class="years" id="years" role="group" aria-label="Choose a year"></div>
+        <div class="tools">
+          <button id="review" type="button" hidden></button>
+          <button id="badges" type="button" aria-expanded="false" aria-controls="badgePanel" hidden>Badges</button>
+          <button id="invert" type="button" aria-pressed="false" hidden>Invert Y</button>
+        </div>
+      </div>
       <div class="track">
         <button id="play" type="button">Pause</button>
         <div class="timeline" id="timeline">
@@ -117,6 +124,21 @@
     </footer>
     <button id="fire" type="button" hidden>Fire</button>
     <div id="tip" hidden></div>
+    <div id="toast" role="status" hidden></div>
+    <div id="caption" role="status" hidden></div>
+    <section id="badgePanel" aria-label="Badges" hidden>
+      <h2>Badges</h2>
+      <p>Milestones from this history. Pick one to fly there, then shoot it to earn it.</p>
+      <ul id="badgeList"></ul>
+    </section>
+    <section id="summary" aria-labelledby="summaryTitle" hidden>
+      <h2 id="summaryTitle"></h2>
+      <dl id="summaryFacts"></dl>
+      <div class="summary-actions">
+        <button id="summaryShare" type="button">Copy link</button>
+        <button id="summaryClose" type="button">Close</button>
+      </div>
+    </section>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -7,9 +7,10 @@ const MS_PER_DAY = 864e5;
 
 /**
  * GitHub answers a request covering 8 or more busy years with a 502 after about 10 seconds.
- * Four-year chunks stayed under 4 seconds on 16 and 18 year accounts, at 1 point each.
+ * Asking for each year's firsts as well took four-year chunks close to that limit on heavy accounts,
+ * so a request covers three years.
  */
-const YEARS_PER_REQUEST = 4;
+const YEARS_PER_REQUEST = 3;
 const CONCURRENT_REQUESTS = 3;
 const TIMEOUT_MS = 9000;
 const RETRIES = 1;
@@ -34,7 +35,13 @@ const userSchema = z.object({
   user: z.object({ login: z.string(), name: z.string().nullable(), createdAt: z.iso.datetime() }),
 });
 
+const occurrence = z.object({ occurredAt: z.iso.datetime().optional() }).nullish();
+
 const calendarSchema = z.object({
+  joinedGitHubContribution: occurrence,
+  firstRepositoryContribution: occurrence,
+  firstPullRequestContribution: occurrence,
+  firstIssueContribution: occurrence,
   contributionCalendar: z.object({
     weeks: z.array(
       z.object({
@@ -49,11 +56,22 @@ type Day = z.infer<typeof calendarSchema>['contributionCalendar']['weeks'][numbe
 
 const USER_QUERY = 'query($login:String!){user(login:$login){login name createdAt}}';
 
+const firstOf = (field: string, type: string) =>
+  `${field}{... on ${type}{occurredAt} ... on RestrictedContribution{occurredAt}}`;
+
+/** GitHub reports each of these only in the period it happened, so every year has to ask. */
+const FIRSTS = [
+  'joinedGitHubContribution{occurredAt}',
+  firstOf('firstRepositoryContribution', 'CreatedRepositoryContribution'),
+  firstOf('firstPullRequestContribution', 'CreatedPullRequestContribution'),
+  firstOf('firstIssueContribution', 'CreatedIssueContribution'),
+].join(' ');
+
 const yearsQuery = (years: number[]): string => {
   const fields = years.map(
     (y) =>
       `y${y}:contributionsCollection(from:"${y}-01-01T00:00:00Z",to:"${y}-12-31T23:59:59Z")` +
-      '{contributionCalendar{weeks{contributionDays{date contributionCount}}}}',
+      `{contributionCalendar{weeks{contributionDays{date contributionCount}}} ${FIRSTS}}`,
   );
   return `query($login:String!){user(login:$login){${fields.join(' ')}}}`;
 };
@@ -140,11 +158,25 @@ export async function fetchContributions(login: string, token: string, now = new
   );
 
   const years: Contributions['years'] = {};
+  const firsts: NonNullable<Contributions['firsts']> = {
+    joined: null,
+    repository: null,
+    pullRequest: null,
+    issue: null,
+  };
+  const note = (key: keyof typeof firsts, seen?: { occurredAt?: string } | null) => {
+    const date = seen?.occurredAt?.slice(0, 10);
+    if (date && (!firsts[key] || date < (firsts[key] as string))) firsts[key] = date;
+  };
   for (const reply of replies) {
-    for (const [alias, { contributionCalendar }] of Object.entries(reply)) {
-      const days = contributionCalendar.weeks.flatMap((w) => w.contributionDays);
+    for (const [alias, collection] of Object.entries(reply)) {
+      const days = collection.contributionCalendar.weeks.flatMap((w) => w.contributionDays);
       years[alias.slice(1)] = yearCounts(Number(alias.slice(1)), days, today);
+      note('joined', collection.joinedGitHubContribution);
+      note('repository', collection.firstRepositoryContribution);
+      note('pullRequest', collection.firstPullRequestContribution);
+      note('issue', collection.firstIssueContribution);
     }
   }
-  return { login: user.login, name: user.name, snapshot: today, years };
+  return { login: user.login, name: user.name, snapshot: today, years, firsts };
 }

@@ -37,11 +37,13 @@ export class Calendar {
   readonly total: number;
   readonly peak: number;
   readonly busiestWindow: number;
+  readonly firsts: NonNullable<Contributions['firsts']>;
   private readonly running: Float64Array;
 
   constructor(data: Contributions) {
     this.login = data.login;
     this.snapshot = data.snapshot;
+    this.firsts = data.firsts ?? { joined: null, repository: null, pullRequest: null, issue: null };
     const listed = Object.keys(data.years).map(Number);
     const fallback = Number(data.snapshot.slice(0, 4));
     this.firstYear = listed.length ? Math.min(...listed) : fallback;
@@ -93,6 +95,23 @@ export class Calendar {
   /** The day index of a date, which may lie past the end of the data. */
   dayOf(year: number, month: number): number {
     return Math.round((Date.UTC(year, month, 1) - Date.UTC(this.firstYear, 0, 1)) / MS_PER_DAY);
+  }
+
+  /** The day index of a date, or null for no date or one outside the calendar. */
+  dayFromDate(date: string | null): number | null {
+    if (!date) return null;
+    const day = Math.round((Date.parse(date) - Date.UTC(this.firstYear, 0, 1)) / MS_PER_DAY);
+    return day >= 0 && day < this.days ? day : null;
+  }
+
+  longestStreak(a: number, b: number): { length: number; end: number } {
+    let run = 0;
+    let best = { length: 0, end: a };
+    for (let i = a; i <= b; i++) {
+      run = this.counts[i] ? run + 1 : 0;
+      if (run > best.length) best = { length: run, end: i };
+    }
+    return best;
   }
 
   cellOf(i: number): Cell {

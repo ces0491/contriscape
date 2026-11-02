@@ -16,22 +16,30 @@ The name is short for contribution landscape: GitHub's calendar counts commits, 
 
 Scroll zooms in all three. In Autopilot and Pilot it runs from far behind the ship into the cockpit.
 
-| Pilot control       | Action         |
-| ------------------- | -------------- |
-| Mouse or arrow keys | Steer          |
-| W / S               | Faster / brake |
-| A / D               | Slide sideways |
-| Q / E               | Down / up      |
-| Shift               | Boost          |
-| Click or Space      | Fire           |
+| Pilot control         | Action    |
+| --------------------- | --------- |
+| Mouse, WASD or arrows | Steer     |
+| Q / E                 | Down / up |
+| Shift                 | Boost     |
+| C                     | Brake     |
+| Click or Space        | Fire      |
+| I                     | Invert Y  |
 
 On a phone, drag to steer, pinch to zoom and use the Fire button.
 
-A city lives at `/<username>`, so the address is the share link.
+A city lives at `/<username>`, so the address is the share link. The site root shows `torvalds`.
+
+### Badges
+
+Illustrated medallions float over the days a user hit a milestone: joining GitHub, a first pull request, a thousandth contribution, a longest streak, a busiest day. Open the Badges list to see them and fly to one, then shoot it to earn it. These are this site's own badges, dated from GitHub's API. GitHub has no API for its profile achievements, so they aren't shown. Earned badges are stored only in the visitor's browser and don't change anything on GitHub.
+
+### Your year on GitHub
+
+During December a button offers a flight through the current year, with captions for its biggest moments and a closing summary. `/<username>#your-year` opens it at any time of year.
 
 ## Data and privacy
 
-The page shows what a user's public GitHub profile already shows. Private contributions appear as anonymous counts only if that user has turned them on in their profile settings. Nothing is stored, and there are no accounts, cookies or analytics. Responses are cached on the CDN for six hours.
+The page shows what a user's public GitHub profile already shows. Private contributions appear as anonymous counts only if that user has turned them on in their profile settings. Responses are cached on the CDN for six hours, and the site has no database, accounts, cookies or analytics. Earned badges and the Invert Y setting stay in the visitor's own browser. Fonts load from Google Fonts.
 
 Tower height is the square root of the day's contributions, scaled to that user's busiest day, so typical days stay visible beside a huge one.
 
@@ -49,7 +57,7 @@ npm run dev
 
 | Command            | Does                                                       |
 | ------------------ | ---------------------------------------------------------- |
-| `npm test`         | API tests, and route tests across unusual account shapes   |
+| `npm test`         | API, flight route, ride quality, badge and year tests      |
 | `npm run test:e2e` | Browser tests with a stubbed API, under the production CSP |
 | `npm run lint`     | ESLint                                                     |
 | `npm run build`    | Typecheck, then build to `dist`                            |
@@ -60,12 +68,13 @@ npm run dev
 
 - `api/contributions/[login].ts` is a Vercel Function that validates the login and sets cache headers. `api/_lib/github.ts` talks to GitHub.
 - `shared/contract.ts` holds the API's schema, used on both sides.
-- `src/calendar.ts`, `src/map.ts` and `src/routes.ts` hold the data, the city grid and the flight paths. They need no WebGL, which is what makes the routes testable.
-- `src/world.ts`, `src/fighter.ts` and `src/app.ts` are the three.js scene, the ship and the flight modes.
+- `src/calendar.ts`, `src/map.ts` and `src/routes.ts` hold the data, the city grid and the flight paths. `src/milestones.ts` and `src/review.ts` work out the badges and the year story. None of them need WebGL, which is what makes them testable.
+- `src/world.ts`, `src/fighter.ts`, `src/badges.ts` and `src/app.ts` are the three.js scene, the ship, the floating badges and the flight modes.
+- `src/badge-art.ts` draws the badge artwork at runtime, and `src/hud.ts` is everything on screen that isn't the 3D scene.
 
 ## GitHub's limits
 
-GitHub allows a token 5,000 GraphQL points an hour. A username not in the cache costs 1 point, plus 1 for every four years of history, so a typical user costs 3 to 6 points. That covers roughly 800 to 1,600 new usernames an hour, and repeat visits cost nothing. Past that, visitors see a message asking them to try again. Requests covering all of a long history at once fail on GitHub's side, so the API fetches four years at a time.
+GitHub allows a token 5,000 GraphQL points an hour. A username not in the cache costs 1 point, plus 1 for every three years of history, so a typical user costs 4 to 8 points. That covers roughly 600 to 1,200 new usernames an hour, and repeat visits cost nothing. Past that, visitors see a message asking them to try again. Requests covering all of a long history at once fail on GitHub's side, so the API fetches three years at a time.
 
 ## Deploying
 

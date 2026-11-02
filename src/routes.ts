@@ -10,9 +10,21 @@ const LEAD = 56;
 const MAX_RUNS = 2;
 const CROSSING_SECONDS = 10;
 const CLEARANCE = 0.62;
-const CLIMB_SLOPE = 0.8;
+const CLIMB_SLOPE = 0.45;
 const RING_RADIUS = 13;
+/** U-turns past the end of a block are at least this wide, which keeps them to a gentle bank. */
+const TURN_WIDTH = 14;
 const WALL_HEIGHT = 6;
+const MAX_BANK = 0.85;
+/** Radians a second. The ship slows for any corner that would turn it faster. */
+const MAX_TURN_RATE = 2;
+/** Spacing of route samples, and how far along the path each kind of smoothing reaches, in units. */
+const STEP = 0.25;
+const TURN_SMOOTHING = 3;
+const LIFT_SMOOTHING = 3;
+const BANK_SMOOTHING = 2;
+const PACE_SMOOTHING = 20;
+const BRAKING_DISTANCE = 8;
 
 export interface Waypoint {
   x: number;
@@ -46,15 +58,16 @@ export type RouteScope = 'all' | number;
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 const smooth = (k: number) => k * k * (3 - 2 * k);
 
-const paceAt = (cal: Calendar, day: number) => 19 - 6 * Math.sqrt(cal.windowSum(day) / cal.busiestWindow);
+/** Speed among the towers. One passes every 2.5 units, so this is about three towers a second. */
+const paceAt = (cal: Calendar, day: number) => 10 - 3 * Math.sqrt(cal.windowSum(day) / cal.busiestWindow);
 
 /** Picks an alley per week: it sweeps across the block, prefers tall walls either side, and hops where towers are low. */
 export function alleyRoute(map: CityMap, year: number): number[] {
   const { cal } = map;
   const last = cal.cellOf(cal.span(year).b).week;
   const alleys = ROWS - 1;
-  const switchCost = 7;
-  const crossCost = 0.32;
+  const switchCost = 12;
+  const crossCost = 0.6;
   const sweep = 1.5;
   // A wall taller than the ship is wall enough, so extra height isn't worth a hop over the rooftops
   const side = (w: number, r: number) => Math.min(WALL_HEIGHT, map.heightAt(year, w, r));
@@ -129,30 +142,34 @@ function uTurn(x: number, z0: number, z1: number, dir: number, day: number, pace
   return out;
 }
 
-/** A climbing turn around one tower, then straight out for the jump. */
-function ringPoints(map: CityMap, tower: number, from: Waypoint): Waypoint[] {
+/**
+ * Swings left around the end of the run, joins a circle on its north side already heading along it,
+ * climbs around the tower, and leaves straight for the jump.
+ */
+function ringPoints(map: CityMap, tower: number, last: Waypoint, day: number): Waypoint[] {
   const { cx, cz, top } = map;
-  const start = Math.atan2(from.z - cz[tower], from.x - cx[tower]);
-  const turns = 1.2;
-  const steps = 30;
-  const out: Waypoint[] = [];
+  const radius = Math.max(RING_RADIUS, cz[tower] - last.z + 12);
+  const swing = uTurn(Math.max(last.x + 8, cx[tower] + 10), last.z, cz[tower] - radius, 1, day, 10, 5);
+  const turns = 0.9;
+  const steps = 24;
+  const entry = -Math.PI / 2;
+  const ring: Waypoint[] = [];
   for (let k = 0; k <= steps; k++) {
     const t = k / steps;
-    const a = start - t * turns * Math.PI * 2;
-    out.push({
-      x: cx[tower] + Math.cos(a) * RING_RADIUS,
-      y: 7 + t * (top[tower] + 3),
-      z: cz[tower] + Math.sin(a) * RING_RADIUS,
+    const a = entry - t * turns * Math.PI * 2;
+    ring.push({
+      x: cx[tower] + Math.cos(a) * radius,
+      y: 6 + t * (top[tower] + 4),
+      z: cz[tower] + Math.sin(a) * radius,
       // Keeps counting past the end of the data, so the last towers finish their rise
-      day: from.day + t * RISE * 5,
-      pace: 16,
-      gaze: 0.82,
+      day: day + t * RISE * 5,
+      pace: 12,
+      gaze: 0.82 * Math.min(1, t * 6),
       g: new Vector3(cx[tower], Math.min(top[tower] - 1, 5 + t * top[tower]), cz[tower]),
     });
   }
-  const a = start - turns * Math.PI * 2;
-  out.push(...exitPoints(out[steps], Math.sin(a), -Math.cos(a)));
-  return out;
+  const a = entry - turns * Math.PI * 2;
+  return [...swing, ...ring, ...exitPoints(ring[steps], Math.sin(a), -Math.cos(a))];
 }
 
 function exitPoints(last: Waypoint, tx: number, tz: number): Waypoint[] {
@@ -163,9 +180,9 @@ function exitPoints(last: Waypoint, tx: number, tz: number): Waypoint[] {
 }
 
 function finale(map: CityMap, year: number, last: Waypoint, day: number): Waypoint[] {
-  const from: Waypoint = { x: last.x + 7, y: 4.5, z: last.z, day, pace: 15, gaze: 0 };
   const tower = map.cal.busiestIn(year);
-  return [from, ...(tower >= 0 ? ringPoints(map, tower, from) : exitPoints(from, 1, 0))];
+  if (tower >= 0) return ringPoints(map, tower, last, day);
+  return exitPoints({ x: last.x + 7, y: 4.5, z: last.z, day, pace: 10, gaze: 0 }, 1, 0);
 }
 
 function routeAll(map: CityMap, centre: Vector3): Route {
@@ -180,24 +197,30 @@ function routeAll(map: CityMap, centre: Vector3): Route {
   const south = map.depth;
   const crossingPace = Math.max(25, (crossed.length * YEAR_PITCH) / CROSSING_SECONDS);
 
+  // Older years go by at speed, so they are crossed above the rooftops
+  let roofs = 1;
+  for (let i = 0; i < cal.span(opening).a; i++) roofs = Math.max(roofs, map.top[i]);
+  const cruise = crossed.length ? roofs + 4 : 5;
+  const descending = (k: number) => 3.6 + (cruise - 3.6) * k;
+
   const wp: Waypoint[] = [
-    { x: lane + 16, y: 34, z: south + 62, day: 0, pace: 32, gaze: 0.25, g: centre },
-    { x: lane + 5, y: 14, z: south + 26, day: 0, pace: 28, gaze: 0 },
-    { x: lane, y: 5, z: south + 5, day: 0, pace: 25, gaze: 0 },
+    { x: lane + 16, y: Math.max(34, cruise + 6), z: south + 62, day: 0, pace: 32, gaze: 0.25, g: centre },
+    { x: lane + 5, y: Math.max(14, cruise + 2), z: south + 26, day: 0, pace: 28, gaze: 0 },
+    { x: lane, y: cruise, z: south + 5, day: 0, pace: 25, gaze: 0 },
   ];
   crossed.forEach((y) => {
     const { a } = cal.span(y);
-    wp.push({ x: lane, y: 4.5, z: map.blockZ(y) + DEPTH, day: a, pace: crossingPace, gaze: 0 });
-    wp.push({ x: lane, y: 4.5, z: map.blockZ(y) + DEPTH * 0.4, day: a + 180, pace: crossingPace, gaze: 0 });
+    wp.push({ x: lane, y: cruise, z: map.blockZ(y) + DEPTH, day: a, pace: crossingPace, gaze: 0 });
+    wp.push({ x: lane, y: cruise, z: map.blockZ(y) + DEPTH * 0.4, day: a + 180, pace: crossingPace, gaze: 0 });
   });
   wp.pop();
 
   const start = cal.span(opening).a;
   wp.push(
-    { x: lane - 4, y: 4.2, z: zS + 11, day: start, pace: 22, gaze: 0 },
-    { x: lane - 14, y: 3.8, z: zS + 2, day: start, pace: 20, gaze: 0 },
-    { x: lane - 26, y: 3.6, z: zS, day: start, pace: 20, gaze: 0 },
-    { x: 12, y: 3.6, z: zS, day: start, pace: 20, gaze: 0 },
+    { x: lane - 4, y: descending(0.75), z: zS + 11, day: start, pace: 20, gaze: 0 },
+    { x: lane - 14, y: descending(0.45), z: zS + 2, day: start, pace: 16, gaze: 0 },
+    { x: lane - 26, y: descending(0.2), z: zS, day: start, pace: 14, gaze: 0 },
+    { x: 12, y: 3.6, z: zS, day: start, pace: 12, gaze: 0 },
   );
 
   let previousZ = zS;
@@ -205,14 +228,19 @@ function routeAll(map: CityMap, centre: Vector3): Route {
     const route = alleyRoute(map, y);
     const entry = map.blockZ(y) + route[0] * CELL;
     const { a, b } = cal.span(y);
-    wp.push(...uTurn(-5, previousZ, entry, -1, a, 15, 3.4));
+    wp.push(...uTurn(-5, Math.max(previousZ, entry + TURN_WIDTH), entry, -1, a, 10, 3.4));
     wp.push(...runPoints(map, y, route, i * 1.7));
     if (i === runs.length - 1) return;
 
     const exit = map.blockZ(y) + route[route.length - 1] * CELL;
     const street = map.streetFor(y);
     const X = route.length * CELL;
-    wp.push(...uTurn(X + 5, exit, street, 1, b, 15, 4.2).map((p, k) => ({ ...p, x: Math.max(p.x, WIDTH + k / 9) })));
+    wp.push(
+      ...uTurn(X + 5, exit, Math.min(street, exit - TURN_WIDTH), 1, b, 10, 4.2).map((p, k) => ({
+        ...p,
+        x: Math.max(p.x, WIDTH + k / 9),
+      })),
+    );
     for (let x = WIDTH - 14; x > 8; x -= 24) {
       const k = (WIDTH - x) / WIDTH;
       wp.push({
@@ -220,7 +248,7 @@ function routeAll(map: CityMap, centre: Vector3): Route {
         y: 5 + 1.2 * Math.sin(k * 9),
         z: street + 1.5 * Math.sin(k * 11),
         day: b,
-        pace: 27,
+        pace: 22,
         gaze: 0,
         spin: smooth(clamp((k - 0.3) / 0.25, 0, 1)) * Math.PI * 2,
       });
@@ -239,12 +267,91 @@ function routeYear(map: CityMap, year: number, centre: Vector3): Route {
   const { a, b } = map.cal.span(year);
   const wp: Waypoint[] = [
     { x: -70, y: 24, z: entry + 34, day: a, pace: 30, gaze: 0 },
-    { x: -34, y: 9, z: entry + 10, day: a, pace: 24, gaze: 0 },
-    { x: -8, y: 3.6, z: entry, day: a, pace: 18, gaze: 0 },
+    { x: -34, y: 9, z: entry + 10, day: a, pace: 20, gaze: 0 },
+    { x: -8, y: 3.6, z: entry, day: a, pace: 12, gaze: 0 },
     ...runPoints(map, year, route, 0),
   ];
   wp.push(...finale(map, year, wp[wp.length - 1], b));
   return sampled(map, wp, centre);
+}
+
+/** A moving average, with the window shortened at each end. */
+function blurred(values: number[], radius: number): number[] {
+  const running = new Float64Array(values.length + 1);
+  values.forEach((v, i) => {
+    running[i + 1] = running[i] + v;
+  });
+  return values.map((_, i) => {
+    const a = Math.max(0, i - radius);
+    const b = Math.min(values.length - 1, i + radius);
+    return (running[b + 1] - running[a]) / (b - a + 1);
+  });
+}
+
+const blurredTwice = (values: number[], radius: number) => blurred(blurred(values, radius), radius);
+
+function dilated(values: number[], radius: number): number[] {
+  return values.map((_, i) => {
+    let peak = -Infinity;
+    for (let k = Math.max(0, i - radius); k <= Math.min(values.length - 1, i + radius); k++) {
+      peak = Math.max(peak, values[k]);
+    }
+    return peak;
+  });
+}
+
+const samplesWithin = (units: number) => Math.max(1, Math.round(units / STEP));
+
+/** The waypoints as a curve with evenly spaced samples, so a smoothing distance means the same thing everywhere. */
+function evenlySpaced(wp: Waypoint[]) {
+  const curve = new CatmullRomCurve3(
+    wp.map((w) => new Vector3(w.x, w.y, w.z)),
+    false,
+    'centripetal',
+  );
+  const segments = wp.length - 1;
+  const steps = segments * 20;
+  const points = curve.getPoints(steps);
+  const lengths = [0];
+  for (let i = 1; i <= steps; i++) lengths.push(lengths[i - 1] + points[i].distanceTo(points[i - 1]));
+
+  const out = {
+    x: [] as number[],
+    y: [] as number[],
+    z: [] as number[],
+    gx: [] as number[],
+    gy: [] as number[],
+    gz: [] as number[],
+    day: [] as number[],
+    pace: [] as number[],
+    gaze: [] as number[],
+    spin: [] as number[],
+  };
+  const count = Math.ceil(lengths[steps] / STEP) + 1;
+  let at = 0;
+  for (let i = 0; i < count; i++) {
+    const target = Math.min(lengths[steps], i * STEP);
+    while (at < steps - 1 && lengths[at + 1] < target) at++;
+    const k = clamp((target - lengths[at]) / Math.max(1e-6, lengths[at + 1] - lengths[at]), 0, 1);
+    const u = ((at + k) / steps) * segments;
+    const s = Math.min(segments - 1, Math.floor(u));
+    const t = u - s;
+    const A = wp[s];
+    const B = wp[s + 1];
+    const g = (A.g as Vector3).clone().lerp(B.g as Vector3, t);
+    const p = points[at].clone().lerp(points[at + 1], k);
+    out.x.push(p.x);
+    out.y.push(p.y);
+    out.z.push(p.z);
+    out.gx.push(g.x);
+    out.gy.push(g.y);
+    out.gz.push(g.z);
+    out.day.push(A.day + (B.day - A.day) * t);
+    out.pace.push(A.pace + (B.pace - A.pace) * t);
+    out.gaze.push(A.gaze + (B.gaze - A.gaze) * t);
+    out.spin.push((A.spin as number) + ((B.spin as number) - (A.spin as number)) * t);
+  }
+  return out;
 }
 
 function sampled(map: CityMap, wp: Waypoint[], centre: Vector3): Route {
@@ -252,75 +359,71 @@ function sampled(map: CityMap, wp: Waypoint[], centre: Vector3): Route {
     w.g ??= i ? wp[i - 1].g : centre;
     w.spin ??= i ? wp[i - 1].spin : 0;
   });
-  const curve = new CatmullRomCurve3(
-    wp.map((w) => new Vector3(w.x, w.y, w.z)),
-    false,
-    'centripetal',
-  );
-  const segments = wp.length - 1;
-  const steps = segments * 14;
-  const S: Sample[] = [];
-  for (let i = 0; i <= steps; i++) {
-    const u = i / steps;
-    const f = u * segments;
-    const s = Math.min(segments - 1, Math.floor(f));
-    const k = f - s;
-    const A = wp[s];
-    const B = wp[s + 1];
-    S.push({
-      p: curve.getPoint(u),
-      g: (A.g as Vector3).clone().lerp(B.g as Vector3, k),
-      len: 0,
-      day: A.day + (B.day - A.day) * k,
-      pace: A.pace + (B.pace - A.pace) * k,
-      gaze: A.gaze + (B.gaze - A.gaze) * k,
-      spin: (A.spin as number) + ((B.spin as number) - (A.spin as number)) * k,
-      roll: 0,
-    });
-  }
+  const raw = evenlySpaced(wp);
+  const turn = samplesWithin(TURN_SMOOTHING);
+  const x = blurredTwice(raw.x, turn);
+  const z = blurredTwice(raw.z, turn);
 
-  // Lift the path over anything in its way, with a slope limit so it pops up and settles smoothly
-  const safe = S.map((s) => {
-    let h = 1;
-    map.towersNear(s.p.x, s.p.z, CLEARANCE, (i) => {
-      h = Math.max(h, map.top[i] + CLEARANCE);
+  // Lift the path over anything in its way. Widening the peaks by as much as the blur reaches keeps every
+  // point at or above what it needs, so the ramps have no corners and the path never dips into a roof.
+  const needed = x.map((px, i) => {
+    let h = Math.max(1, raw.y[i]);
+    map.towersNear(px, z[i], CLEARANCE, (day) => {
+      h = Math.max(h, map.top[day] + CLEARANCE);
     });
     return h;
   });
-  const gap = (i: number) => S[i].p.distanceTo(S[i - 1].p);
-  for (let i = 1; i < S.length; i++) safe[i] = Math.max(safe[i], safe[i - 1] - gap(i) * CLIMB_SLOPE);
-  for (let i = S.length - 2; i >= 0; i--) safe[i] = Math.max(safe[i], safe[i + 1] - gap(i + 1) * CLIMB_SLOPE);
-  S.forEach((s, i) => {
-    s.p.y = Math.max(s.p.y, safe[i]);
-  });
+  for (let i = 1; i < needed.length; i++) needed[i] = Math.max(needed[i], needed[i - 1] - STEP * CLIMB_SLOPE);
+  for (let i = needed.length - 2; i >= 0; i--) needed[i] = Math.max(needed[i], needed[i + 1] - STEP * CLIMB_SLOPE);
+  const lift = samplesWithin(LIFT_SMOOTHING);
+  const y = blurredTwice(dilated(needed, lift * 2), lift);
 
-  let len = 0;
-  S.forEach((s, i) => {
-    if (i) len += s.p.distanceTo(S[i - 1].p);
-    s.len = len;
-  });
-
-  // Bank from the turn rate
-  const last = S.length - 1;
-  const raw = S.map((s, i) => {
-    const a = S[Math.max(0, i - 3)];
-    const b = S[Math.min(last, i + 3)];
-    const c = S[Math.min(last, i + 6)];
-    let d = Math.atan2(c.p.x - s.p.x, c.p.z - s.p.z) - Math.atan2(b.p.x - a.p.x, b.p.z - a.p.z);
+  // How sharply the path bends at each point, in radians per unit
+  const last = x.length - 1;
+  const span = samplesWithin(1.5);
+  const bend = x.map((_, i) => {
+    const a = Math.max(0, i - span);
+    const b = Math.min(last, i + span);
+    if (a === i || b === i) return 0;
+    let d = Math.atan2(x[b] - x[i], z[b] - z[i]) - Math.atan2(x[i] - x[a], z[i] - z[a]);
     if (d > Math.PI) d -= Math.PI * 2;
     if (d < -Math.PI) d += Math.PI * 2;
-    return clamp((d / Math.max(0.05, c.len - s.len + 1e-3)) * s.pace * 0.42, -1.2, 1.2);
+    return d / (((b - a) / 2) * STEP);
   });
-  S.forEach((s, i) => {
-    let total = 0;
-    let n = 0;
-    for (let k = Math.max(0, i - 9); k <= Math.min(last, i + 9); k++) {
-      total += raw[k];
-      n++;
-    }
-    s.roll = total / n;
+
+  // Slow down in good time for corners. As with the lift, widening the dips keeps every point under its limit.
+  const braking = samplesWithin(BRAKING_DISTANCE);
+  const cornering = bend.map((b) => -MAX_TURN_RATE / Math.max(Math.abs(b), 1e-3));
+  const limit = blurredTwice(dilated(cornering, braking * 2), braking);
+  const cruising = blurredTwice(raw.pace, samplesWithin(PACE_SMOOTHING));
+  const pace = cruising.map((v, i) => Math.min(v, -limit[i]));
+
+  const gaze = blurredTwice(raw.gaze, turn);
+  const spin = blurredTwice(raw.spin, turn);
+  const gx = blurredTwice(raw.gx, turn);
+  const gy = blurredTwice(raw.gy, turn);
+  const gz = blurredTwice(raw.gz, turn);
+
+  // Bank from the turn rate
+  const bank = bend.map((b, i) => clamp(b * pace[i] * 0.42, -MAX_BANK, MAX_BANK));
+  const roll = blurredTwice(bank, samplesWithin(BANK_SMOOTHING));
+
+  let len = 0;
+  const samples: Sample[] = x.map((px, i) => {
+    const p = new Vector3(px, y[i], z[i]);
+    if (i) len += Math.hypot(px - x[i - 1], y[i] - y[i - 1], z[i] - z[i - 1]);
+    return {
+      p,
+      g: new Vector3(gx[i], gy[i], gz[i]),
+      len,
+      day: raw.day[i],
+      pace: pace[i],
+      gaze: gaze[i],
+      spin: spin[i],
+      roll: roll[i],
+    };
   });
-  return { samples: S, len };
+  return { samples, len };
 }
 
 export function buildRoute(map: CityMap, scope: RouteScope, centre: Vector3): Route {

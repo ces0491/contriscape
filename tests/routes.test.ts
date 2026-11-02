@@ -7,7 +7,7 @@ import { buildRoute, lengthAtDay, newPose, poseAt, RISE, type Route } from '../s
 
 const SNAPSHOT = '2026-11-02';
 const SHIP_HALF_SPAN = 0.42;
-const MAX_FLIGHT_SECONDS = 90;
+const MAX_FLIGHT_SECONDS = 100;
 
 const daysIn = (y: number) => Math.round((Date.UTC(y + 1, 0, 1) - Date.UTC(y, 0, 1)) / 864e5);
 const dayOfYear = (date: string) => Math.round((Date.parse(date) - Date.UTC(Number(date.slice(0, 4)), 0, 1)) / 864e5);
@@ -115,6 +115,66 @@ describe('alley flying', () => {
       return walls >= 2;
     });
     expect(among.length / samples.length).toBeGreaterThan(0.1);
+  });
+});
+
+describe('ride quality', () => {
+  const headingOf = (a: Vector3, b: Vector3) => Math.atan2(b.x - a.x, b.z - a.z);
+  const wrap = (d: number) => Math.atan2(Math.sin(d), Math.cos(d));
+
+  describe.each(['every day extremely busy', 'long history, 18 years', 'quiet for years, then busy'])('%s', (name) => {
+    const map = new CityMap(new Calendar(FIXTURES[name]));
+    const { samples } = buildRoute(map, 'all', new Vector3(0, 4, map.depth / 2));
+    const among = (s: Route['samples'][number]) => {
+      let walls = 0;
+      map.towersNear(s.p.x, s.p.z, 1.4, (i) => {
+        if (map.top[i] > s.p.y) walls++;
+      });
+      return walls >= 2;
+    };
+
+    it('passes about three towers a second when flying between them', () => {
+      for (const s of samples.filter(among)) expect(s.pace).toBeLessThan(13);
+    });
+
+    it('climbs and dives gently', () => {
+      for (let i = 1; i < samples.length; i++) {
+        const [a, b] = [samples[i - 1], samples[i]];
+        expect(Math.abs(b.p.y - a.p.y) / Math.max(1e-6, b.len - a.len)).toBeLessThan(0.7);
+      }
+    });
+
+    it('has no corners in its altitude', () => {
+      const spacing = 8;
+      for (let i = spacing * 2; i < samples.length; i += spacing) {
+        const [a, b, c] = [samples[i - spacing * 2], samples[i - spacing], samples[i]];
+        const before = (b.p.y - a.p.y) / Math.max(1e-6, b.len - a.len);
+        const after = (c.p.y - b.p.y) / Math.max(1e-6, c.len - b.len);
+        expect(Math.abs(after - before)).toBeLessThan(0.3);
+      }
+    });
+
+    it('turns no faster than a banked aircraft would', () => {
+      const span = 6;
+      for (let i = span; i < samples.length - span; i += span) {
+        const [a, b, c] = [samples[i - span], samples[i], samples[i + span]];
+        const turned = Math.abs(wrap(headingOf(b.p, c.p) - headingOf(a.p, b.p)));
+        const seconds = (c.len - a.len) / 2 / Math.max(1, b.pace);
+        expect(turned / seconds).toBeLessThan(2.5);
+      }
+    });
+
+    it('changes bank gradually', () => {
+      for (let i = 1; i < samples.length; i++) {
+        expect(Math.abs(samples[i].roll - samples[i - 1].roll)).toBeLessThan(0.05);
+      }
+    });
+
+    it('changes speed gradually', () => {
+      for (let i = 1; i < samples.length; i++) {
+        expect(Math.abs(samples[i].pace - samples[i - 1].pace)).toBeLessThan(0.25);
+      }
+    });
   });
 });
 

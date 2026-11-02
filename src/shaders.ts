@@ -55,23 +55,23 @@ void main(){
       vec2 id=floor(g),f=fract(g);
       float pane=smoothstep(.13,.2,f.x)*smoothstep(.87,.8,f.x)*smoothstep(.16,.24,f.y)*smoothstep(.84,.76,f.y);
       float r=hash(id+vSeed*91.7);
-      float share=.34+.42*t;
+      float share=.3+.25*t;
       float lit=step(r,share)*(.72+.28*sin(uTime*(.25+r)+r*40.));
       float crisp=1.-clamp(fwidth(g.y)*1.15,0.,1.);
-      float glow=mix(share*.74,pane*lit,crisp);
-      col+=mix(base*1.9,vec3(.86,1.,.88),.28+.5*t)*glow*(.8+.95*t);
+      float glow=mix(share*.46,pane*lit,crisp);
+      col+=mix(base*1.8,vec3(.82,1.,.86),.22+.38*t)*glow*(.86+.5*t);
     }else if(n.y>.5){
-      col=base*(.82+.5*t)+vec3(.04,.16,.09)*t;
+      col=base*(.74+.3*t);
     }
     float rim=smoothstep(.09,.0,abs(y-${PLINTH_GLSL}-vH))*side;
     col+=base*rim*1.1;
     col*=mix(.5,1.,clamp((y-${PLINTH_GLSL})/max(vH,.001)*1.3+.25,0.,1.));
     col*=mix(.42,1.,vGrow);
   }
-  col*=1.+.55*vFresh*vIn;
+  col*=1.+.3*vFresh*vIn;
   col*=mix(uDim,1.,vIn);
-  col+=vec3(1.,.66,.26)*.26*vHover;
-  col+=vec3(.9,.42,.16)*vHit*.5;
+  col+=vec3(1.,.66,.26)*.07*vHover;
+  col+=vec3(.9,.42,.16)*vHit*.28;
   float d=length(vV);
   col=mix(col,uFog,1.-exp(-d*d*uFogD*uFogD));
   if(uMirror<0.)col*=.32*exp(-y*.2);
@@ -145,6 +145,15 @@ vA=uWarp*smoothstep(-L,-L*.55,z);
 gl_Position=projectionMatrix*vec4(position.xy,z-aEnd*(8.+520.*uWarp*uWarp),1.);}`;
 
 export const WARP_FRAGMENT = /* glsl */ `varying float vA;void main(){gl_FragColor=vec4(vec3(.72,.85,1.)*vA*1.5,1.);}`;
+
+export const BADGE_GLOW_VERTEX = /* glsl */ `attribute float aLit;uniform float uPx,uTime;varying float vLit;
+void main(){vec4 mv=modelViewMatrix*vec4(position,1.);vLit=aLit*(.7+.3*sin(uTime*3.));
+gl_PointSize=clamp(2100./-mv.z,16.,420.)*uPx;gl_Position=projectionMatrix*mv;}`;
+
+/** A ring around the medallion rather than a glow over it, so the artwork stays readable. */
+export const BADGE_GLOW_FRAGMENT = /* glsl */ `varying float vLit;
+void main(){float r=length(gl_PointCoord-.5)*2.;float a=smoothstep(1.,.68,r)*smoothstep(.5,.66,r);
+gl_FragColor=vec4(vec3(1.,.68,.22)*vLit*a*.7,1.);}`;
 
 export const FINISH_VERTEX = /* glsl */ `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
 

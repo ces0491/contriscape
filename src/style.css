@@ -30,6 +30,10 @@ body {
   height: 100%;
   margin: 0;
 }
+/* Stops a double tap zooming the page, while a pinch still can */
+html {
+  touch-action: manipulation;
+}
 body {
   overflow: hidden;
   background: var(--night);
@@ -306,6 +310,10 @@ body {
   font-size: 16px;
   line-height: 1.5;
   text-align: center;
+  text-shadow:
+    0 0 4px var(--night),
+    0 0 12px var(--night),
+    0 1px 2px var(--night);
   pointer-events: none;
 }
 
@@ -360,8 +368,43 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.chips {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+.tools {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+.tools button {
+  appearance: none;
+  padding: 6px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink-2);
+  font: 600 12px/1 var(--mono);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.tools button:hover {
+  color: var(--ink);
+}
+.tools button[aria-pressed='true'],
+.tools button[aria-expanded='true'] {
+  border-color: var(--sodium);
+  color: var(--ink);
+}
+#review {
+  border-color: var(--sodium);
+  background: var(--sodium);
+  color: var(--night);
+}
 .years {
   display: flex;
+  flex: 1 1 0;
   gap: 6px;
   min-width: 0;
   overflow-x: auto;
@@ -463,6 +506,168 @@ button:focus-visible {
   color: var(--ink-3);
   font: 400 11px/1.45 var(--mono);
 }
+.note a {
+  color: var(--ink-2);
+}
+
+#toast,
+#caption {
+  position: fixed;
+  z-index: 3;
+  left: 50%;
+  max-width: calc(100vw - 32px);
+  padding: 10px 16px;
+  border-radius: 6px;
+  background: var(--scrim);
+  text-align: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+#toast {
+  top: calc(env(safe-area-inset-top, 0px) + 112px);
+  border: 1px solid var(--sodium);
+}
+#caption {
+  top: calc(env(safe-area-inset-top, 0px) + 18%);
+  border: 1px solid var(--rule);
+}
+#toast img {
+  display: block;
+  width: 72px;
+  height: 72px;
+  margin: 2px auto 6px;
+}
+#toast b,
+#caption b {
+  display: block;
+  font: 700 18px/1.25 var(--display);
+}
+#toast span,
+#caption span {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-2);
+  font: 400 13px/1.35 var(--mono);
+}
+#caption b {
+  font-size: clamp(20px, 3vw, 30px);
+  font-stretch: 112%;
+}
+
+#badgePanel,
+#summary {
+  position: fixed;
+  z-index: 3;
+  right: var(--gutter-right);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 150px);
+  width: min(340px, calc(100vw - 32px));
+  max-height: min(60vh, calc(100vh - 240px));
+  padding: 14px;
+  overflow-y: auto;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--scrim);
+}
+#badgePanel h2,
+#summary h2 {
+  margin: 0;
+  font: 700 18px/1.2 var(--display);
+}
+#badgePanel p {
+  margin: 4px 0 10px;
+  color: var(--ink-2);
+  font: 400 12px/1.4 var(--mono);
+}
+#badgeList {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+#badgeList button {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+#badgeList button:hover {
+  border-color: var(--sodium);
+}
+#badgeList img {
+  flex: none;
+  width: 40px;
+  height: 40px;
+}
+#badgeList div {
+  min-width: 0;
+}
+#badgeList b {
+  display: block;
+  font: 600 13px/1.3 var(--display);
+}
+#badgeList span {
+  display: block;
+  color: var(--ink-2);
+  font: 400 11px/1.35 var(--mono);
+}
+#badgeList .earned b {
+  color: var(--g4);
+}
+#summary {
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  left: 50%;
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 20px;
+  transform: translate(-50%, -50%);
+}
+#summaryFacts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 16px;
+  margin: 14px 0;
+}
+#summaryFacts dt {
+  color: var(--ink-2);
+  font: 400 13px/1.4 var(--mono);
+}
+#summaryFacts dd {
+  margin: 0;
+  font: 600 13px/1.4 var(--mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.summary-actions {
+  display: flex;
+  gap: 8px;
+}
+.summary-actions button {
+  appearance: none;
+  flex: 1;
+  padding: 9px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  font: 600 13px/1 var(--display);
+  cursor: pointer;
+}
+#summaryShare {
+  border-color: var(--sodium);
+  background: var(--sodium);
+  color: var(--night);
+}
 
 /* No city yet: only the username box is useful */
 body.empty .deck,
@@ -528,9 +733,21 @@ body.piloting #date {
   font: 400 12px/1.3 var(--mono);
 }
 
+/* Phones zoom the page when a smaller input takes focus, and the canvas leaves no easy way back */
+@media (max-width: 860px), (pointer: coarse) {
+  .lookup input {
+    font-size: 16px;
+  }
+}
 @media (max-width: 860px) {
   :root {
     --header: 104px;
+  }
+  .chips {
+    flex-direction: column;
+  }
+  .years {
+    flex: none;
   }
   .brand {
     flex: 1 1 0;

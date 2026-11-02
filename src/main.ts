@@ -3,6 +3,8 @@ import { startApp } from './app';
 import { APP_NAME, DEFAULT_LOGIN } from './brand';
 import './style.css';
 
+const MESSAGE_SECONDS = 5;
+
 const element = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
 const MESSAGES: Record<ApiError | 'network', (login: string) => string> = {
@@ -12,6 +14,13 @@ const MESSAGES: Record<ApiError | 'network', (login: string) => string> = {
   unavailable: () => "GitHub didn't answer in time. Try again in a moment.",
   network: () => "Couldn't reach the server. Check your connection and try again.",
 };
+
+let statusTimer = 0;
+
+function hideStatus(): void {
+  clearTimeout(statusTimer);
+  element('status').hidden = true;
+}
 
 function showStatus(message: string): void {
   const status = element('status');
@@ -37,13 +46,19 @@ async function load(login: string): Promise<Contributions | ApiError | 'network'
 
 function wireForm(): void {
   const input = element<HTMLInputElement>('loginInput');
+  input.addEventListener('input', hideStatus);
   element('lookup').addEventListener('submit', (e) => {
     e.preventDefault();
     const login = input.value.trim().replace(/^@/, '');
-    if (LOGIN_PATTERN.test(login)) {
+    if (!login) {
+      input.focus();
+    } else if (LOGIN_PATTERN.test(login)) {
       location.assign(`/${login}`);
     } else {
       showStatus(MESSAGES['invalid-login'](login));
+      // With a city behind it, the message shouldn't sit over the view for long
+      if (!document.body.classList.contains('empty'))
+        statusTimer = window.setTimeout(hideStatus, MESSAGE_SECONDS * 1000);
     }
   });
 }

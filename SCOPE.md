@@ -12,6 +12,8 @@ Let anyone enter a GitHub username and fly through a 3D city of that person's pu
 - [x] Autopilot never touches a tower, proven by tests across unusual account shapes
 - [x] The GitHub token stays on the server, and repeat visits are served from the CDN
 - [x] Missing users, rate limits and outages each show a clear message
+- [x] Milestone badges sit on their real dates and can be shot and earned, kept in the visitor's browser
+- [x] A December flight through the current year, with captions and a closing summary
 - [x] Unit tests, browser tests under the production CSP, lint and typecheck all pass
 - [x] Name confirmed by Ces
 - [x] Deployed to production with a real token, verified on the live URL
@@ -25,6 +27,7 @@ Let anyone enter a GitHub username and fly through a 3D city of that person's pu
 - Multiplayer, leaderboards or sound
 - STL export, which `gh-skyline` already does
 - Payment or advertising
+- GitHub's own profile achievements, which have no API and whose art is GitHub's
 
 ## Bar
 
@@ -39,3 +42,4 @@ Ces, after flying a stranger's city on the live URL from a phone and a laptop.
 - 2026-11-02: initial scope
 - 2026-11-02: named contriscape
 - 2026-11-02: deployed to contriscape.sheetsolved.com
+- 2026-11-02: added badges and the December year flight

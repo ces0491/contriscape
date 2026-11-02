@@ -4,6 +4,7 @@ const element = <T extends HTMLElement>(id: string): T => document.getElementByI
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 const cssVar = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const MONO = '"JetBrains Mono",Consolas,monospace';
+const TOAST_SECONDS = 5;
 
 export interface Scope extends Span {
   key: 'all' | number;
@@ -15,6 +16,7 @@ export class Hud {
   private scope: Scope;
   private shownDay = -1;
   private play = 0;
+  private toastTimer = 0;
   private readonly spark = element<HTMLCanvasElement>('spark');
   private readonly head = element('head');
   readonly scrub = element<HTMLInputElement>('scrub');
@@ -59,19 +61,12 @@ export class Hud {
     const { cal } = this;
     const { a, b } = scope;
     let best = a;
-    let run = 0;
-    let longest = 0;
     let active = 0;
     for (let i = a; i <= b; i++) {
       if (cal.counts[i] > cal.counts[best]) best = i;
-      if (cal.counts[i]) {
-        active++;
-        run++;
-        longest = Math.max(longest, run);
-      } else {
-        run = 0;
-      }
+      if (cal.counts[i]) active++;
     }
+    const longest = cal.longestStreak(a, b).length;
     element('busiest').textContent = cal.sum(a, b)
       ? `${formatCount(cal.counts[best])} · ${cal.formatShort(best)}`
       : 'None';
@@ -177,5 +172,84 @@ export class Hud {
 
   hideTip(): void {
     this.tip.hidden = true;
+  }
+
+  showToast(title: string, detail: string, picture: string): void {
+    const toast = element('toast');
+    const image = document.createElement('img');
+    image.src = picture;
+    image.alt = '';
+    this.fill(toast, title, detail);
+    toast.prepend(image);
+    toast.hidden = false;
+    clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(() => {
+      toast.hidden = true;
+    }, TOAST_SECONDS * 1000);
+  }
+
+  showCaption(title: string, detail: string): void {
+    const caption = element('caption');
+    this.fill(caption, title, detail);
+    caption.hidden = false;
+  }
+
+  hideCaption(): void {
+    element('caption').hidden = true;
+  }
+
+  private fill(box: HTMLElement, title: string, detail: string): void {
+    const heading = document.createElement('b');
+    const body = document.createElement('span');
+    heading.textContent = title;
+    body.textContent = detail;
+    box.replaceChildren(heading, body);
+  }
+
+  /** The badge count, and the list a visitor can jump to a badge from. */
+  renderBadges(
+    rows: { name: string; detail: string; date: string; earned: boolean; picture: string }[],
+    visit: (index: number) => void,
+  ): void {
+    const button = element('badges');
+    const earned = rows.filter((r) => r.earned).length;
+    button.textContent = `Badges ${earned}/${rows.length}`;
+    button.hidden = rows.length === 0;
+    const list = element('badgeList');
+    list.replaceChildren(
+      ...rows.map((row, i) => {
+        const item = document.createElement('li');
+        const go = document.createElement('button');
+        go.type = 'button';
+        go.className = row.earned ? 'earned' : '';
+        const image = document.createElement('img');
+        image.src = row.picture;
+        image.alt = '';
+        const name = document.createElement('b');
+        name.textContent = `${row.earned ? '✓ ' : ''}${row.name}`;
+        const detail = document.createElement('span');
+        detail.textContent = `${row.detail} · ${row.date}`;
+        const words = document.createElement('div');
+        words.append(name, detail);
+        go.append(image, words);
+        go.addEventListener('click', () => visit(i));
+        item.append(go);
+        return item;
+      }),
+    );
+  }
+
+  showSummary(title: string, facts: [string, string][]): void {
+    element('summaryTitle').textContent = title;
+    element('summaryFacts').replaceChildren(
+      ...facts.flatMap(([label, value]) => {
+        const term = document.createElement('dt');
+        const definition = document.createElement('dd');
+        term.textContent = label;
+        definition.textContent = value;
+        return [term, definition];
+      }),
+    );
+    element('summary').hidden = false;
   }
 }

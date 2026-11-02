@@ -50,18 +50,14 @@ describe('yearCounts', () => {
 });
 
 describe('fetchContributions', () => {
-  it('fetches long histories in chunks of four years', async () => {
+  it('fetches long histories in chunks of three years', async () => {
     fetchMock.mockResolvedValueOnce(ok({ user: { login: 'veteran', name: null, createdAt: '2017-05-01T00:00:00Z' } }));
-    for (const years of [
-      [2017, 2018, 2019, 2020],
-      [2021, 2022, 2023, 2024],
-      [2025, 2026],
-    ]) {
+    for (const years of [[2017, 2018, 2019], [2020, 2021, 2022], [2023, 2024, 2025], [2026]]) {
       const user = Object.fromEntries(years.map((y) => [`y${y}`, calendar([])]));
       fetchMock.mockResolvedValueOnce(ok({ user }));
     }
     const result = await fetchContributions('veteran', 'token', NOW);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
     expect(Object.keys(result.years)).toEqual([
       '2017',
       '2018',
@@ -75,6 +71,29 @@ describe('fetchContributions', () => {
       '2026',
     ]);
     expect(result.snapshot).toBe('2026-03-10');
+  });
+
+  it('keeps the earliest of each first across the years', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ user: { login: 'firsts', name: null, createdAt: '2020-03-01T00:00:00Z' } }));
+    const year = (extra: object) => ({ ...calendar([]), ...extra });
+    fetchMock.mockResolvedValueOnce(
+      ok({
+        user: {
+          y2020: year({
+            joinedGitHubContribution: { occurredAt: '2020-03-01T10:00:00Z' },
+            firstRepositoryContribution: null,
+            firstPullRequestContribution: { occurredAt: '2020-06-02T10:00:00Z' },
+            firstIssueContribution: {},
+          }),
+          y2021: year({ firstRepositoryContribution: { occurredAt: '2021-01-05T10:00:00Z' } }),
+          y2022: year({ firstPullRequestContribution: { occurredAt: '2022-02-02T10:00:00Z' } }),
+        },
+      }),
+    );
+    fetchMock.mockResolvedValueOnce(ok({ user: { y2023: calendar([]), y2024: calendar([]), y2025: calendar([]) } }));
+    fetchMock.mockResolvedValueOnce(ok({ user: { y2026: calendar([]) } }));
+    const { firsts } = await fetchContributions('firsts', 'token', NOW);
+    expect(firsts).toEqual({ joined: '2020-03-01', repository: '2021-01-05', pullRequest: '2020-06-02', issue: null });
   });
 
   it('sends the login as a variable, keeping it out of the query text', async () => {

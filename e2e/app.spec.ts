@@ -26,7 +26,8 @@ const empty: Contributions = {
 interface CityDebug {
   mode: string;
   zoom: number;
-  ship: { live: boolean; speed: number; yaw: number; pos: { x: number } };
+  endFlight: () => void;
+  ship: { live: boolean; speed: number; yaw: number; pitch: number; pos: { x: number } };
   weapons: { activeBolts: number };
 }
 declare global {
@@ -74,15 +75,15 @@ test('asks the API for the lower-case login, so each user has one cached copy', 
 });
 
 test('shows the default city at the root', async ({ page }) => {
-  await stubApi(page, { body: busy('ces0491') });
+  await stubApi(page, { body: busy('torvalds') });
   await page.goto('/');
   await cityReady(page);
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.locator('#login')).toHaveText('ces0491');
+  await expect(page.locator('#login')).toHaveText('torvalds');
 });
 
 test('the username box takes you to that city', async ({ page }) => {
-  await stubApi(page, { body: busy('ces0491') });
+  await stubApi(page, { body: busy('torvalds') });
   await page.goto('/');
   await cityReady(page);
   await page.fill('#loginInput', '@torvalds');
@@ -102,8 +103,32 @@ test('explains a username GitHub could not have issued, without calling the API'
   expect(called).toBe(false);
 });
 
+test('pressing Fly with an empty box does nothing, and shows no message', async ({ page }) => {
+  await stubApi(page, { body: busy('torvalds') });
+  await page.goto('/');
+  await cityReady(page);
+  await page.click('#lookup button');
+  await expect(page.locator('#status')).toBeHidden();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.locator('#loginInput')).toBeFocused();
+});
+
+test('a message about a bad name clears when you type, and by itself', async ({ page }) => {
+  await stubApi(page, { body: busy('torvalds') });
+  await page.goto('/');
+  await cityReady(page);
+  await page.fill('#loginInput', 'not a name');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#status')).toBeVisible();
+  await page.keyboard.type('x');
+  await expect(page.locator('#status')).toBeHidden();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#status')).toBeVisible();
+  await expect(page.locator('#status')).toBeHidden({ timeout: 8_000 });
+});
+
 test('rejects a bad name typed into the box', async ({ page }) => {
-  await stubApi(page, { body: busy('ces0491') });
+  await stubApi(page, { body: busy('torvalds') });
   await page.goto('/');
   await cityReady(page);
   await page.fill('#loginInput', 'not a name');
@@ -183,7 +208,7 @@ test('typing a username in Pilot does not steer the ship', async ({ page }) => {
   await page.keyboard.down('w');
   await page.waitForTimeout(500);
   await page.keyboard.up('w');
-  expect(await page.evaluate(() => window.__city.ship.speed)).toBeLessThan(20);
+  expect(Math.abs(await page.evaluate(() => window.__city.ship.pitch))).toBeLessThan(0.01);
   await expect(page.locator('#loginInput')).toHaveValue(/^w+$/);
 });
 
@@ -221,6 +246,135 @@ test('the wheel scrolls the year buttons when a long history overflows them', as
   await expect.poll(() => page.evaluate(() => document.getElementById('years')?.scrollLeft)).toBeGreaterThan(100);
 });
 
+test('names its two main buttons by what they do', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await expect(page.locator('#lookup button')).toHaveText('Visit');
+  await page.click('#m-orbit');
+  await expect(page.locator('#play')).toHaveText('Replay');
+});
+
+test('WASD and the arrow keys steer the same way', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#m-pilot');
+  await expect.poll(() => page.evaluate(() => window.__city.ship.live), { timeout: 30_000 }).toBe(true);
+  await page.mouse.move(720, 450);
+
+  const change = async (key: string, field: 'yaw' | 'pitch') => {
+    const before = await page.evaluate((f) => window.__city.ship[f], field);
+    await page.keyboard.down(key);
+    await page.waitForTimeout(500);
+    await page.keyboard.up(key);
+    return (await page.evaluate((f) => window.__city.ship[f], field)) - before;
+  };
+  for (const [letter, arrow, field] of [
+    ['a', 'ArrowLeft', 'yaw'],
+    ['d', 'ArrowRight', 'yaw'],
+    ['w', 'ArrowUp', 'pitch'],
+    ['s', 'ArrowDown', 'pitch'],
+  ] as const) {
+    const byLetter = await change(letter, field);
+    const byArrow = await change(arrow, field);
+    expect(byLetter).not.toBe(0);
+    expect(Math.sign(byLetter)).toBe(Math.sign(byArrow));
+  }
+});
+
+test('pilot can invert the Y axis, and the choice is remembered', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await expect(page.locator('#invert')).toBeHidden();
+  await page.click('#m-pilot');
+  await expect.poll(() => page.evaluate(() => window.__city.ship.live), { timeout: 30_000 }).toBe(true);
+  await expect(page.locator('#invert')).toHaveAttribute('aria-pressed', 'false');
+
+  const pitchChange = async () => {
+    await page.mouse.move(720, 450);
+    await page.waitForTimeout(300);
+    const before = await page.evaluate(() => window.__city.ship.pitch);
+    await page.mouse.move(720, 200);
+    await page.waitForTimeout(1200);
+    await page.mouse.move(720, 450);
+    return (await page.evaluate(() => window.__city.ship.pitch)) - before;
+  };
+  expect(await pitchChange()).toBeGreaterThan(0);
+  await page.click('#invert');
+  expect(await pitchChange()).toBeLessThan(0);
+
+  await page.reload();
+  await cityReady(page);
+  await page.click('#m-pilot');
+  await expect(page.locator('#invert')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('shooting a badge earns it, and it stays earned', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await expect(page.locator('#badges')).toHaveText(/^Badges 0\/\d+$/);
+  await page.click('#badges');
+  const rows = page.locator('#badgeList button');
+  await rows.first().click();
+  await expect.poll(() => page.evaluate(() => window.__city.ship.live), { timeout: 30_000 }).toBe(true);
+  await page.mouse.move(720, 450);
+  await page.keyboard.down('Space');
+  await expect(page.locator('#toast')).toContainText('Badge earned', { timeout: 30_000 });
+  await page.keyboard.up('Space');
+  await expect(page.locator('#badges')).toHaveText(/^Badges 1\/\d+$/);
+
+  await page.reload();
+  await cityReady(page);
+  await expect(page.locator('#badges')).toHaveText(/^Badges 1\/\d+$/);
+});
+
+test.describe('your year on GitHub', () => {
+  test('stays hidden outside December', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-11-20T12:00:00Z'));
+    await stubApi(page, { body: busy('octo-dev') });
+    await page.goto('/octo-dev');
+    await cityReady(page);
+    await expect(page.locator('#review')).toBeHidden();
+  });
+
+  test('appears in December and tells the story of the year', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-12-05T12:00:00Z'));
+    await stubApi(page, { body: busy('octo-dev') });
+    await page.goto('/octo-dev');
+    await cityReady(page);
+    await expect(page.locator('#review')).toHaveText('Your 2026 on GitHub');
+    await page.click('#review');
+    await expect(page.locator('#caption')).toContainText('Your 2026 on GitHub', { timeout: 30_000 });
+    await expect(page.locator('#scopeLabel')).toContainText('2026');
+
+    await page.evaluate(() => window.__city.endFlight());
+    await expect(page.locator('#summary')).toBeVisible();
+    await expect(page.locator('#summaryFacts')).toContainText('Contributions');
+    await expect(page.locator('#summaryFacts')).toContainText('On 2025');
+    await page.click('#summaryClose');
+    await expect(page.locator('#summary')).toBeHidden();
+  });
+
+  test('can be opened from a link at any time of year', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-06-05T12:00:00Z'));
+    await stubApi(page, { body: busy('octo-dev') });
+    await page.goto('/octo-dev#your-year');
+    await cityReady(page);
+    await expect(page.locator('#caption')).toContainText('Your 2026 on GitHub', { timeout: 30_000 });
+  });
+
+  test('stays away from a year with no contributions', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-12-05T12:00:00Z'));
+    await stubApi(page, { body: empty });
+    await page.goto('/newcomer');
+    await cityReady(page);
+    await expect(page.locator('#review')).toBeHidden();
+  });
+});
+
 test('respects reduced motion by starting still, in Orbit', async ({ browser }) => {
   const context = await browser.newContext({ reducedMotion: 'reduce', viewport: { width: 1280, height: 800 } });
   const page = await context.newPage();
@@ -243,6 +397,10 @@ test('fits a phone without sideways scrolling', async ({ browser }) => {
   }));
   expect(scroll).toBeLessThanOrEqual(client);
   await expect(page.locator('#loginInput')).toBeVisible();
+
+  // Under 16px, phones zoom the page when the box takes focus
+  const size = await page.locator('#loginInput').evaluate((e) => parseFloat(getComputedStyle(e).fontSize));
+  expect(size).toBeGreaterThanOrEqual(16);
 
   const hint = await page.locator('#hint').boundingBox();
   const lookup = await page.locator('#lookup').boundingBox();
