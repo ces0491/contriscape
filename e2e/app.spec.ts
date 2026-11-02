@@ -29,6 +29,8 @@ interface CityDebug {
   endFlight: () => void;
   ship: { live: boolean; speed: number; yaw: number; pitch: number; pos: { x: number } };
   weapons: { activeBolts: number };
+  fighter: { visible: boolean; children: { material: { color: { getHexString(): string } } }[] };
+  shared: { uRamp: { value: { b: number }[] } };
 }
 declare global {
   interface Window {
@@ -196,6 +198,24 @@ test('pilot flies, fires, and scrolls in and out of the cockpit', async ({ page 
   await expect.poll(() => page.evaluate(() => window.__city.zoom)).toBeGreaterThan(0.2);
 });
 
+for (const mode of ['pilot', 'fly'] as const) {
+  test(`one notch of the wheel leaves the cockpit in ${mode === 'fly' ? 'Autopilot' : 'Pilot'}`, async ({ page }) => {
+    await stubApi(page, { body: busy('octo-dev') });
+    await page.goto('/octo-dev');
+    await cityReady(page);
+    await page.click(`#m-${mode}`);
+    await expect
+      .poll(() => page.evaluate(() => window.__city.ship.pos.x !== 0 || window.__city.ship.live), { timeout: 30_000 })
+      .toBe(true);
+    await page.mouse.move(720, 450);
+    await page.mouse.wheel(0, -3000);
+    await expect(page.locator('#canopy')).toBeVisible({ timeout: 30_000 });
+    await page.mouse.wheel(0, 100);
+    await expect(page.locator('#canopy')).toBeHidden();
+    await expect.poll(() => page.evaluate(() => window.__city.fighter.visible)).toBe(true);
+  });
+}
+
 test('typing a username in Pilot does not steer the ship', async ({ page }) => {
   await stubApi(page, { body: busy('octo-dev') });
   await page.goto('/octo-dev');
@@ -331,6 +351,162 @@ test('shooting a badge earns it, and it stays earned', async ({ page }) => {
   await expect(page.locator('#badges')).toHaveText(/^Badges 1\/\d+$/);
 });
 
+test('the wheel scrolls the badge list and leaves the zoom alone', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 620 });
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#badges');
+  const zoom = await page.evaluate(() => window.__city.zoom);
+  await page.hover('#badgeList li:nth-child(2)');
+  await page.mouse.wheel(0, 240);
+  await expect
+    .poll(() => page.evaluate(() => document.getElementById('badgePanel')?.scrollTop ?? 0))
+    .toBeGreaterThan(50);
+  expect(await page.evaluate(() => window.__city.zoom)).toBe(zoom);
+});
+
+test('a finger scrolls the badge list on a phone', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 664 }, hasTouch: true, isMobile: true });
+  const page = await context.newPage();
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.tap('#badges');
+  const box = await page.locator('#badgePanel').boundingBox();
+  const x = (box?.x ?? 0) + 100;
+  const y = (box?.y ?? 0) + (box?.height ?? 0) - 30;
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+  for (let step = 1; step <= 14; step++) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - step * 14 }] });
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await expect
+    .poll(() => page.evaluate(() => document.getElementById('badgePanel')?.scrollTop ?? 0))
+    .toBeGreaterThan(50);
+  await context.close();
+});
+
+test('earned badges can be reset, after a second press, and shot again', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#badges');
+  await expect(page.locator('#badgeReset')).toBeHidden();
+  await page.locator('#badgeList button').first().click();
+  await expect.poll(() => page.evaluate(() => window.__city.ship.live), { timeout: 30_000 }).toBe(true);
+  await page.mouse.move(720, 450);
+  await page.keyboard.down('Space');
+  await expect(page.locator('#toast')).toContainText('Badge earned', { timeout: 30_000 });
+  await page.keyboard.up('Space');
+
+  await page.click('#badges');
+  await page.click('#badgeReset');
+  await expect(page.locator('#badgeReset')).toHaveText('Clear 1?');
+  await expect(page.locator('#badges')).toHaveText(/^Badges 1\/\d+$/);
+  await page.click('#badgeReset');
+  await expect(page.locator('#badges')).toHaveText(/^Badges 0\/\d+$/);
+  await expect(page.locator('#badgeReset')).toBeHidden();
+
+  await page.reload();
+  await cityReady(page);
+  await expect(page.locator('#badges')).toHaveText(/^Badges 0\/\d+$/);
+  await page.click('#badges');
+  await page.locator('#badgeList button').first().click();
+  await expect.poll(() => page.evaluate(() => window.__city.ship.live), { timeout: 30_000 }).toBe(true);
+  await page.mouse.move(720, 450);
+  await page.keyboard.down('Space');
+  await expect(page.locator('#toast')).toContainText('Badge earned', { timeout: 30_000 });
+  await page.keyboard.up('Space');
+});
+
+test('closing the list stands down an unconfirmed badge reset', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('contriscape:badges:octo-dev', '["first-contribution"]'));
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#badges');
+  await page.click('#badgeReset');
+  await expect(page.locator('#badgeReset')).toHaveText('Clear 1?');
+  await page.click('#badgePanel .panel-close');
+  await page.click('#badges');
+  await expect(page.locator('#badgeReset')).toHaveText('Reset');
+  await expect(page.locator('#badges')).toHaveText(/^Badges 1\/\d+$/);
+});
+
+test('colours can be changed, are remembered, and go back to the default', async ({ page }) => {
+  const faults = watchForFaults(page);
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  const accent = () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--g4').trim());
+  const topStop = () => page.evaluate(() => window.__city.shared.uRamp.value[3].b);
+  const hull = () => page.evaluate(() => window.__city.fighter.children[0].material.color.getHexString());
+  const green = await topStop();
+  expect(await hull()).toBe('9aa5b2');
+
+  await page.click('#colours');
+  await page.getByRole('button', { name: 'Blue buildings' }).click();
+  await expect.poll(topStop).toBeGreaterThan(green);
+  expect(await accent()).not.toBe('#39d353');
+  await expect(page.getByRole('button', { name: 'Blue buildings' })).toHaveAttribute('aria-pressed', 'true');
+
+  await page.getByRole('button', { name: 'Red ship', exact: true }).click();
+  expect(await hull()).toBe('c8463c');
+  await page.getByLabel('Custom ship trim colour').fill('#123456');
+  await expect(page.getByRole('button', { name: 'Amber ship trim' })).toHaveAttribute('aria-pressed', 'false');
+
+  await page.reload();
+  await cityReady(page);
+  expect(await topStop()).toBeGreaterThan(green);
+  expect(await hull()).toBe('c8463c');
+  await page.click('#colours');
+  await expect(page.getByLabel('Custom ship trim colour')).toHaveValue('#123456');
+
+  await page.click('#colourReset');
+  expect(await topStop()).toBe(green);
+  expect(await hull()).toBe('9aa5b2');
+  await expect(page.getByRole('button', { name: 'Green buildings' })).toHaveAttribute('aria-pressed', 'true');
+  expect(faults).toEqual([]);
+});
+
+test('the guide explains the controls and the badges, and closes with Escape', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 620 });
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#badges');
+  await page.click('#guide');
+  await expect(page.locator('#badgePanel')).toBeHidden();
+  await expect(page.locator('#guidePanel')).toContainText('Shift');
+  await expect(page.locator('#guidePanel')).toContainText('no API');
+  await page.hover('#guidePanel p');
+  await page.mouse.wheel(0, 200);
+  await expect
+    .poll(() => page.evaluate(() => document.getElementById('guidePanel')?.scrollTop ?? 0))
+    .toBeGreaterThan(50);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#guidePanel')).toBeHidden();
+  await expect(page.locator('#guide')).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('each panel closes from its own button', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  for (const [button, panel] of [
+    ['#badges', '#badgePanel'],
+    ['#colours', '#colourPanel'],
+    ['#guide', '#guidePanel'],
+  ]) {
+    await page.click(button);
+    await expect(page.locator(panel)).toBeVisible();
+    await page.locator(`${panel} .panel-close`).click();
+    await expect(page.locator(panel)).toBeHidden();
+  }
+});
+
 test.describe('your year on GitHub', () => {
   test('stays hidden outside December', async ({ page }) => {
     await page.clock.setFixedTime(new Date('2026-11-20T12:00:00Z'));
@@ -382,6 +558,22 @@ test('respects reduced motion by starting still, in Orbit', async ({ browser }) 
   await page.goto('/octo-dev');
   await cityReady(page);
   await expect(page.locator('#m-orbit')).toHaveAttribute('aria-pressed', 'true');
+  await context.close();
+});
+
+test('the tool buttons all fit the narrowest phone in December, in Pilot', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 320, height: 640 }, hasTouch: true, isMobile: true });
+  const page = await context.newPage();
+  await page.clock.setFixedTime(new Date('2026-12-05T12:00:00Z'));
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.tap('#m-pilot');
+  for (const id of ['#review', '#badges', '#colours', '#guide', '#invert']) {
+    const box = await page.locator(id).boundingBox();
+    expect(box?.x, id).toBeGreaterThanOrEqual(0);
+    expect((box?.x ?? 0) + (box?.width ?? 0), id).toBeLessThanOrEqual(320);
+  }
   await context.close();
 });
 

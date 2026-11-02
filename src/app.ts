@@ -8,6 +8,7 @@ import type { Contributions } from '../shared/contract';
 import { APP_NAME } from './brand';
 import { Badges } from './badges';
 import { Calendar, describeCount, MONTHS } from './calendar';
+import { COLOUR_ROWS, DEFAULT_COLOURS, readColours, towerPalette, type Colours } from './colours';
 import { buildFighter, Weapons } from './fighter';
 import { Hud, type Scope } from './hud';
 import { CityMap, DEPTH, PLINTH, TOWER, WIDTH } from './map';
@@ -16,16 +17,15 @@ import { reviewFacts, reviewTitle, reviewYear } from './review';
 import { buildRoute, lengthAtDay, newPose, poseAt, RISE, type Route } from './routes';
 import { FINISH_FRAGMENT, FINISH_VERTEX } from './shaders';
 import { createWorld, SETTLED_OFFSET } from './world';
+import { COCKPIT_BELOW, nextZoom } from './zoom';
 
 type Mode = 'fly' | 'pilot' | 'orbit';
 
 const JUMP_SECONDS = 1.5;
 const SHIP_RADIUS = 0.3;
 const CHASE_DISTANCE = 2.4;
-const ZOOM_MIN = 0.05;
-const ZOOM_MAX = 18;
-const COCKPIT_BELOW = 0.12;
 const INVERT_KEY = 'contriscape:invert-y';
+const COLOUR_KEY = 'contriscape:colours';
 const REVIEW_HASH = '#your-year';
 const CAPTION_SECONDS = 4;
 const BADGE_APPROACH = 10;
@@ -39,6 +39,11 @@ const FRAMED_DEPTH = 189;
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 const smooth = (k: number) => k * k * (3 - 2 * k);
 const element = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
+
+/** Each panel, by the id of the button that opens it. */
+const PANELS = { badges: 'badgePanel', colours: 'colourPanel', guide: 'guidePanel' };
+type Panel = keyof typeof PANELS;
+const PANEL_NAMES = Object.keys(PANELS) as Panel[];
 
 /** Builds the city and starts the render loop. Throws if WebGL is unavailable. */
 export function startApp(data: Contributions): void {
@@ -76,7 +81,7 @@ export function startApp(data: Contributions): void {
   const { scene, shared, towers } = world;
   shared.uPx.value = pixelRatio;
 
-  const fighter = buildFighter();
+  const { fighter, paintFighter } = buildFighter();
   scene.add(fighter);
   scene.add(new THREE.AmbientLight(0x8fa6c0, 1.1));
   const sun = new THREE.DirectionalLight(0xfff0e0, 1.5);
@@ -597,7 +602,57 @@ export function startApp(data: Contributions): void {
     }
   }
 
+  /* ---------- panels ---------- */
+  function showPanel(open: Panel | null): void {
+    PANEL_NAMES.forEach((name) => {
+      element(PANELS[name]).hidden = name !== open;
+      element(name).setAttribute('aria-expanded', String(name === open));
+    });
+    standDownReset();
+  }
+
+  /* ---------- colours ---------- */
+  let colours = DEFAULT_COLOURS;
+  try {
+    colours = readColours(localStorage.getItem(COLOUR_KEY));
+  } catch {
+    // Blocked storage just means the default.
+  }
+  function paintScene(): void {
+    const palette = towerPalette(colours.towers);
+    world.paintTowers(palette);
+    paintFighter(colours);
+    hud.setAccent(palette.ramp[3]);
+    hud.syncColours(colours);
+  }
+  function setColours(next: Colours): void {
+    colours = next;
+    paintScene();
+    try {
+      localStorage.setItem(COLOUR_KEY, JSON.stringify(next));
+    } catch {
+      // Private windows can refuse storage. The choice still holds for this visit.
+    }
+  }
+
   /* ---------- badges ---------- */
+  function standDownReset(): void {
+    const button = element('badgeReset');
+    delete button.dataset.armed;
+    button.textContent = 'Reset';
+  }
+  /** Earned badges take some flying to win back, so clearing them takes a second press. */
+  function pressReset(): void {
+    const button = element('badgeReset');
+    if (button.dataset.armed) {
+      badges.reset();
+      standDownReset();
+      drawBadges();
+      return;
+    }
+    button.dataset.armed = 'true';
+    button.textContent = `Clear ${badges.earned.size}?`;
+  }
   function drawBadges(): void {
     hud.renderBadges(
       badges.milestones.map((m, i) => ({
@@ -619,13 +674,9 @@ export function startApp(data: Contributions): void {
     );
     drawBadges();
   }
-  function toggleBadgeList(open: boolean): void {
-    element('badgePanel').hidden = !open;
-    element('badges').setAttribute('aria-expanded', String(open));
-  }
   /** Lines the ship up in front of a badge, clear of towers and aimed straight at it. */
   function visitBadge(index: number): void {
-    toggleBadgeList(false);
+    showPanel(null);
     const target = badges.position(index);
     const clearAt = (height: number) => {
       for (let k = 0; k <= 20; k++) {
@@ -661,7 +712,7 @@ export function startApp(data: Contributions): void {
   function startReview(): void {
     if (!review) return;
     element('summary').hidden = true;
-    toggleBadgeList(false);
+    showPanel(null);
     setScope(review.year);
     if (mode !== 'fly') setMode('fly');
     reviewing = true;
@@ -717,8 +768,7 @@ export function startApp(data: Contributions): void {
     stick.set(shaped(clamp((x - ox) / reach, -1, 1)), shaped(clamp((y - oy) / reach, -1, 1)));
   };
   const setZoom = (factor: number) => {
-    zoomGoal = clamp(zoomGoal * factor, ZOOM_MIN, ZOOM_MAX);
-    if (zoomGoal < COCKPIT_BELOW) zoomGoal = ZOOM_MIN;
+    zoomGoal = nextZoom(zoomGoal, factor);
   };
 
   canvas.addEventListener('pointermove', (e) => {
@@ -780,6 +830,8 @@ export function startApp(data: Contributions): void {
   window.addEventListener(
     'wheel',
     (e) => {
+      // Panels scroll themselves
+      if ((e.target as Element).closest('.panel')) return;
       e.preventDefault();
       // A long history overflows the year buttons, and the wheel is how a desktop user reaches the rest
       const chips = element('years');
@@ -802,6 +854,7 @@ export function startApp(data: Contributions): void {
     firing = false;
   });
   document.addEventListener('keydown', (e) => {
+    if (e.code === 'Escape') showPanel(null);
     const typing = e.target instanceof HTMLInputElement;
     if (e.code === 'Space' && !typing && !(e.target instanceof HTMLButtonElement)) {
       e.preventDefault();
@@ -831,7 +884,18 @@ export function startApp(data: Contributions): void {
     setInvert(!invertY);
     (e.currentTarget as HTMLElement).blur();
   });
-  element('badges').addEventListener('click', () => toggleBadgeList(element('badgePanel').hasAttribute('hidden')));
+  PANEL_NAMES.forEach((name) => {
+    element(name).addEventListener('click', (e) => {
+      showPanel(element(PANELS[name]).hidden ? name : null);
+      // Space fires in Pilot, unless a button still has focus from the mouse. Keyboard users keep theirs.
+      if (e.detail) (e.currentTarget as HTMLElement).blur();
+    });
+  });
+  document.querySelectorAll('.panel-close').forEach((button) => {
+    button.addEventListener('click', () => showPanel(null));
+  });
+  element('badgeReset').addEventListener('click', pressReset);
+  element('colourReset').addEventListener('click', () => setColours(DEFAULT_COLOURS));
   element('summaryClose').addEventListener('click', () => {
     element('summary').hidden = true;
   });
@@ -887,6 +951,8 @@ export function startApp(data: Contributions): void {
     chips.append(button);
   };
   element('invert').setAttribute('aria-pressed', String(invertY));
+  hud.renderColours(COLOUR_ROWS, (key, hex) => setColours({ ...colours, [key]: hex }));
+  paintScene();
   drawBadges();
   void document.fonts.load('800 64px "Mona Sans"').then(() => {
     badges.repaint();
@@ -1046,6 +1112,7 @@ export function startApp(data: Contributions): void {
         controls,
         weapons,
         fighter,
+        shared,
         cal,
         map,
         towerAt,

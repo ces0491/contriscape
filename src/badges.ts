@@ -138,6 +138,16 @@ export class Badges {
     return null;
   }
 
+  /** Forgets what this visitor has earned on this city, so the badges can be shot again. */
+  reset(): void {
+    this.earned.clear();
+    try {
+      localStorage.removeItem(this.key);
+    } catch {
+      // Storage that can't be reached has nothing saved in it.
+    }
+  }
+
   update(time: number, play: number): void {
     this.milestones.forEach((badge, i) => {
       const earned = this.earned.has(badge.id);

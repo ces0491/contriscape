@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { formatCount, MONTHS, type Calendar } from './calendar';
+import type { TowerPalette } from './colours';
 import { CELL, DEPTH, PLINTH, ROAD, TOWER, WEEKS, WIDTH, type CityMap } from './map';
 import { RISE } from './routes';
 import * as glsl from './shaders';
@@ -23,6 +24,8 @@ export type Shared = {
   uTime: { value: number };
   uFog: { value: THREE.Color };
   uFogD: { value: number };
+  uRamp: { value: THREE.Color[] };
+  uWindow: { value: THREE.Color };
   uHover: { value: number };
   uHit: { value: number };
   uHitGlow: { value: number };
@@ -40,6 +43,7 @@ export interface World {
   warpLines: THREE.LineSegments;
   /** Sky, stars and planet stay at the horizon wherever the camera goes. */
   followCamera(camera: THREE.Camera): void;
+  paintTowers(palette: TowerPalette): void;
 }
 
 function seededRandom(text: string): () => number {
@@ -312,6 +316,8 @@ export function createWorld(map: CityMap, renderer: THREE.WebGLRenderer, camera:
     uTime: { value: 0 },
     uFog: { value: new THREE.Color(0.05, 0.115, 0.165) },
     uFogD: { value: 0.0021 },
+    uRamp: { value: [new THREE.Color(), new THREE.Color(), new THREE.Color(), new THREE.Color()] },
+    uWindow: { value: new THREE.Color() },
     uHover: { value: -1 },
     uHit: { value: -1 },
     uHitGlow: { value: 0 },
@@ -420,6 +426,10 @@ export function createWorld(map: CityMap, renderer: THREE.WebGLRenderer, camera:
       sky.position.copy(view.position);
       stars.position.copy(view.position);
       planet.position.copy(view.position).add(planetAt);
+    },
+    paintTowers({ ramp, window }) {
+      ramp.forEach((stop, i) => shared.uRamp.value[i].fromArray(stop));
+      shared.uWindow.value.fromArray(window);
     },
   };
 }

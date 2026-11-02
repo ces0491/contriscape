@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { Colours } from './colours';
 
 const MAX_BOLTS = 30;
 const SPARKS = 70;
@@ -41,10 +42,10 @@ function engineGlow(): THREE.Points {
 }
 
 /** A swept delta interceptor, nose towards -Z, about 0.84 wide once scaled. */
-export function buildFighter(): THREE.Group {
-  const hull = new THREE.MeshLambertMaterial({ color: 0x9aa5b2, side: THREE.DoubleSide });
+export function buildFighter(): { fighter: THREE.Group; paintFighter: (colours: Colours) => void } {
+  const hull = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
   const dark = new THREE.MeshLambertMaterial({ color: 0x2a3038 });
-  const trim = new THREE.MeshLambertMaterial({ color: 0xffb454, side: THREE.DoubleSide });
+  const trim = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
   const fighter = new THREE.Group();
   const add = (geometry: THREE.BufferGeometry, material: THREE.Material, y = 0, z = 0, rz = 0) => {
     const mesh = new THREE.Mesh(geometry, material);
@@ -117,7 +118,13 @@ export function buildFighter(): THREE.Group {
   fighter.add(engineGlow());
   fighter.scale.setScalar(0.8);
   fighter.visible = false;
-  return fighter;
+  return {
+    fighter,
+    paintFighter(colours) {
+      hull.color.set(colours.hull);
+      trim.color.set(colours.trim);
+    },
+  };
 }
 
 /** Lasers and the sparks they throw. Bolts report what they hit through `onHit`. */

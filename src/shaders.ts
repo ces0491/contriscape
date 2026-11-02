@@ -27,15 +27,14 @@ void main(){
 }`;
 
 export const TOWER_FRAGMENT = /* glsl */ `
-uniform vec3 uFog;
+uniform vec3 uFog,uRamp[4],uWindow;
 uniform float uFogD,uTime,uDim,uMirror;
 varying vec3 vW,vN,vV;
 varying float vMag,vSeed,vGrow,vFresh,vIn,vH,vHover,vHit;
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 vec3 ramp(float t){
-  vec3 a=vec3(.055,.267,.161),b=vec3(.0,.427,.196),c=vec3(.149,.651,.255),d=vec3(.224,.827,.325);
   t=clamp(t,0.,1.)*3.;
-  return t<1.?mix(a,b,t):t<2.?mix(b,c,t-1.):mix(c,d,t-2.);
+  return t<1.?mix(uRamp[0],uRamp[1],t):t<2.?mix(uRamp[1],uRamp[2],t-1.):mix(uRamp[2],uRamp[3],t-2.);
 }
 void main(){
   vec3 n=normalize(vN);
@@ -59,7 +58,7 @@ void main(){
       float lit=step(r,share)*(.72+.28*sin(uTime*(.25+r)+r*40.));
       float crisp=1.-clamp(fwidth(g.y)*1.15,0.,1.);
       float glow=mix(share*.46,pane*lit,crisp);
-      col+=mix(base*1.8,vec3(.82,1.,.86),.22+.38*t)*glow*(.86+.5*t);
+      col+=mix(base*1.8,uWindow,.22+.38*t)*glow*(.86+.5*t);
     }else if(n.y>.5){
       col=base*(.74+.3*t);
     }

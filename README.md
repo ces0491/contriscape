@@ -14,7 +14,7 @@ The name is short for contribution landscape: GitHub's calendar counts commits, 
 | Pilot     | You fly. Aim at a tower to read its date and count                                           |
 | Orbit     | Rotate and zoom around the finished city, and hover over a tower to read it                  |
 
-Scroll zooms in all three. In Autopilot and Pilot it runs from far behind the ship into the cockpit.
+Scroll zooms in all three. In Autopilot and Pilot it runs from far behind the ship into the cockpit, and scrolling out leaves the cockpit again.
 
 | Pilot control         | Action    |
 | --------------------- | --------- |
@@ -27,11 +27,17 @@ Scroll zooms in all three. In Autopilot and Pilot it runs from far behind the sh
 
 On a phone, drag to steer, pinch to zoom and use the Fire button.
 
+The Guide button on the page covers the controls, the buttons and where the badges come from. Esc closes any panel.
+
 A city lives at `/<username>`, so the address is the share link. The site root shows `torvalds`.
 
 ### Badges
 
-Illustrated medallions float over the days a user hit a milestone: joining GitHub, a first pull request, a thousandth contribution, a longest streak, a busiest day. Open the Badges list to see them and fly to one, then shoot it to earn it. These are this site's own badges, dated from GitHub's API. GitHub has no API for its profile achievements, so they aren't shown. Earned badges are stored only in the visitor's browser and don't change anything on GitHub.
+Illustrated medallions float over the days a user hit a milestone: joining GitHub, a first pull request, a thousandth contribution, a longest streak, a busiest day. Open the Badges list to see them and fly to one, then shoot it to earn it. These are this site's own badges, dated from GitHub's API. GitHub has no API for its profile achievements, so they aren't shown. Earned badges are stored only in the visitor's browser and don't change anything on GitHub. Reset, at the top of the list, clears the ones earned on that city after a second press.
+
+### Colours
+
+The Colours button changes the buildings, the ship and the ship's trim, from swatches or a free colour picker. The choice applies to every city and stays in the visitor's browser. A building colour keeps its hue, and each step of its ramp is set to the default green's brightness, which holds glare close to the default's and keeps dark picks visible. The timeline and the green controls follow the buildings.
 
 ### Your year on GitHub
 
@@ -39,7 +45,7 @@ During December a button offers a flight through the current year, with captions
 
 ## Data and privacy
 
-The page shows what a user's public GitHub profile already shows. Private contributions appear as anonymous counts only if that user has turned them on in their profile settings. Responses are cached on the CDN for six hours, and the site has no database, accounts, cookies or analytics. Earned badges and the Invert Y setting stay in the visitor's own browser. Fonts load from Google Fonts.
+The page shows what a user's public GitHub profile already shows. Private contributions appear as anonymous counts only if that user has turned them on in their profile settings. Responses are cached on the CDN for six hours, and the site has no database, accounts, cookies or analytics. Earned badges, colours and the Invert Y setting stay in the visitor's own browser. Fonts load from Google Fonts.
 
 Tower height is the square root of the day's contributions, scaled to that user's busiest day, so typical days stay visible beside a huge one.
 
@@ -57,7 +63,7 @@ npm run dev
 
 | Command            | Does                                                       |
 | ------------------ | ---------------------------------------------------------- |
-| `npm test`         | API, flight route, ride quality, badge and year tests      |
+| `npm test`         | API, route, ride, badge, year, zoom and colour tests       |
 | `npm run test:e2e` | Browser tests with a stubbed API, under the production CSP |
 | `npm run lint`     | ESLint                                                     |
 | `npm run build`    | Typecheck, then build to `dist`                            |
@@ -68,7 +74,7 @@ npm run dev
 
 - `api/contributions/[login].ts` is a Vercel Function that validates the login and sets cache headers. `api/_lib/github.ts` talks to GitHub.
 - `shared/contract.ts` holds the API's schema, used on both sides.
-- `src/calendar.ts`, `src/map.ts` and `src/routes.ts` hold the data, the city grid and the flight paths. `src/milestones.ts` and `src/review.ts` work out the badges and the year story. None of them need WebGL, which is what makes them testable.
+- `src/calendar.ts`, `src/map.ts` and `src/routes.ts` hold the data, the city grid and the flight paths. `src/milestones.ts` and `src/review.ts` work out the badges and the year story, and `src/colours.ts` and `src/zoom.ts` hold the colour palettes and the zoom steps. None of them need WebGL, which is what makes them testable.
 - `src/world.ts`, `src/fighter.ts`, `src/badges.ts` and `src/app.ts` are the three.js scene, the ship, the floating badges and the flight modes.
 - `src/badge-art.ts` draws the badge artwork at runtime, and `src/hud.ts` is everything on screen that isn't the 3D scene.
 

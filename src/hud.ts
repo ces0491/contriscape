@@ -1,4 +1,5 @@
 import { describeCount, formatCount, MONTHS, type Calendar, type Span } from './calendar';
+import type { ColourRow, Colours, Rgb } from './colours';
 
 const element = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
@@ -72,6 +73,17 @@ export class Hud {
       : 'None';
     element('streak').textContent = `${formatCount(longest)} day${longest === 1 ? '' : 's'}`;
     element('active').textContent = `${formatCount(active)} of ${formatCount(b - a + 1)}`;
+    this.drawTimeline();
+  }
+
+  /** Keeps the timeline and the green controls matched to the buildings. */
+  setAccent(colour: Rgb): void {
+    const channels = colour.map((v) => Math.round(v * 255)).join(',');
+    const root = document.documentElement.style;
+    root.setProperty('--g4', `rgb(${channels})`);
+    root.setProperty('--g4-dim', `rgba(${channels},0.3)`);
+    this.colours.past = cssVar('--g4');
+    this.colours.future = cssVar('--g4-dim');
     this.drawTimeline();
   }
 
@@ -215,6 +227,7 @@ export class Hud {
     const earned = rows.filter((r) => r.earned).length;
     button.textContent = `Badges ${earned}/${rows.length}`;
     button.hidden = rows.length === 0;
+    element('badgeReset').hidden = earned === 0;
     const list = element('badgeList');
     list.replaceChildren(
       ...rows.map((row, i) => {
@@ -237,6 +250,50 @@ export class Hud {
         return item;
       }),
     );
+  }
+
+  /** A row of swatches and a free picker for each part of the scene. */
+  renderColours(rows: ColourRow[], choose: (key: keyof Colours, hex: string) => void): void {
+    element('colourRows').replaceChildren(
+      ...rows.map(({ key, label, swatches }) => {
+        const row = document.createElement('div');
+        row.className = 'colour-row';
+        const heading = document.createElement('h3');
+        heading.textContent = label;
+        const choices = document.createElement('div');
+        choices.className = 'swatches';
+        choices.dataset.key = key;
+        swatches.forEach(({ name, hex }) => {
+          const swatch = document.createElement('button');
+          swatch.type = 'button';
+          swatch.dataset.hex = hex;
+          swatch.style.background = hex;
+          swatch.setAttribute('aria-label', `${name} ${label.toLowerCase()}`);
+          swatch.addEventListener('click', () => choose(key, hex));
+          choices.append(swatch);
+        });
+        const custom = document.createElement('label');
+        const picker = document.createElement('input');
+        picker.type = 'color';
+        picker.setAttribute('aria-label', `Custom ${label.toLowerCase()} colour`);
+        picker.addEventListener('input', () => choose(key, picker.value));
+        custom.append(picker, 'Custom');
+        choices.append(custom);
+        row.append(heading, choices);
+        return row;
+      }),
+    );
+  }
+
+  /** Shows the current choices. It leaves the rows in place, because rebuilding one would close an open picker. */
+  syncColours(colours: Colours): void {
+    document.querySelectorAll<HTMLElement>('.swatches').forEach((choices) => {
+      const current = colours[choices.dataset.key as keyof Colours];
+      choices.querySelectorAll('button').forEach((swatch) => {
+        swatch.setAttribute('aria-pressed', String(swatch.dataset.hex === current));
+      });
+      (choices.querySelector('input') as HTMLInputElement).value = current;
+    });
   }
 
   showSummary(title: string, facts: [string, string][]): void {

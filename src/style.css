@@ -3,6 +3,7 @@
   color-scheme: dark;
   --night: #060a13;
   --scrim: rgba(6, 10, 19, 0.9);
+  --scrim-solid: rgba(6, 10, 19, 0.97);
   --scrim-soft: rgba(6, 10, 19, 0.62);
   --panel: rgba(14, 22, 34, 0.72);
   --ink: #e9f2ec;
@@ -554,8 +555,7 @@ button:focus-visible {
   font-stretch: 112%;
 }
 
-#badgePanel,
-#summary {
+.panel {
   position: fixed;
   z-index: 3;
   right: var(--gutter-right);
@@ -564,19 +564,162 @@ button:focus-visible {
   max-height: min(60vh, calc(100vh - 240px));
   padding: 14px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--rule);
   border-radius: 8px;
-  background: var(--scrim);
+  background: var(--scrim-solid);
 }
-#badgePanel h2,
-#summary h2 {
+.panel h2 {
   margin: 0;
   font: 700 18px/1.2 var(--display);
 }
-#badgePanel p {
+.panel p {
   margin: 4px 0 10px;
   color: var(--ink-2);
   font: 400 12px/1.4 var(--mono);
+}
+/* Stays in view while a long panel scrolls, so there's always a way out. Sticky stops at the panel's padding, hence the negative top. */
+.panel-head {
+  position: sticky;
+  z-index: 1;
+  top: -14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -14px -14px 0;
+  padding: 14px 14px 8px;
+  background: var(--night);
+}
+.panel-head h2 {
+  flex: 1;
+}
+.panel-head button,
+#colourReset {
+  appearance: none;
+  padding: 6px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-2);
+  font: 600 12px/1 var(--mono);
+  cursor: pointer;
+}
+.panel-head button:hover,
+#colourReset:hover {
+  color: var(--ink);
+}
+#badgeReset[data-armed] {
+  border-color: var(--sodium);
+  color: var(--sodium);
+}
+.colour-row {
+  margin-top: 12px;
+}
+.colour-row h3 {
+  margin: 0 0 6px;
+  color: var(--ink-2);
+  font: 400 12px/1.3 var(--mono);
+}
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.swatches button,
+.swatches input {
+  appearance: none;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 2px solid var(--rule);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.swatches button[aria-pressed='true'] {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 2px var(--night);
+}
+.swatches label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  font: 400 12px/1 var(--mono);
+  cursor: pointer;
+}
+.swatches input {
+  background: transparent;
+}
+.swatches input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.swatches input::-webkit-color-swatch {
+  border: 0;
+  border-radius: 50%;
+}
+.swatches input::-moz-color-swatch {
+  border: 0;
+  border-radius: 50%;
+}
+.swatches input:focus-visible {
+  outline: 2px solid var(--sodium);
+  outline-offset: 2px;
+}
+#colourPanel {
+  width: min(372px, calc(100vw - 32px));
+}
+#colourReset {
+  margin-top: 14px;
+}
+#guidePanel {
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  left: 50%;
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  transform: translate(-50%, -50%);
+}
+#guidePanel h3 {
+  margin: 16px 0 4px;
+  color: var(--sodium);
+  font: 600 13px/1.3 var(--display);
+}
+#guidePanel p,
+#guidePanel dd {
+  color: var(--ink-2);
+  font: 400 13px/1.5 var(--display);
+}
+#guidePanel dl {
+  margin: 0;
+}
+#guidePanel dt {
+  margin-top: 6px;
+  font: 600 13px/1.4 var(--display);
+}
+#guidePanel dd {
+  margin: 0;
+}
+#guidePanel table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 8px;
+  font: 400 12px/1.4 var(--mono);
+}
+#guidePanel th,
+#guidePanel td {
+  padding: 4px 8px 4px 0;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink-2);
+  text-align: left;
+  vertical-align: top;
+}
+#guidePanel th {
+  color: var(--ink);
+  font-weight: 600;
 }
 #badgeList {
   display: grid;
@@ -748,6 +891,9 @@ body.piloting #date {
   }
   .years {
     flex: none;
+  }
+  .tools {
+    flex-wrap: wrap;
   }
   .brand {
     flex: 1 1 0;

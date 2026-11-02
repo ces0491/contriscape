@@ -109,6 +109,8 @@
         <div class="tools">
           <button id="review" type="button" hidden></button>
           <button id="badges" type="button" aria-expanded="false" aria-controls="badgePanel" hidden>Badges</button>
+          <button id="colours" type="button" aria-expanded="false" aria-controls="colourPanel">Colours</button>
+          <button id="guide" type="button" aria-expanded="false" aria-controls="guidePanel">Guide</button>
           <button id="invert" type="button" aria-pressed="false" hidden>Invert Y</button>
         </div>
       </div>
@@ -126,12 +128,138 @@
     <div id="tip" hidden></div>
     <div id="toast" role="status" hidden></div>
     <div id="caption" role="status" hidden></div>
-    <section id="badgePanel" aria-label="Badges" hidden>
-      <h2>Badges</h2>
+    <section id="badgePanel" class="panel" aria-labelledby="badgeTitle" hidden>
+      <div class="panel-head">
+        <h2 id="badgeTitle">Badges</h2>
+        <button id="badgeReset" type="button" hidden>Reset</button>
+        <button class="panel-close" type="button">Close</button>
+      </div>
       <p>Milestones from this history. Pick one to fly there, then shoot it to earn it.</p>
       <ul id="badgeList"></ul>
     </section>
-    <section id="summary" aria-labelledby="summaryTitle" hidden>
+    <section id="colourPanel" class="panel" aria-labelledby="colourTitle" hidden>
+      <div class="panel-head">
+        <h2 id="colourTitle">Colours</h2>
+        <button class="panel-close" type="button">Close</button>
+      </div>
+      <p>Saved in this browser, for every city you visit.</p>
+      <div id="colourRows"></div>
+      <button id="colourReset" type="button">Back to default</button>
+    </section>
+    <section id="guidePanel" class="panel" aria-labelledby="guideTitle" hidden>
+      <div class="panel-head">
+        <h2 id="guideTitle">Guide</h2>
+        <button class="panel-close" type="button">Close</button>
+      </div>
+
+      <h3>The city</h3>
+      <p>
+        Each tower is one day and each block is a year. Height is the square root of that day's contributions, scaled to
+        the user's busiest day, so ordinary days stay visible beside a huge one. Red lights mark the busiest days.
+      </p>
+
+      <h3>Ways to fly</h3>
+      <dl>
+        <dt>Autopilot</dt>
+        <dd>Replays the history as a flight. The city rises as the date passes.</dd>
+        <dt>Pilot</dt>
+        <dd>You fly. Aim at a tower to read its date and count.</dd>
+        <dt>Orbit</dt>
+        <dd>Rotate and zoom around the finished city. Point at a tower to read it.</dd>
+      </dl>
+
+      <h3>Controls</h3>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Action</th>
+            <th scope="col">Computer</th>
+            <th scope="col">Phone</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Steer</th>
+            <td>Mouse, WASD or arrows</td>
+            <td>Drag</td>
+          </tr>
+          <tr>
+            <th scope="row">Zoom</th>
+            <td>Scroll</td>
+            <td>Pinch</td>
+          </tr>
+          <tr>
+            <th scope="row">Boost</th>
+            <td>Shift</td>
+            <td>None</td>
+          </tr>
+          <tr>
+            <th scope="row">Brake</th>
+            <td>C</td>
+            <td>None</td>
+          </tr>
+          <tr>
+            <th scope="row">Down, up</th>
+            <td>Q, E</td>
+            <td>None</td>
+          </tr>
+          <tr>
+            <th scope="row">Fire</th>
+            <td>Click or Space</td>
+            <td>Fire button</td>
+          </tr>
+          <tr>
+            <th scope="row">Invert Y</th>
+            <td>I, or the button</td>
+            <td>The button</td>
+          </tr>
+          <tr>
+            <th scope="row">Close a panel</th>
+            <td>Esc</td>
+            <td>Close</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>Zoom all the way in for the cockpit view, and zoom out to leave it.</p>
+
+      <h3>Buttons</h3>
+      <dl>
+        <dt>Visit</dt>
+        <dd>Opens the city of the username in the box.</dd>
+        <dt>Copy link</dt>
+        <dd>Copies the address of this city. Larger screens only.</dd>
+        <dt>Pause, Play, Replay</dt>
+        <dd>Stops or resumes Autopilot. From Pilot or Orbit, Replay starts the flight again.</dd>
+        <dt>Year buttons</dt>
+        <dd>Fly one year, or All for the whole history.</dd>
+        <dt>Timeline</dt>
+        <dd>Drag it to move through the dates.</dd>
+        <dt>Badges</dt>
+        <dd>Lists the milestones in this history. Pick one to fly to it.</dd>
+        <dt>Colours</dt>
+        <dd>Changes the buildings and the ship.</dd>
+        <dt>Your year on GitHub</dt>
+        <dd>A December flight through the current year, with captions and a summary.</dd>
+      </dl>
+
+      <h3>Why these badges</h3>
+      <p>
+        These are contriscape's own badges, worked out from dates and counts in GitHub's public data, such as a first
+        pull request, a longest streak or a busiest day. The achievements on GitHub profiles aren't shown because GitHub
+        has no API for them, its policy only allows scraping for research and archiving, and the artwork is GitHub's.
+      </p>
+      <p>
+        Shooting a badge saves it in this browser and changes nothing on GitHub. Reset, at the top of the Badges list,
+        clears the ones you've earned on this city so you can shoot them again.
+      </p>
+
+      <h3>Your data</h3>
+      <p>
+        A city shows what a public GitHub profile already shows. This site has no accounts, cookies or analytics. Your
+        badges, colours and Invert Y setting stay in this browser. Fonts load from Google Fonts.
+      </p>
+    </section>
+    <section id="summary" class="panel" aria-labelledby="summaryTitle" hidden>
       <h2 id="summaryTitle"></h2>
       <dl id="summaryFacts"></dl>
       <div class="summary-actions">
