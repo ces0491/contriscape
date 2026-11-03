@@ -8,6 +8,11 @@ const IMPACT_GAP = 0.06;
 const QUIET = 0.0001;
 /** A fade ends this far down, then drops to silence. Fading all the way turns a short sound into a click. */
 const TAIL = 0.03;
+/**
+ * The events browsers accept as the visitor's go-ahead for sound. A finger's pointerdown isn't one, so audio built then
+ * starts out blocked.
+ */
+const GO_AHEAD = ['mousedown', 'pointerup', 'touchend', 'click', 'keydown'];
 
 /** Values at seconds from a sound's start. */
 type Curve = [seconds: number, value: number][];
@@ -132,9 +137,7 @@ export class Sound {
   private lastImpact = -Infinity;
 
   constructor(private on: boolean) {
-    // Browsers differ on which events let a page start audio, so each of these tries
-    for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'])
-      window.addEventListener(type, () => this.unlock(), true);
+    for (const type of GO_AHEAD) window.addEventListener(type, () => this.unlock(), true);
     document.addEventListener('visibilitychange', () => {
       // The frame loop stops in a hidden tab, which would leave the engine running at its last setting
       if (document.hidden) void this.rig?.context.suspend();
@@ -157,7 +160,13 @@ export class Sound {
   unlock(): void {
     if (!this.on || document.hidden) return;
     const context = this.rig?.context ?? this.build();
-    if (context && context.state !== 'running') context.resume().catch(() => {});
+    if (!context || context.state === 'running') return;
+    context.resume().catch(() => {});
+    // The usual fix for iOS also starts a sound during the tap, so a moment of silence plays
+    const blank = context.createBufferSource();
+    blank.buffer = context.createBuffer(1, 1, context.sampleRate);
+    blank.connect(context.destination);
+    blank.start();
   }
 
   private build(): AudioContext | null {

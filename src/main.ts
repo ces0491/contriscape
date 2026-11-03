@@ -84,6 +84,7 @@ function wireShare(login: string): void {
 }
 
 async function boot(): Promise<void> {
+  if (location.hash === '#sound-check') (await import('./sound-check')).checkSound();
   wireForm();
   const requested = location.pathname.replace(/^\/|\/$/g, '');
   const login = requested || DEFAULT_LOGIN;

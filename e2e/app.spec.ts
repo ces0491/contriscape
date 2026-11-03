@@ -570,6 +570,22 @@ test('sound waits for a key press, plays the guns, and once switched off stays o
   await expect.poll(() => page.evaluate(() => window.__heard.contexts[0]?.state)).toBe('running');
 });
 
+test('on a phone, sound starts when the finger lifts, not when it lands', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 664 }, hasTouch: true, isMobile: true });
+  const page = await context.newPage();
+  await listenForSound(page);
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 200, y: 330 }] });
+  // A finger landing isn't a go-ahead for sound, so nothing may be built yet
+  expect(await page.evaluate(() => window.__heard.contexts.length)).toBe(0);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await expect.poll(() => page.evaluate(() => window.__heard.contexts[0]?.state)).toBe('running');
+  await context.close();
+});
+
 test('an open panel stops the ship, and it flies on when the panel closes', async ({ page }) => {
   await stubApi(page, { body: busy('octo-dev') });
   await page.goto('/octo-dev');
@@ -1019,6 +1035,17 @@ test('fits a phone without sideways scrolling', async ({ browser }) => {
   // Under 16px, phones zoom the page when the box takes focus
   const size = await page.locator('#loginInput').evaluate((e) => parseFloat(getComputedStyle(e).fontSize));
   expect(size).toBeGreaterThanOrEqual(16);
+
+  // A held finger would select text and open the copy menu mid-game, so only the username box and the Guide allow it
+  const selection = (id: string) =>
+    page
+      .locator(id)
+      .first()
+      .evaluate((e) => getComputedStyle(e).userSelect);
+  expect(await selection('#fire')).toBe('none');
+  expect(await selection('#date')).toBe('none');
+  expect(await selection('#loginInput')).not.toBe('none');
+  expect(await selection('#guidePanel p')).not.toBe('none');
 
   const hint = await page.locator('#hint').boundingBox();
   const lookup = await page.locator('#lookup').boundingBox();

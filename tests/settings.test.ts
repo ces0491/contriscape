@@ -40,7 +40,7 @@ describe('distanceGain', () => {
     expect(distanceGain(0)).toBe(1);
   });
 
-  it('plays a far hit quieter, and still audible at the end of a bolt’s range', () => {
+  it("plays a far hit quieter, and still audible at the end of a bolt's range", () => {
     expect(distanceGain(60)).toBeLessThan(distanceGain(10));
     expect(distanceGain(170)).toBeGreaterThan(0.05);
   });
