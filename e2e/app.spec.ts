@@ -42,9 +42,14 @@ interface CityDebug {
   fighter: { visible: boolean; children: { material: { color: { getHexString(): string } } }[] };
   shared: { uRamp: { value: { b: number }[] } };
 }
+interface Heard {
+  contexts: AudioContext[];
+  started: number;
+}
 declare global {
   interface Window {
     __city: CityDebug;
+    __heard: Heard;
   }
 }
 
@@ -62,6 +67,26 @@ const shipLive = (page: Page) =>
 async function pickYear(page: Page, key: string) {
   await page.click('#year');
   await page.click(`#years button[data-key="${key}"]`);
+}
+
+/** Counts the audio contexts the page makes and the sounds started in them. */
+async function listenForSound(page: Page) {
+  await page.addInitScript(() => {
+    const heard: Heard = { contexts: [], started: 0 };
+    window.__heard = heard;
+    const Real = window.AudioContext;
+    window.AudioContext = class extends Real {
+      constructor(options?: AudioContextOptions) {
+        super(options);
+        heard.contexts.push(this);
+      }
+    };
+    const start = AudioScheduledSourceNode.prototype.start;
+    AudioScheduledSourceNode.prototype.start = function (...args) {
+      heard.started++;
+      return start.apply(this, args);
+    };
+  });
 }
 
 /** Fails a test on anything the production CSP blocks, and on uncaught errors. */
@@ -509,6 +534,40 @@ test('a ship on the ground levels out, so its shots still fly', async ({ page })
   await page.keyboard.down('Space');
   await expect.poll(() => page.evaluate(() => window.__city.weapons.activeBolts)).toBeGreaterThan(0);
   expect(await page.evaluate(() => window.__city.ship.pitch)).toBeGreaterThanOrEqual(0);
+});
+
+test('sound waits for a key press, plays the guns, and once switched off stays off', async ({ page }) => {
+  await listenForSound(page);
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  // The jump has a sound, but a script isn't the visitor, and browsers refuse audio until the visitor acts
+  await page.evaluate(() => window.__city.visitBadge(0));
+  await shipLive(page);
+  expect(await page.evaluate(() => window.__heard.contexts.length)).toBe(0);
+
+  await page.keyboard.down('Space');
+  await expect.poll(() => page.evaluate(() => window.__heard.contexts[0]?.state)).toBe('running');
+  const before = await page.evaluate(() => window.__heard.started);
+  await expect.poll(() => page.evaluate(() => window.__heard.started)).toBeGreaterThan(before);
+  await page.keyboard.up('Space');
+
+  await page.keyboard.press('n');
+  await expect(page.locator('#sound')).toHaveAttribute('aria-pressed', 'false');
+  await expect.poll(() => page.evaluate(() => window.__heard.contexts[0].state)).toBe('suspended');
+  const quiet = await page.evaluate(() => window.__heard.started);
+  await page.keyboard.down('Space');
+  await expect.poll(() => page.evaluate(() => window.__city.weapons.activeBolts)).toBeGreaterThan(0);
+  await page.keyboard.up('Space');
+  expect(await page.evaluate(() => window.__heard.started)).toBe(quiet);
+
+  await page.reload();
+  await cityReady(page);
+  await page.click('#settings');
+  await expect(page.locator('#sound')).toHaveAttribute('aria-pressed', 'false');
+  expect(await page.evaluate(() => window.__heard.contexts.length)).toBe(0);
+  await page.click('#sound');
+  await expect.poll(() => page.evaluate(() => window.__heard.contexts[0]?.state)).toBe('running');
 });
 
 test('an open panel stops the ship, and it flies on when the panel closes', async ({ page }) => {

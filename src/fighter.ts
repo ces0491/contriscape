@@ -127,7 +127,7 @@ export function buildFighter(): { fighter: THREE.Group; paintFighter: (colours: 
   };
 }
 
-/** Lasers and the sparks they throw. Bolts report what they hit through `onHit`. */
+/** Lasers and the sparks they throw. Bolts report each hit through `onHit`, with the day of a tower or -1. */
 export class Weapons {
   private readonly bolts: { pos: THREE.Vector3; dir: THREE.Vector3; life: number }[] = [];
   private readonly mesh: THREE.InstancedMesh;
@@ -176,13 +176,15 @@ export class Weapons {
     return this.bolts.length;
   }
 
-  fire(origin: THREE.Vector3, direction: THREE.Vector3, orientation: THREE.Quaternion): void {
-    if (this.cooldown > 0 || this.bolts.length >= MAX_BOLTS - 1) return;
+  /** Whether the guns fired, because they cool down between shots. */
+  fire(origin: THREE.Vector3, direction: THREE.Vector3, orientation: THREE.Quaternion): boolean {
+    if (this.cooldown > 0 || this.bolts.length >= MAX_BOLTS - 1) return false;
     this.cooldown = COOLDOWN;
     [-1, 1].forEach((side) => {
       const pos = new THREE.Vector3(side * 0.34, 0, -0.1).applyQuaternion(orientation).add(origin);
       this.bolts.push({ pos, dir: direction.clone(), life: BOLT_LIFE });
     });
+    return true;
   }
 
   private burst(p: THREE.Vector3): void {
@@ -194,7 +196,11 @@ export class Weapons {
     }
   }
 
-  update(dt: number, solid: (p: THREE.Vector3) => number | null, onHit: (day: number) => void): void {
+  update(
+    dt: number,
+    solid: (p: THREE.Vector3) => number | null,
+    onHit: (hit: number, at: THREE.Vector3) => void,
+  ): void {
     this.cooldown -= dt;
     for (let b = this.bolts.length - 1; b >= 0; b--) {
       const bolt = this.bolts[b];
@@ -206,7 +212,7 @@ export class Weapons {
         if (hit !== null) {
           this.burst(bolt.pos);
           gone = true;
-          if (hit >= 0) onHit(hit);
+          onHit(hit, bolt.pos);
         }
       }
       bolt.life -= dt;

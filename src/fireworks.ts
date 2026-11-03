@@ -2,9 +2,9 @@ import * as THREE from 'three';
 import type { Rgb } from './colours';
 import { FIREWORK_FRAGMENT, FIREWORK_VERTEX } from './shaders';
 
-const SHELLS = 9;
+export const SHELLS = 9;
 const SPARKS = 120;
-const BETWEEN_SHELLS = 0.45;
+export const BETWEEN_SHELLS = 0.45;
 const SPARK_SECONDS = 2.2;
 const NEAREST = 60;
 const FURTHEST = 90;

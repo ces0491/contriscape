@@ -16,6 +16,7 @@ Let anyone enter a GitHub username and fly through a 3D city of that person's pu
 - [x] Shooting a city's last badge sets off fireworks and a victory roll, and marks the Badges button, with reduced motion respected
 - [x] A December flight through the current year, with captions and a closing summary
 - [x] Visitors can change the building and ship colours, choose mouse steering, and read a guide to the controls and badges on the page
+- [x] Sound effects that start only after the visitor's first click, tap or key press, and switch off from Settings or a key, with the choice kept in the visitor's browser
 - [x] Unit tests, browser tests under the production CSP, lint and typecheck all pass
 - [x] Name confirmed by Ces
 - [x] Deployed to production with a real token, verified on the live URL
@@ -26,7 +27,7 @@ Let anyone enter a GitHub username and fly through a 3D city of that person's pu
 - Accounts, logins or storing anything about visitors
 - Private contributions beyond what a user already shows on their public profile
 - Organisation pages, which have no contribution calendar
-- Multiplayer, leaderboards or sound
+- Multiplayer or leaderboards
 - STL export, which `gh-skyline` already does
 - Payment or advertising
 - GitHub's own profile achievements, which have no API and whose art is GitHub's
@@ -48,3 +49,4 @@ Ces, after flying a stranger's city on the live URL from a phone and a laptop.
 - 2026-11-02: added the guide, badge reset and colour choices
 - 2026-11-02: added the mouse steering choice and exploding badges
 - 2026-11-02: added the fireworks for a cleared city
+- 2026-11-03: added sound effects, at Ces's request

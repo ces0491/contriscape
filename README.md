@@ -27,12 +27,13 @@ Scroll zooms in all three. In Autopilot and Pilot it runs from far behind the sh
 | Click or Space | Fire                  |
 | M              | Mouse steering on/off |
 | I              | Invert Y              |
+| N              | Sound on/off          |
 
 A tap of a steering key nudges the nose and holding it turns harder. Mouse steering is off by default, so the mouse stays free for the buttons, and the ship stops while a panel is open.
 
 On a phone, drag to steer, pinch to zoom and use the Fire button.
 
-All years opens the list of years, which keeps the screen the same size however long the history is. Settings holds mouse steering, Invert Y and the colours. The Guide button on the page covers the controls, the buttons and where the badges come from. Esc closes any panel.
+All years opens the list of years, which keeps the screen the same size however long the history is. Settings holds sound, mouse steering, Invert Y and the colours. N switches sound on and off in Autopilot and Orbit as well as Pilot. The Guide button on the page covers the controls, the buttons and where the badges come from. Esc closes any panel.
 
 A city lives at `/<username>`, so the address is the share link. The site root shows `torvalds`.
 
@@ -46,13 +47,17 @@ Shooting a city's last badge clears it: fireworks go up across the view, the shi
 
 Settings changes the buildings, the ship and the ship's trim, from swatches or a free colour picker. The choice applies to every city and stays in the visitor's browser. A building colour keeps its hue, and each step of its ramp is set to the default green's brightness, which holds glare close to the default's and keeps dark picks visible. The timeline and the green controls follow the buildings.
 
+### Sound
+
+Lasers, hits, bumps, exploding badges, hyperspace jumps and the fireworks have sound effects, and in Pilot the engine hums louder and higher with speed. An earned badge chimes, and a cleared city gets a short fanfare. The sounds are made in the browser with the Web Audio API, so there are no audio files. Sound is on by default and starts at the first click, tap or key press, because browsers block audio until then. N or Settings switches it off, and the choice stays in the visitor's browser.
+
 ### Your year on GitHub
 
 During December a button offers a flight through the current year, with captions for its biggest moments and a closing summary. `/<username>#your-year` opens it at any time of year.
 
 ## Data and privacy
 
-The page shows what a user's public GitHub profile already shows. Private contributions appear as anonymous counts only if that user has turned them on in their profile settings. Responses are cached on the CDN for six hours, and the site has no database, accounts, cookies or analytics. Earned badges and settings stay in the visitor's own browser. Fonts load from Google Fonts.
+The page shows what a user's public GitHub profile already shows. Private contributions appear as anonymous counts only if that user has turned them on in their profile settings. Responses are cached on the CDN for six hours, and the site has no database, accounts, cookies or analytics. Earned badges and settings, including whether sound is on, stay in the visitor's own browser. Fonts load from Google Fonts.
 
 Tower height is the square root of the day's contributions, scaled to that user's busiest day, so typical days stay visible beside a huge one.
 
@@ -68,12 +73,12 @@ npm run dev
 
 `GITHUB_TOKEN` is a [personal access token (classic)](https://github.com/settings/tokens) with no scopes ticked. GitHub's GraphQL API needs a token even for public data, so it lives on the server. `npm run dev` runs the API inside the Vite dev server, with no Vercel login needed.
 
-| Command            | Does                                                       |
-| ------------------ | ---------------------------------------------------------- |
-| `npm test`         | API, route, ride, badge, year, zoom, colour and show tests |
-| `npm run test:e2e` | Browser tests with a stubbed API, under the production CSP |
-| `npm run lint`     | ESLint                                                     |
-| `npm run build`    | Typecheck, then build to `dist`                            |
+| Command            | Does                                                              |
+| ------------------ | ----------------------------------------------------------------- |
+| `npm test`         | API, route, ride, badge, year, zoom, colour, show and sound tests |
+| `npm run test:e2e` | Browser tests with a stubbed API, under the production CSP        |
+| `npm run lint`     | ESLint                                                            |
+| `npm run build`    | Typecheck, then build to `dist`                                   |
 
 `npx playwright install chromium` fetches the browser for the end-to-end tests.
 
@@ -84,6 +89,7 @@ npm run dev
 - `src/calendar.ts`, `src/map.ts` and `src/routes.ts` hold the data, the city grid and the flight paths. `src/milestones.ts` and `src/review.ts` work out the badges and the year story, and `src/colours.ts`, `src/zoom.ts`, `src/steering.ts` and `src/quality.ts` hold the colour palettes, the zoom steps, the key response and the frame average that lowers quality on a slow GPU. None of them need WebGL, which is what makes them testable.
 - `src/world.ts`, `src/fighter.ts`, `src/badges.ts`, `src/blast.ts`, `src/fireworks.ts` and `src/app.ts` are the three.js scene, the ship, the floating badges, their explosions, the show for a cleared city and the flight modes.
 - `src/badge-art.ts` draws the badge artwork at runtime, and `src/hud.ts` is everything on screen that isn't the 3D scene.
+- `src/sound.ts` makes the sound effects with the Web Audio API, and builds nothing until the visitor's first click, tap or key press.
 
 ## GitHub's limits
 

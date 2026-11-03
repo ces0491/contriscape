@@ -19,6 +19,7 @@ import { averageFrame, SLOW_FRAME_MS } from './quality';
 import { reviewFacts, reviewTitle, reviewYear } from './review';
 import { buildRoute, lengthAtDay, newPose, poseAt, RISE, type Route } from './routes';
 import { FINISH_FRAGMENT, FINISH_VERTEX } from './shaders';
+import { Sound } from './sound';
 import { keyTurn } from './steering';
 import { createWorld, SETTLED_OFFSET } from './world';
 import { COCKPIT_BELOW, nextZoom } from './zoom';
@@ -34,6 +35,7 @@ const LOOK_DOWN = 0.15;
 const MAX_LOOK_DOWN = 2;
 const INVERT_KEY = 'contriscape:invert-y';
 const MOUSE_KEY = 'contriscape:mouse-steer';
+const SOUND_KEY = 'contriscape:sound';
 const COLOUR_KEY = 'contriscape:colours';
 const REVIEW_HASH = '#your-year';
 const CAPTION_SECONDS = 4;
@@ -60,12 +62,13 @@ const PANELS = { year: 'yearPanel', badges: 'badgePanel', settings: 'settingsPan
 type Panel = keyof typeof PANELS;
 const PANEL_NAMES = Object.keys(PANELS) as Panel[];
 
-function recall(key: string): boolean {
+function recall(key: string, fallback = false): boolean {
   try {
-    return localStorage.getItem(key) === '1';
+    const stored = localStorage.getItem(key);
+    return stored === null ? fallback : stored === '1';
   } catch {
     // Blocked storage just means the default.
-    return false;
+    return fallback;
   }
 }
 
@@ -123,6 +126,7 @@ export function startApp(data: Contributions): void {
   const badges = new Badges(scene, map, findMilestones(cal), cal.login, shared);
   const blasts = Array.from({ length: BLASTS }, () => new Blast(scene, Math.random));
   const fireworks = new Fireworks(scene, shared.uPx, Math.random);
+  const sound = new Sound(recall(SOUND_KEY, true));
 
   const composer = new EffectComposer(
     renderer,
@@ -290,6 +294,7 @@ export function startApp(data: Contributions): void {
       mid();
       return;
     }
+    sound.jump(JUMP_SECONDS);
     jump = { t: 0, mid, done: false, from: rewind ? Math.min(play, scope.b + RISE) : null };
   }
   function updateJump(dt: number): void {
@@ -416,6 +421,7 @@ export function startApp(data: Contributions): void {
     if (contactCooldown > 0) return;
     contactCooldown = 0.35;
     ship.speed *= headOn ? 0.45 : 0.8;
+    sound.bump(headOn);
     if (!reduced) shake = headOn ? 1 : 0.45;
     redAlert = headOn ? 1 : 0.5;
     shared.uHit.value = day;
@@ -648,6 +654,11 @@ export function startApp(data: Contributions): void {
     element('invert').setAttribute('aria-pressed', String(on));
     remember(INVERT_KEY, on);
   }
+  function setSound(on: boolean): void {
+    sound.setEnabled(on);
+    element('sound').setAttribute('aria-pressed', String(on));
+    remember(SOUND_KEY, on);
+  }
   function setMouseSteer(on: boolean): void {
     mouseSteer = on;
     element('mouseSteer').setAttribute('aria-pressed', String(on));
@@ -725,11 +736,15 @@ export function startApp(data: Contributions): void {
     aiming = false;
     // A parked ship stays for the show. One already flying carries on underneath it.
     if (time < parkedUntil) parkedUntil = time + (cleared ? FINALE_SECONDS : BLAST_WATCH);
+    if (cleared) sound.fanfare();
+    else sound.chime();
     if (!reduced) {
       blasts[nextBlast++ % BLASTS].start(badges.position(badges.milestones.indexOf(badge)));
+      sound.blast();
       shake = 0.4;
       if (cleared) {
         fireworks.start(camera, towerPalette(colours.towers).ramp[3]);
+        sound.fireworks();
         victoryRoll = Math.PI * 2;
       }
     }
@@ -940,6 +955,7 @@ export function startApp(data: Contributions): void {
       else togglePlay();
       return;
     }
+    if (e.code === 'KeyN' && !typing && !e.repeat && !e.metaKey && !e.ctrlKey) setSound(!sound.enabled);
     if (mode === 'pilot' && !typing && !e.metaKey && !e.ctrlKey) {
       if (e.code === 'KeyI' && !e.repeat) setInvert(!invertY);
       if (e.code === 'KeyM' && !e.repeat) setMouseSteer(!mouseSteer);
@@ -965,6 +981,10 @@ export function startApp(data: Contributions): void {
   });
   element('mouseSteer').addEventListener('click', (e) => {
     setMouseSteer(!mouseSteer);
+    (e.currentTarget as HTMLElement).blur();
+  });
+  element('sound').addEventListener('click', (e) => {
+    setSound(!sound.enabled);
     (e.currentTarget as HTMLElement).blur();
   });
   PANEL_NAMES.forEach((name) => {
@@ -1037,6 +1057,7 @@ export function startApp(data: Contributions): void {
   element('invert').setAttribute('aria-pressed', String(invertY));
   element('mouseSteer').setAttribute('aria-pressed', String(mouseSteer));
   element('mouseSteer').hidden = touch;
+  element('sound').setAttribute('aria-pressed', String(sound.enabled));
   hud.renderColours(COLOUR_ROWS, (key, hex) => setColours({ ...colours, [key]: hex }));
   paintScene();
   drawBadges();
@@ -1126,7 +1147,7 @@ export function startApp(data: Contributions): void {
     fighter.visible = aboard() && chaseDistance() > 0;
     element('canopy').toggleAttribute('hidden', !(aboard() && chaseDistance() === 0));
 
-    if (firing && mode === 'pilot' && ship.live) weapons.fire(ship.pos, ship.fwd, fighter.quaternion);
+    if (firing && mode === 'pilot' && ship.live && weapons.fire(ship.pos, ship.fwd, fighter.quaternion)) sound.laser();
     weapons.update(
       dt,
       (p) => {
@@ -1139,11 +1160,14 @@ export function startApp(data: Contributions): void {
         const day = towerAt(p);
         return day >= 0 ? day : null;
       },
-      (day) => {
+      (day, at) => {
+        sound.impact(at.distanceTo(camera.position));
+        if (day < 0) return;
         shared.uHit.value = day;
         hitGlow = 1;
       },
     );
+    sound.engine(mode === 'pilot' && ship.live ? ship.speed / BOOST : null);
 
     const moving = aboard() && !(mode === 'fly' && paused);
     world.dustVelocity.copy(ship.vel).multiplyScalar(moving ? 1 : 0);
@@ -1210,6 +1234,7 @@ export function startApp(data: Contributions): void {
         badges,
         blasts,
         fireworks,
+        sound,
         endFlight,
         visitBadge,
         stick,

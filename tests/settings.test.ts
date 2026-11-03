@@ -5,6 +5,7 @@ import { COLOUR_ROWS, DEFAULT_COLOURS, luma, readColours, towerPalette, type Rgb
 import { FINALE_SECONDS, Fireworks } from '../src/fireworks';
 import { averageFrame, SLOW_FRAME_MS } from '../src/quality';
 import { keyTurn } from '../src/steering';
+import { distanceGain, engineTone } from '../src/sound';
 import { COCKPIT_BELOW, nextZoom, ZOOM_MAX, ZOOM_MIN } from '../src/zoom';
 
 const NOTCH = Math.exp(100 * 0.0016);
@@ -31,6 +32,34 @@ describe('keyTurn', () => {
 
   it('starts small again in the other direction', () => {
     expect(held(1, -1, 0.9)).toBeGreaterThan(-0.1);
+  });
+});
+
+describe('distanceGain', () => {
+  it('plays a hit beside the camera at full volume', () => {
+    expect(distanceGain(0)).toBe(1);
+  });
+
+  it('plays a far hit quieter, and still audible at the end of a bolt’s range', () => {
+    expect(distanceGain(60)).toBeLessThan(distanceGain(10));
+    expect(distanceGain(170)).toBeGreaterThan(0.05);
+  });
+});
+
+describe('engineTone', () => {
+  it('is silent when no ship is being flown', () => {
+    expect(engineTone(null).gain).toBe(0);
+  });
+
+  it('still hums with the ship parked at a badge', () => {
+    expect(engineTone(0).gain).toBeGreaterThan(0);
+  });
+
+  it('climbs in pitch and volume from cruise to boost', () => {
+    const cruise = engineTone(17 / 46);
+    const boost = engineTone(1);
+    expect(boost.pitch).toBeGreaterThan(cruise.pitch);
+    expect(boost.gain).toBeGreaterThan(cruise.gain);
   });
 });
 
