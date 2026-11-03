@@ -40,6 +40,8 @@ A city lives at `/<username>`, so the address is the share link. The site root s
 
 Illustrated medallions float over the days a user hit a milestone: joining GitHub, a first pull request, a thousandth contribution, a longest streak, a busiest day. Open the Badges list to see them and fly to one. The ship waits in front of it while you line up the shot, and a hit blows the badge up and earns it. These are this site's own badges, dated from GitHub's API. GitHub has no API for its profile achievements, so they aren't shown. Earned badges are stored only in the visitor's browser and don't change anything on GitHub. Reset, at the top of the list, brings back the ones earned on that city after a second press.
 
+Shooting a city's last badge clears it: fireworks go up across the view, the ship does a victory roll, and the Badges button turns gold. The Guide leaves this out so it stays a surprise. With reduced motion on, a message marks the moment and the show is skipped.
+
 ### Colours
 
 Settings changes the buildings, the ship and the ship's trim, from swatches or a free colour picker. The choice applies to every city and stays in the visitor's browser. A building colour keeps its hue, and each step of its ramp is set to the default green's brightness, which holds glare close to the default's and keeps dark picks visible. The timeline and the green controls follow the buildings.
@@ -68,7 +70,7 @@ npm run dev
 
 | Command            | Does                                                       |
 | ------------------ | ---------------------------------------------------------- |
-| `npm test`         | API, route, ride, badge, year, zoom and colour tests       |
+| `npm test`         | API, route, ride, badge, year, zoom, colour and show tests |
 | `npm run test:e2e` | Browser tests with a stubbed API, under the production CSP |
 | `npm run lint`     | ESLint                                                     |
 | `npm run build`    | Typecheck, then build to `dist`                            |
@@ -79,8 +81,8 @@ npm run dev
 
 - `api/contributions/[login].ts` is a Vercel Function that validates the login and sets cache headers. `api/_lib/github.ts` talks to GitHub.
 - `shared/contract.ts` holds the API's schema, used on both sides.
-- `src/calendar.ts`, `src/map.ts` and `src/routes.ts` hold the data, the city grid and the flight paths. `src/milestones.ts` and `src/review.ts` work out the badges and the year story, and `src/colours.ts`, `src/zoom.ts` and `src/steering.ts` hold the colour palettes, the zoom steps and the key response. None of them need WebGL, which is what makes them testable.
-- `src/world.ts`, `src/fighter.ts`, `src/badges.ts`, `src/blast.ts` and `src/app.ts` are the three.js scene, the ship, the floating badges, their explosions and the flight modes.
+- `src/calendar.ts`, `src/map.ts` and `src/routes.ts` hold the data, the city grid and the flight paths. `src/milestones.ts` and `src/review.ts` work out the badges and the year story, and `src/colours.ts`, `src/zoom.ts`, `src/steering.ts` and `src/quality.ts` hold the colour palettes, the zoom steps, the key response and the frame average that lowers quality on a slow GPU. None of them need WebGL, which is what makes them testable.
+- `src/world.ts`, `src/fighter.ts`, `src/badges.ts`, `src/blast.ts`, `src/fireworks.ts` and `src/app.ts` are the three.js scene, the ship, the floating badges, their explosions, the show for a cleared city and the flight modes.
 - `src/badge-art.ts` draws the badge artwork at runtime, and `src/hud.ts` is everything on screen that isn't the 3D scene.
 
 ## GitHub's limits

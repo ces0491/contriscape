@@ -26,6 +26,12 @@ export class GitHubError extends Error {
   }
 }
 
+/** Visitors see the same message for every outage, and a dead token doesn't recover by itself, so the log has to say why. */
+function unavailable(reason: string): GitHubError {
+  console.error(`GitHub unavailable: ${reason}`);
+  return new GitHubError('unavailable');
+}
+
 const replySchema = z.object({
   data: z.unknown(),
   errors: z.array(z.object({ type: z.string().optional(), message: z.string() })).optional(),
@@ -97,25 +103,25 @@ async function post(token: string, query: string, login: string): Promise<unknow
       });
     } catch {
       if (canRetry) continue;
-      throw new GitHubError('unavailable');
+      throw unavailable('no reply');
     }
 
     if (response.status === 403 || response.status === 429) {
       const wait = rateLimitWait(response, Date.now());
-      throw wait === null ? new GitHubError('unavailable') : new GitHubError('rate-limited', wait);
+      throw wait === null ? unavailable(`status ${response.status}`) : new GitHubError('rate-limited', wait);
     }
     if (response.status >= 500) {
       if (canRetry) continue;
-      throw new GitHubError('unavailable');
+      throw unavailable(`status ${response.status}`);
     }
-    if (!response.ok) throw new GitHubError('unavailable');
+    if (!response.ok) throw unavailable(`status ${response.status}`);
 
     const reply = replySchema.safeParse(await response.json());
-    if (!reply.success) throw new GitHubError('unavailable');
+    if (!reply.success) throw unavailable('unexpected reply');
     const { data, errors } = reply.data;
     if (errors?.some((e) => e.type === 'RATE_LIMITED')) throw new GitHubError('rate-limited', 60);
     if (errors?.some((e) => e.type === 'NOT_FOUND')) throw new GitHubError('not-found');
-    if (errors?.length) throw new GitHubError('unavailable');
+    if (errors?.length) throw unavailable(errors.map((e) => e.type ?? 'untyped error').join(', '));
     return data;
   }
 }

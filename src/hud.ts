@@ -227,6 +227,7 @@ export class Hud {
     const earned = rows.filter((r) => r.earned).length;
     button.textContent = `Badges ${earned}/${rows.length}`;
     button.hidden = rows.length === 0;
+    button.classList.toggle('complete', rows.length > 0 && earned === rows.length);
     element('badgeReset').hidden = earned === 0;
     const list = element('badgeList');
     list.replaceChildren(

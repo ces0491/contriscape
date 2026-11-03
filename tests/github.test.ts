@@ -209,6 +209,22 @@ describe('GET /api/contributions/:login', () => {
     expect(console.error).toHaveBeenCalled();
   });
 
+  it('logs why GitHub failed when it refuses the token, leaving the token out', async () => {
+    fetchMock.mockImplementation(async () => new Response('', { status: 401 }));
+    const reply = await GET(request('expired'));
+    expect(reply.status).toBe(502);
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('401'));
+    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain('test-token');
+  });
+
+  it('logs the kind of error when GitHub answers with one it has no message for', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: null, errors: [{ type: 'SOMETHING_NEW', message: 'nope' }] })),
+    );
+    expect((await GET(request('oddity'))).status).toBe(502);
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('SOMETHING_NEW'));
+  });
+
   it('keeps the token out of the response', async () => {
     fetchMock.mockImplementation(async () => new Response('', { status: 500 }));
     const reply = await GET(request('leak'));

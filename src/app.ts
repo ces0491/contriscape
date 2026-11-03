@@ -11,9 +11,11 @@ import { Blast } from './blast';
 import { Calendar, describeCount, MONTHS } from './calendar';
 import { COLOUR_ROWS, DEFAULT_COLOURS, readColours, towerPalette, type Colours } from './colours';
 import { buildFighter, Weapons } from './fighter';
+import { FINALE_SECONDS, Fireworks } from './fireworks';
 import { Hud, type Scope } from './hud';
 import { CityMap, DEPTH, PLINTH, TOWER, WIDTH } from './map';
 import { findMilestones, type Milestone } from './milestones';
+import { averageFrame, SLOW_FRAME_MS } from './quality';
 import { reviewFacts, reviewTitle, reviewYear } from './review';
 import { buildRoute, lengthAtDay, newPose, poseAt, RISE, type Route } from './routes';
 import { FINISH_FRAGMENT, FINISH_VERTEX } from './shaders';
@@ -41,6 +43,8 @@ const PARKED_SECONDS = 6;
 const BLAST_WATCH = 1.4;
 /** Two badges can share a day, so two can go up at once. */
 const BLASTS = 2;
+/** Radians a second through the roll a ship makes for clearing a city. */
+const VICTORY_ROLL = 4.5;
 const CRUISE = 17;
 const BRAKE = 6;
 const BOOST = 46;
@@ -118,6 +122,7 @@ export function startApp(data: Contributions): void {
   const weapons = new Weapons(scene, Math.random);
   const badges = new Badges(scene, map, findMilestones(cal), cal.login, shared);
   const blasts = Array.from({ length: BLASTS }, () => new Blast(scene, Math.random));
+  const fireworks = new Fireworks(scene, shared.uPx, Math.random);
 
   const composer = new EffectComposer(
     renderer,
@@ -169,19 +174,23 @@ export function startApp(data: Contributions): void {
   let shake = 0;
   let redAlert = 0;
   let hitGlow = 0;
+  let victoryRoll = 0;
   let firing = false;
   let contactCooldown = 0;
   let dimGoal = 1;
   let time = 0;
-  let dragging = false;
   let glide: { from: THREE.Vector3; to: THREE.Vector3; t: number } | null = null;
   let baseFov = 58;
   let hintTimer = 0;
   let pickAt: { x: number; y: number } | null = null;
-  let pointer: { x: number; y: number } | null = null;
+  // The finger or button doing each job, because a phone runs steering and firing at the same time
+  let pointer: { id: number; x: number; y: number } | null = null;
+  let firePointer: number | null = null;
+  let dragPointer: number | null = null;
   let pinch: number | null = null;
+  const dragging = () => dragPointer !== null;
 
-  const hud = new Hud(cal, scope, () => dragging);
+  const hud = new Hud(cal, scope, dragging);
   const controls = new OrbitControls(camera, canvas);
   Object.assign(controls, {
     enabled: false,
@@ -244,11 +253,11 @@ export function startApp(data: Contributions): void {
     i <= play || i > shared.uMax.value ? map.top[i] : PLINTH + (map.top[i] - PLINTH) * 0.04;
   const chaseDistance = () => (zoom < COCKPIT_BELOW ? 0 : CHASE_DISTANCE * zoom);
 
-  const towerAt = (p: THREE.Vector3): number => {
+  const towerAt = (p: THREE.Vector3, roof = standing): number => {
     const i = map.cellIndex(p.x, p.z);
     const inside =
       i >= 0 && counts[i] && Math.abs(p.x - map.cx[i]) < TOWER / 2 && Math.abs(p.z - map.cz[i]) < TOWER / 2;
-    return inside && p.y < standing(i) ? i : -1;
+    return inside && p.y < roof(i) ? i : -1;
   };
 
   /** How far from a towards b is clear of towers, as a fraction of the way. */
@@ -308,6 +317,7 @@ export function startApp(data: Contributions): void {
     arrived = false;
     paused = false;
     holdSeconds = holdFor;
+    syncPlay();
   }
   function aimCamera(pos: THREE.Vector3, look: THREE.Vector3, roll: number, dt: number, follow = 22, turn = 12): void {
     m1.lookAt(pos, look, UP);
@@ -365,7 +375,7 @@ export function startApp(data: Contributions): void {
       }
       return;
     }
-    if (!paused && !dragging && !(jump && jump.t < 0.5)) {
+    if (!paused && !dragging() && !(jump && jump.t < 0.5)) {
       flight.s += poseAt(flight, flight.s, here).pace * dt;
       if (flight.s >= flight.len) {
         flight.s = flight.len;
@@ -487,7 +497,7 @@ export function startApp(data: Contributions): void {
 
     ship.bank += (-sx * 1.05 - ship.bank) * (1 - Math.exp(-5 * dt));
     fighter.position.copy(ship.pos);
-    fighter.quaternion.copy(ship.quat).multiply(q2.setFromAxisAngle(ROLL_AXIS, ship.bank));
+    fighter.quaternion.copy(ship.quat).multiply(q2.setFromAxisAngle(ROLL_AXIS, ship.bank + victoryRoll));
 
     const d = chaseDistance();
     v3.copy(ship.pos).addScaledVector(ship.fwd, 9);
@@ -711,15 +721,24 @@ export function startApp(data: Contributions): void {
     );
   }
   function earn(badge: Milestone): void {
+    const cleared = badges.allEarned;
     aiming = false;
-    parkedUntil = Math.min(parkedUntil, time + BLAST_WATCH);
+    // A parked ship stays for the show. One already flying carries on underneath it.
+    if (time < parkedUntil) parkedUntil = time + (cleared ? FINALE_SECONDS : BLAST_WATCH);
     if (!reduced) {
       blasts[nextBlast++ % BLASTS].start(badges.position(badges.milestones.indexOf(badge)));
       shake = 0.4;
+      if (cleared) {
+        fireworks.start(camera, towerPalette(colours.towers).ramp[3]);
+        victoryRoll = Math.PI * 2;
+      }
     }
+    const total = badges.milestones.length;
     hud.showToast(
-      `Badge earned: ${badge.name}`,
-      `${badge.detail} · ${cal.formatShort(badge.day)}`,
+      cleared ? 'City cleared' : `Badge earned: ${badge.name}`,
+      cleared
+        ? `${total} of ${total} badges earned on ${cal.login}`
+        : `${badge.detail} · ${cal.formatShort(badge.day)}`,
       badges.pictureFor(badge.id),
     );
     drawBadges();
@@ -731,7 +750,8 @@ export function startApp(data: Contributions): void {
     const clearAt = (height: number) => {
       for (let k = 0; k <= 20; k++) {
         v2.set(target.x, height + ((target.y - height) * k) / 20, target.z + (BADGE_APPROACH * (20 - k)) / 20);
-        if (towerAt(v2) >= 0) return false;
+        // Against the finished city, because every tower is up by the time the ship arrives
+        if (towerAt(v2, (i) => map.top[i]) >= 0) return false;
       }
       return true;
     };
@@ -750,9 +770,11 @@ export function startApp(data: Contributions): void {
       aiming = !badges.isEarned(index);
       parkedUntil = aiming ? time + PARKED_SECONDS : 0;
     };
+    // A date dragged back on the timeline would leave the badge unbuilt
+    playGoal = SETTLED;
     if (mode !== 'pilot') setMode('pilot');
     ship.live = false;
-    if (jump) jump.mid = arrive;
+    if (jump && !jump.done) jump.mid = arrive;
     else beginJump(arrive);
   }
 
@@ -859,21 +881,30 @@ export function startApp(data: Contributions): void {
     }
     if (mode !== 'pilot') return;
     if (e.pointerType === 'mouse') {
+      firePointer = e.pointerId;
       firing = true;
     } else {
       canvas.setPointerCapture(e.pointerId);
-      pointer = { x: e.clientX, y: e.clientY };
+      pointer = { id: e.pointerId, x: e.clientX, y: e.clientY };
     }
   });
   const release = (e: PointerEvent) => {
+    const endsPinch = touches.size === 2 && touches.has(e.pointerId);
     touches.delete(e.pointerId);
     pinch = null;
-    if (e.pointerType !== 'mouse') {
+    if (e.pointerId === pointer?.id || endsPinch) {
       pointer = null;
       stick.set(0, 0);
     }
-    firing = false;
-    dragging = false;
+    if (e.pointerId === firePointer) {
+      firePointer = null;
+      firing = false;
+    }
+    if (e.pointerId === dragPointer) {
+      dragPointer = null;
+      // Hands the keys back to the ship. Someone who tabbed to the timeline never gets here, so they keep it.
+      hud.scrub.blur();
+    }
   };
   window.addEventListener('pointerup', release);
   window.addEventListener('pointercancel', release);
@@ -963,10 +994,11 @@ export function startApp(data: Contributions): void {
   element('review').addEventListener('click', startReview);
   element('fire').addEventListener('pointerdown', (e) => {
     e.preventDefault();
+    firePointer = e.pointerId;
     firing = true;
   });
-  hud.scrub.addEventListener('pointerdown', () => {
-    dragging = true;
+  hud.scrub.addEventListener('pointerdown', (e) => {
+    dragPointer = e.pointerId;
   });
   hud.scrub.addEventListener('input', () => {
     const day = Number(hud.scrub.value);
@@ -1043,8 +1075,8 @@ export function startApp(data: Contributions): void {
   let frames = 0;
   let quality = 0;
   function adapt(ms: number): void {
-    frameAverage += (ms - frameAverage) * 0.05;
-    if (++frames < 100 || frameAverage < 38 || quality >= 2) return;
+    frameAverage = averageFrame(frameAverage, ms);
+    if (++frames < 100 || frameAverage < SLOW_FRAME_MS || quality >= 2) return;
     quality++;
     frames = 0;
     frameAverage = 16;
@@ -1063,6 +1095,8 @@ export function startApp(data: Contributions): void {
     requestAnimationFrame(frame);
     const ms = now - last;
     last = now;
+    // Frames can share a timestamp, and the first can even predate `last`. Neither has any time to simulate.
+    if (ms <= 0) return;
     const dt = Math.min(0.05, ms / 1000);
     time += dt;
     shared.uTime.value = time;
@@ -1132,9 +1166,11 @@ export function startApp(data: Contributions): void {
     hitGlow = Math.max(0, hitGlow - dt * 2.8);
     shared.uHitGlow.value = hitGlow;
     shared.uPlay.value = play;
+    victoryRoll = Math.max(0, victoryRoll - dt * VICTORY_ROLL);
 
     badges.update(time, play);
     blasts.forEach((blast) => blast.update(dt, camera));
+    fireworks.update(dt);
     updateCaption();
     world.followCamera(camera);
     camera.updateMatrixWorld();
@@ -1173,12 +1209,24 @@ export function startApp(data: Contributions): void {
         towerAt,
         badges,
         blasts,
+        fireworks,
         endFlight,
+        visitBadge,
+        stick,
+        get firing() {
+          return firing;
+        },
         get mode() {
           return mode;
         },
         get zoom() {
           return zoom;
+        },
+        get play() {
+          return play;
+        },
+        get jump() {
+          return jump;
         },
       },
     });

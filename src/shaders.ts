@@ -163,6 +163,21 @@ export const BLAST_FRAGMENT = /* glsl */ `uniform float uFade;varying vec3 vN,vV
 void main(){float core=pow(max(dot(normalize(vN),normalize(vV)),0.),1.8);
 gl_FragColor=vec4(mix(vec3(1.5,.32,.06),vec3(3.,2.1,1.),core)*core*uFade,1.);}`;
 
+/**
+ * Sparks flash at the burst and slow as they spread, then sag and shrink. They hold their brightness until late,
+ * so a shell reads as a shell for most of its life. Until its shell goes up, a spark has no size.
+ */
+export const FIREWORK_VERTEX = /* glsl */ `attribute vec3 aVelocity,aColour;attribute float aDelay;
+uniform float uAge,uLife,uPx;varying vec3 vC;varying float vA;
+void main(){float t=uAge-aDelay;float k=t/uLife;
+vec3 p=position+aVelocity*(1.-exp(-2.2*t))/2.2;p.y-=1.4*t*t;
+vec4 mv=modelViewMatrix*vec4(p,1.);
+bool lit=t>=0.&&k<1.;vC=aColour;vA=lit?1.-k*k*k:0.;
+gl_PointSize=lit?clamp(420./-mv.z,3.,14.)*(1.+1.5*exp(-7.*t))*(1.-.5*k)*uPx:0.;gl_Position=projectionMatrix*mv;}`;
+
+export const FIREWORK_FRAGMENT = /* glsl */ `varying vec3 vC;varying float vA;
+void main(){float r=length(gl_PointCoord-.5)*2.;float a=smoothstep(1.,.1,r);gl_FragColor=vec4(vC*vA*a*3.,1.);}`;
+
 export const FINISH_VERTEX = /* glsl */ `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
 
 export const FINISH_FRAGMENT = /* glsl */ `uniform sampler2D tDiffuse;uniform float uFlash,uRed;varying vec2 vUv;

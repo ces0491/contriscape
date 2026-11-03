@@ -103,6 +103,11 @@ export class Badges {
     return this.earned.has(this.milestones[index].id);
   }
 
+  /** Whether this city is cleared. The ids in `earned` can outlast a milestone, so it can't just be counted. */
+  get allEarned(): boolean {
+    return this.milestones.every(({ id }) => this.earned.has(id));
+  }
+
   picture(index: number): string {
     return this.canvases[index].toDataURL('image/png');
   }

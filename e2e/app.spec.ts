@@ -26,12 +26,19 @@ const empty: Contributions = {
 interface CityDebug {
   mode: string;
   zoom: number;
+  play: number;
+  jump: { done: boolean } | null;
+  firing: boolean;
+  stick: { x: number };
   endFlight: () => void;
+  visitBadge: (index: number) => void;
+  map: { top: ArrayLike<number> };
   ship: { live: boolean; speed: number; yaw: number; pitch: number; pos: { x: number; y: number } };
   camera: { matrixWorld: { elements: number[] } };
   weapons: { activeBolts: number };
-  badges: { tokens: { visible: boolean }[] };
+  badges: { tokens: { visible: boolean }[]; milestones: { id: string }[]; earned: Set<string> };
   blasts: { active: boolean }[];
+  fireworks: { active: boolean };
   fighter: { visible: boolean; children: { material: { color: { getHexString(): string } } }[] };
   shared: { uRamp: { value: { b: number }[] } };
 }
@@ -258,6 +265,106 @@ test('typing a username in Pilot does not steer the ship', async ({ page }) => {
   await expect(page.locator('#loginInput')).toHaveValue(/^w+$/);
 });
 
+test('after a timeline drag the keys fly the ship again', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#m-pilot');
+  await shipLive(page);
+  const box = await page.locator('#scrub').boundingBox();
+  const y = (box?.y ?? 0) + (box?.height ?? 0) / 2;
+  await page.mouse.move((box?.x ?? 0) + (box?.width ?? 0) * 0.5, y);
+  await page.mouse.down();
+  await page.mouse.move((box?.x ?? 0) + (box?.width ?? 0) * 0.6, y, { steps: 4 });
+  await page.mouse.up();
+  await expect(page.locator('#scrub')).not.toBeFocused();
+
+  const yaw = () => page.evaluate(() => window.__city.ship.yaw);
+  const before = await yaw();
+  await page.keyboard.down('ArrowLeft');
+  await expect.poll(yaw).toBeGreaterThan(before);
+  await page.keyboard.up('ArrowLeft');
+});
+
+test('someone who tabs to the timeline keeps it', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#m-orbit');
+  await page.focus('#scrub');
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('#scrub')).toBeFocused();
+});
+
+test('picking a year while paused resumes the flight, and the button says so', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#play');
+  await expect(page.locator('#play')).toHaveText('Play');
+  await pickYear(page, '2025');
+  await expect(page.locator('#play')).toHaveText('Pause');
+});
+
+test('a frame that repeats a timestamp leaves the autopilot view intact', async ({ page }) => {
+  await page.addInitScript(() => {
+    const next = window.requestAnimationFrame.bind(window);
+    let held = 0;
+    let repeat = false;
+    window.requestAnimationFrame = (callback) =>
+      next((now) => {
+        repeat = !repeat;
+        if (repeat) held = now;
+        callback(held);
+      });
+  });
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await expect.poll(() => page.evaluate(() => window.__city.ship.pos.x), { timeout: 60_000 }).not.toBe(0);
+  await page.waitForTimeout(1000);
+  expect(await page.evaluate(() => window.__city.camera.matrixWorld.elements.every(Number.isFinite))).toBe(true);
+});
+
+test('lifting the Fire thumb leaves the steering thumb steering, and the other way round', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 664 }, hasTouch: true, isMobile: true });
+  const page = await context.newPage();
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.tap('#m-pilot');
+  await shipLive(page);
+
+  const cdp = await context.newCDPSession(page);
+  const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', touchPoints: { x: number; y: number; id: number }[]) =>
+    cdp.send('Input.dispatchTouchEvent', { type, touchPoints });
+  // Reads the controls themselves, because the ship's heading also jumps when it bounces off a tower
+  const steer = () => page.evaluate(() => window.__city.stick.x);
+  const firing = () => page.evaluate(() => window.__city.firing);
+  const box = await page.locator('#fire').boundingBox();
+  const fire = { x: (box?.x ?? 0) + (box?.width ?? 0) / 2, y: (box?.y ?? 0) + (box?.height ?? 0) / 2, id: 1 };
+
+  await touch('touchStart', [{ x: 100, y: 300, id: 0 }]);
+  const steering = { x: 190, y: 300, id: 0 };
+  await touch('touchMove', [steering]);
+  await expect.poll(steer).toBeGreaterThan(0);
+  await touch('touchStart', [steering, fire]);
+  await expect.poll(firing).toBe(true);
+
+  // A touchEnd lifts the fingers it lists
+  await touch('touchEnd', [fire]);
+  await expect.poll(firing).toBe(false);
+  expect(await steer()).toBeGreaterThan(0);
+
+  await touch('touchStart', [steering, fire]);
+  await expect.poll(firing).toBe(true);
+  await touch('touchEnd', [steering]);
+  await expect.poll(steer).toBe(0);
+  expect(await firing()).toBe(true);
+  await touch('touchEnd', []);
+  await context.close();
+});
+
 test('scroll zooms in Orbit, including over the controls', async ({ page }) => {
   await stubApi(page, { body: busy('octo-dev') });
   await page.goto('/octo-dev');
@@ -475,6 +582,139 @@ test('shooting a badge earns it, and it stays earned', async ({ page }) => {
   await page.reload();
   await cityReady(page);
   await expect(page.locator('#badges')).toHaveText(/^Badges 1\/\d+$/);
+});
+
+/** Loads a city with every badge earned but the first, then lines up that last one. */
+async function lineUpLastBadge(page: Page) {
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  const others = await page.evaluate(() => window.__city.badges.milestones.slice(1).map(({ id }) => id));
+  await page.evaluate((ids) => localStorage.setItem('contriscape:badges:octo-dev', JSON.stringify(ids)), others);
+  await page.reload();
+  await cityReady(page);
+  await expect(page.locator('#badges')).not.toHaveClass(/complete/);
+  await page.click('#badges');
+  await page.locator('#badgeList button').first().click();
+  await shipLive(page);
+}
+
+test('shooting the last badge sets off fireworks, and only the once', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await lineUpLastBadge(page);
+  await page.keyboard.down('Space');
+  await expect(page.locator('#toast')).toContainText('City cleared', { timeout: 30_000 });
+  await page.keyboard.up('Space');
+  await expect(page.locator('#toast')).toContainText('badges earned on octo-dev');
+  expect(await page.evaluate(() => window.__city.fireworks.active)).toBe(true);
+  await expect(page.locator('#badges')).toHaveClass(/complete/);
+
+  await page.reload();
+  await cityReady(page);
+  await expect(page.locator('#badges')).toHaveClass(/complete/);
+  await expect(page.locator('#toast')).toBeHidden();
+  expect(await page.evaluate(() => window.__city.fireworks.active)).toBe(false);
+});
+
+test('a reset takes the gold off the Badges button', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await lineUpLastBadge(page);
+  await page.keyboard.down('Space');
+  await expect(page.locator('#toast')).toContainText('City cleared', { timeout: 30_000 });
+  await page.keyboard.up('Space');
+  await page.click('#badges');
+  await page.click('#badgeReset');
+  await page.click('#badgeReset');
+  await expect(page.locator('#badges')).not.toHaveClass(/complete/);
+});
+
+test('clearing a city under reduced motion says so without the show', async ({ browser }) => {
+  const context = await browser.newContext({ reducedMotion: 'reduce', viewport: { width: 1280, height: 800 } });
+  const page = await context.newPage();
+  await stubApi(page, { body: busy('octo-dev') });
+  await lineUpLastBadge(page);
+  await page.keyboard.down('Space');
+  await expect(page.locator('#toast')).toContainText('City cleared', { timeout: 30_000 });
+  await page.keyboard.up('Space');
+  expect(await page.evaluate(() => window.__city.fireworks.active)).toBe(false);
+  await context.close();
+});
+
+test('a badge picked late in a warp still gets the ship there', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#m-pilot');
+  await shipLive(page);
+  await pickYear(page, '2025');
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const wait = () => {
+          if (window.__city.jump?.done) {
+            window.__city.visitBadge(0);
+            resolve();
+          } else {
+            requestAnimationFrame(wait);
+          }
+        };
+        wait();
+      }),
+  );
+  await shipLive(page);
+});
+
+test('a badge chosen before the towers have risen is approached clear of them', async ({ page }) => {
+  // The first contribution falls on a Sunday, and a tall tower stands three rows in front of its badge
+  const blocked: Contributions = {
+    login: 'blocked',
+    name: null,
+    snapshot: SNAPSHOT,
+    years: { '2025': year(365, (d) => (d === 4 ? 1 : d === 7 ? 100 : 0)) },
+  };
+  await stubApi(page, { body: blocked });
+  await page.goto('/blocked');
+  await cityReady(page);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const wait = () => {
+          if (window.__city.play < 4) {
+            window.__city.visitBadge(0);
+            resolve();
+          } else {
+            requestAnimationFrame(wait);
+          }
+        };
+        wait();
+      }),
+  );
+  await shipLive(page);
+  const { y, tower } = await page.evaluate(() => ({ y: window.__city.ship.pos.y, tower: window.__city.map.top[7] }));
+  expect(y).toBeGreaterThan(tower);
+  // Badges hovering over the tall tower sit on the line of fire, so this one may not be the first to go
+  await page.keyboard.down('Space');
+  await expect
+    .poll(() => page.evaluate(() => window.__city.badges.earned.has('first-contribution')), { timeout: 60_000 })
+    .toBe(true);
+  await page.keyboard.up('Space');
+});
+
+test('a badge waits to be shot after the timeline has been dragged back', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#m-pilot');
+  await shipLive(page);
+  await page.evaluate(() => {
+    const scrub = document.getElementById('scrub') as HTMLInputElement;
+    scrub.value = scrub.min;
+    scrub.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.click('#badges');
+  await page.locator('#badgeList button').last().click();
+  await expect
+    .poll(() => page.evaluate(() => window.__city.badges.tokens.at(-1)?.visible), { timeout: 60_000 })
+    .toBe(true);
 });
 
 test('the wheel scrolls the badge list and leaves the zoom alone', async ({ page }) => {

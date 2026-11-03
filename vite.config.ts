@@ -27,7 +27,9 @@ function apiInDev(): Plugin {
 }
 
 export default defineConfig(({ mode }) => {
-  process.env.GITHUB_TOKEN ??= loadEnv(mode, process.cwd(), 'GITHUB_').GITHUB_TOKEN;
+  // Assigning undefined here would store the word 'undefined', which looks like a token to the API
+  const { GITHUB_TOKEN: token } = loadEnv(mode, process.cwd(), 'GITHUB_');
+  if (token) process.env.GITHUB_TOKEN ??= token;
 
   // `vite preview` serves production's security headers, so end-to-end tests run under the real CSP
   const vercel = JSON.parse(readFileSync('vercel.json', 'utf8')) as VercelHeaders;

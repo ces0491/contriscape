@@ -1,7 +1,9 @@
-import { Camera, InstancedMesh, Matrix4, Scene, Vector3 } from 'three';
+import { BufferAttribute, Camera, InstancedMesh, Matrix4, PerspectiveCamera, Points, Scene, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { Blast } from '../src/blast';
 import { COLOUR_ROWS, DEFAULT_COLOURS, luma, readColours, towerPalette, type Rgb } from '../src/colours';
+import { FINALE_SECONDS, Fireworks } from '../src/fireworks';
+import { averageFrame, SLOW_FRAME_MS } from '../src/quality';
 import { keyTurn } from '../src/steering';
 import { COCKPIT_BELOW, nextZoom, ZOOM_MAX, ZOOM_MIN } from '../src/zoom';
 
@@ -29,6 +31,94 @@ describe('keyTurn', () => {
 
   it('starts small again in the other direction', () => {
     expect(held(1, -1, 0.9)).toBeGreaterThan(-0.1);
+  });
+});
+
+describe('averageFrame', () => {
+  const after = (frames: number, ms: number, from = 16.7) => {
+    let average = from;
+    for (let n = 0; n < frames; n++) average = averageFrame(average, ms);
+    return average;
+  };
+
+  it('takes one long gap, like a hidden tab coming back, as a hiccup', () => {
+    expect(averageFrame(16.7, 600_000)).toBeLessThan(SLOW_FRAME_MS);
+  });
+
+  it('still takes that gap as a hiccup on a machine holding 30 frames a second', () => {
+    expect(averageFrame(33, 600_000)).toBeLessThan(SLOW_FRAME_MS);
+  });
+
+  it('keeps a smooth machine under the limit', () => {
+    expect(after(300, 16.7)).toBeLessThan(SLOW_FRAME_MS);
+  });
+
+  it('catches a GPU that really is slow, however slow', () => {
+    expect(after(100, 60)).toBeGreaterThan(SLOW_FRAME_MS);
+    expect(after(100, 1000)).toBeGreaterThan(SLOW_FRAME_MS);
+  });
+});
+
+describe('Fireworks', () => {
+  const start = () => {
+    const scene = new Scene();
+    const fireworks = new Fireworks(scene, { value: 1 }, () => 0.7);
+    const points = scene.children[0] as Points;
+    const camera = new PerspectiveCamera(58, 16 / 9, 0.1, 1000);
+    camera.position.set(50, 6, 40);
+    camera.lookAt(50, 6, 0);
+    return { fireworks, points, camera };
+  };
+  const bursts = (points: Points) => {
+    const { array, count } = points.geometry.attributes.position as BufferAttribute;
+    return Array.from({ length: count }, (_, i) => new Vector3().fromArray(array, i * 3));
+  };
+
+  it('waits out of sight until a city is cleared', () => {
+    const { fireworks, points } = start();
+    expect(fireworks.active).toBe(false);
+    expect(points.visible).toBe(false);
+  });
+
+  it('bursts ahead of the camera and inside its view', () => {
+    const { fireworks, points, camera } = start();
+    fireworks.start(camera, [0.2, 0.8, 0.3]);
+    camera.updateMatrixWorld();
+    camera.updateProjectionMatrix();
+    for (const burst of bursts(points)) {
+      expect(burst.z).toBeLessThan(camera.position.z);
+      const seen = burst.clone().project(camera);
+      expect(Math.abs(seen.x)).toBeLessThan(1);
+      expect(Math.abs(seen.y)).toBeLessThan(1);
+    }
+  });
+
+  it('stays in the sky when the camera looks at the ground', () => {
+    const { fireworks, points, camera } = start();
+    camera.position.set(50, 2, 40);
+    camera.lookAt(50, 0, 0);
+    fireworks.start(camera, [0.2, 0.8, 0.3]);
+    for (const burst of bursts(points)) expect(burst.y).toBeGreaterThan(10);
+  });
+
+  it('runs its course and then hides again', () => {
+    const { fireworks, points, camera } = start();
+    fireworks.start(camera, [0.2, 0.8, 0.3]);
+    expect(fireworks.active).toBe(true);
+    expect(points.visible).toBe(true);
+    fireworks.update(FINALE_SECONDS - 0.01);
+    expect(fireworks.active).toBe(true);
+    fireworks.update(0.02);
+    expect(fireworks.active).toBe(false);
+    expect(points.visible).toBe(false);
+  });
+
+  it('can go off again once a city has been reset and cleared twice', () => {
+    const { fireworks, camera } = start();
+    fireworks.start(camera, [0.2, 0.8, 0.3]);
+    fireworks.update(FINALE_SECONDS);
+    fireworks.start(camera, [0.2, 0.8, 0.3]);
+    expect(fireworks.active).toBe(true);
   });
 });
 
