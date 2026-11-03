@@ -49,7 +49,7 @@ Settings changes the buildings, the ship and the ship's trim, from swatches or a
 
 ### Sound
 
-Lasers, hits, bumps, exploding badges, hyperspace jumps and the fireworks have sound effects, and in Pilot the engine hums louder and higher with speed. An earned badge chimes, and a cleared city gets a short fanfare. The sounds are made in the browser with the Web Audio API, so there are no audio files. Sound is on by default and starts at the first click, tap or key press, because browsers block audio until then. N or Settings switches it off, and the choice stays in the visitor's browser.
+Lasers, hits, bumps, exploding badges, hyperspace jumps and the fireworks have sound effects, and in Pilot the engine hums louder and higher with speed. An earned badge chimes, and a cleared city gets a short fanfare. The sounds are made in the browser with the Web Audio API, so there are no audio files. Sound is on by default and starts at the first click, tap or key press, because browsers block audio until then. An iPhone in silent mode mutes it, as iOS does for web audio. N or Settings switches it off, and the choice stays in the visitor's browser.
 
 ### Your year on GitHub
 

@@ -980,36 +980,3 @@ body.piloting #date {
     height: 44px;
   }
 }
-
-/* The temporary #sound-check readout */
-#soundCheck {
-  position: fixed;
-  z-index: 10;
-  top: 30%;
-  left: 8px;
-  right: 8px;
-  max-height: 45vh;
-  overflow: auto;
-  padding: 8px 10px;
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  background: var(--scrim);
-  color: var(--ink);
-  font: 400 11px/1.4 var(--mono);
-  pointer-events: none;
-}
-#soundCheck pre {
-  margin: 0 0 8px;
-  font: inherit;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-#soundCheck button {
-  padding: 8px 14px;
-  border: 1px solid var(--sodium);
-  border-radius: 4px;
-  background: var(--panel);
-  color: var(--ink);
-  font: 600 13px/1 var(--mono);
-  pointer-events: auto;
-}
