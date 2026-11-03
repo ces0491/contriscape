@@ -57,7 +57,7 @@ During December a button offers a flight through the current year, with captions
 
 ## Data and privacy
 
-The page shows what a user's public GitHub profile already shows. Private contributions appear as anonymous counts only if that user has turned them on in their profile settings. Responses are cached on the CDN for six hours, and the site has no database, accounts, cookies or analytics. Earned badges and settings, including whether sound is on, stay in the visitor's own browser. Fonts load from Google Fonts.
+The page shows what a user's public GitHub profile already shows. Private contributions appear as anonymous counts only if that user has turned them on in their profile settings. Responses are cached on the CDN for six hours, and the site has no database, accounts or cookies. [Vercel Web Analytics](https://vercel.com/docs/analytics/privacy-policy) counts page views without cookies, recording the page, the referrer, a rough location, and the device and browser, with nothing that identifies a visitor. Only production builds load it. Earned badges and settings, including whether sound is on, stay in the visitor's own browser. Fonts load from Google Fonts.
 
 Tower height is the square root of the day's contributions, scaled to that user's busiest day, so typical days stay visible beside a huge one.
 
@@ -101,6 +101,7 @@ GitHub allows a token 5,000 GraphQL points an hour. A username not in the cache 
 2. Add `GITHUB_TOKEN` to the project's environment variables, then redeploy, because new variables only reach new deployments.
 3. Add a Vercel Firewall rate-limit rule on `/api/contributions`, keyed on IP. The Hobby plan allows one.
 4. Add the custom domain and create the DNS record Vercel gives you.
+5. Turn on Web Analytics in the project's Analytics tab. Its routes arrive with the next deployment, so deploy again afterwards.
 
 ## Licence
 

@@ -1,3 +1,4 @@
+import { inject } from '@vercel/analytics';
 import { contributionsSchema, LOGIN_PATTERN, type ApiError, type Contributions } from '../shared/contract';
 import { startApp } from './app';
 import { APP_NAME, DEFAULT_LOGIN } from './brand';
@@ -115,4 +116,6 @@ async function boot(): Promise<void> {
   wireShare(data.login);
 }
 
+// Counts page views, without cookies. Only a deployment has Vercel to send them to.
+if (import.meta.env.PROD) inject({ mode: 'production' });
 void boot();

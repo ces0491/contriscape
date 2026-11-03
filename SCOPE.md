@@ -24,7 +24,7 @@ Let anyone enter a GitHub username and fly through a 3D city of that person's pu
 
 ## Out of scope
 
-- Accounts, logins or storing anything about visitors
+- Accounts, logins, cookies or storing anything that identifies a visitor
 - Private contributions beyond what a user already shows on their public profile
 - Organisation pages, which have no contribution calendar
 - Multiplayer or leaderboards
@@ -50,3 +50,4 @@ Ces, after flying a stranger's city on the live URL from a phone and a laptop.
 - 2026-11-02: added the mouse steering choice and exploding badges
 - 2026-11-02: added the fireworks for a cleared city
 - 2026-11-03: added sound effects, at Ces's request
+- 2026-11-03: added Vercel Web Analytics, at Ces's request, and narrowed the visitor data rule to anything that identifies a visitor

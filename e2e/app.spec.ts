@@ -112,6 +112,16 @@ test('builds a city from a username in the URL, under the production CSP', async
   expect(faults).toEqual([]);
 });
 
+test('loads Vercel Web Analytics from the site itself, which the CSP allows', async ({ page }) => {
+  const faults = watchForFaults(page);
+  await stubApi(page, { body: busy('octo-dev') });
+  const script = page.waitForRequest((request) => request.url().includes('/_vercel/insights/script.js'));
+  await page.goto('/octo-dev');
+  expect(new URL((await script).url()).origin).toBe(new URL(page.url()).origin);
+  await cityReady(page);
+  expect(faults).toEqual([]);
+});
+
 test('asks the API for the lower-case login, so each user has one cached copy', async ({ page }) => {
   await stubApi(page, { body: busy('octo-dev') });
   const request = page.waitForRequest('**/api/contributions/*');
@@ -1036,6 +1046,11 @@ test('fits a phone without sideways scrolling', async ({ browser }) => {
   const size = await page.locator('#loginInput').evaluate((e) => parseFloat(getComputedStyle(e).fontSize));
   expect(size).toBeGreaterThanOrEqual(16);
 
+  // The hint hides itself 9 seconds after the city loads, which slow CI can reach, so it is measured first
+  const hint = await page.locator('#hint').boundingBox();
+  const lookup = await page.locator('#lookup').boundingBox();
+  expect(hint?.y).toBeGreaterThanOrEqual((lookup?.y ?? 0) + (lookup?.height ?? 0));
+
   // A held finger would select text and open the copy menu mid-game, so only the username box and the Guide allow it
   const selection = (id: string) =>
     page
@@ -1046,9 +1061,5 @@ test('fits a phone without sideways scrolling', async ({ browser }) => {
   expect(await selection('#date')).toBe('none');
   expect(await selection('#loginInput')).not.toBe('none');
   expect(await selection('#guidePanel p')).not.toBe('none');
-
-  const hint = await page.locator('#hint').boundingBox();
-  const lookup = await page.locator('#lookup').boundingBox();
-  expect(hint?.y).toBeGreaterThanOrEqual((lookup?.y ?? 0) + (lookup?.height ?? 0));
   await context.close();
 });
