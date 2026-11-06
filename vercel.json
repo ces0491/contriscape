@@ -1,6 +1,14 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "contriscape.vercel.app" }],
+      "destination": "https://contriscape.sheetsolved.com/:path*",
+      "permanent": true
+    }
+  ],
   "rewrites": [{ "source": "/:login([A-Za-z0-9][A-Za-z0-9-]{0,38})", "destination": "/index.html" }],
   "headers": [
     {

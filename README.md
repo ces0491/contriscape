@@ -100,7 +100,7 @@ GitHub allows a token 5,000 GraphQL points an hour. A username not in the cache 
 1. Create a Vercel project from this repo. The framework preset is Vite.
 2. Add `GITHUB_TOKEN` to the project's environment variables, then redeploy, because new variables only reach new deployments.
 3. Add a Vercel Firewall rate-limit rule on `/api/contributions`, keyed on IP. The Hobby plan allows one.
-4. Add the custom domain and create the DNS record Vercel gives you.
+4. Add the custom domain and create the DNS record Vercel gives you. The generated `contriscape.vercel.app` alias goes on serving the whole site after that, so `vercel.json` redirects it to the custom domain. Change that rule if the domain changes.
 5. Turn on Web Analytics in the project's Analytics tab. Its routes arrive with the next deployment, so deploy again afterwards.
 
 ## Licence
