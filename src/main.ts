@@ -84,8 +84,31 @@ function wireShare(login: string): void {
   });
 }
 
+/** three.js draws with WebGL 2 only. The probe's context is released straight away. */
+function hasWebGL(): boolean {
+  const gl = document.createElement('canvas').getContext('webgl2');
+  gl?.getExtension('WEBGL_lose_context')?.loseContext();
+  return gl !== null;
+}
+
+/**
+ * Without WebGL there's no city, so the page becomes the Guide, opening with the meta description. A visitor
+ * learns what the site does, and a crawler has something to read.
+ */
+function showGuideInstead(): void {
+  const description = document.querySelector<HTMLMetaElement>('meta[name="description"]')?.content ?? '';
+  document.body.classList.add('no-webgl');
+  element('login').textContent = APP_NAME;
+  showStatus(`${description} It needs WebGL, which this browser doesn't have, so here's the guide instead.`.trim());
+  element('guidePanel').hidden = false;
+}
+
 async function boot(): Promise<void> {
   wireForm();
+  if (!hasWebGL()) {
+    showGuideInstead();
+    return;
+  }
   const requested = location.pathname.replace(/^\/|\/$/g, '');
   const login = requested || DEFAULT_LOGIN;
 
@@ -104,8 +127,9 @@ async function boot(): Promise<void> {
   try {
     startApp(data);
   } catch (error) {
+    // The renderer asks for its own context, which can fail where the probe's didn't
     console.error(error);
-    showStatus('This page needs WebGL, which is not available in this browser.');
+    showGuideInstead();
     return;
   }
 

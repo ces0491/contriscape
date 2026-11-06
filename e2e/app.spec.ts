@@ -158,6 +158,41 @@ test('explains a username GitHub could not have issued, without calling the API'
   expect(called).toBe(false);
 });
 
+test('without WebGL, the page becomes the Guide, readable to the end, and never calls the API', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  const page = await context.newPage();
+  const faults = watchForFaults(page);
+  let called = false;
+  await page.route('**/api/contributions/*', (route) => {
+    called = true;
+    return route.abort();
+  });
+  await page.addInitScript(() => {
+    const real = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, ...args: Parameters<typeof real>) {
+      return args[0].startsWith('webgl') ? null : real.apply(this, args);
+    } as typeof real;
+  });
+  await page.goto('/');
+  await expect(page.locator('#login')).toHaveText('contriscape');
+  await expect(page.locator('#status')).toContainText('fly a starfighter through a 3D city');
+  await expect(page.locator('#status')).toContainText("needs WebGL, which this browser doesn't have");
+  await expect(page).toHaveTitle('contriscape: fly through your GitHub contributions');
+  await expect(page.locator('#guidePanel')).toContainText('Each tower is one day');
+  await expect(page.locator('#guidePanel .panel-close')).toBeHidden();
+  const last = page.locator('#guidePanel p').last();
+  await last.scrollIntoViewIfNeeded();
+  await expect(last).toBeInViewport();
+  const { scroll, client } = await page.evaluate(() => ({
+    scroll: document.documentElement.scrollWidth,
+    client: document.documentElement.clientWidth,
+  }));
+  expect(scroll).toBeLessThanOrEqual(client);
+  expect(called).toBe(false);
+  expect(faults).toEqual([]);
+  await context.close();
+});
+
 test('pressing Fly with an empty box does nothing, and shows no message', async ({ page }) => {
   await stubApi(page, { body: busy('torvalds') });
   await page.goto('/');

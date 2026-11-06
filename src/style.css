@@ -842,6 +842,57 @@ body.empty .brand {
   display: none;
 }
 
+/* No WebGL, so no city: the page becomes a scrolling document of the header, a line on why, and the Guide */
+body.no-webgl {
+  overflow: auto;
+  -webkit-user-select: text;
+  user-select: text;
+}
+body.no-webgl #stage,
+body.no-webgl .panel-close {
+  display: none;
+}
+body.no-webgl .hud {
+  position: static;
+  padding-bottom: 20px;
+}
+body.no-webgl .top,
+body.no-webgl #status,
+body.no-webgl #guidePanel {
+  width: min(560px, calc(100% - var(--gutter-left) - var(--gutter-right)));
+  margin: 0 auto 24px;
+}
+body.no-webgl .top {
+  margin-bottom: 0;
+  padding-left: 0;
+  padding-right: 0;
+  background: none;
+}
+body.no-webgl .brand {
+  display: block;
+}
+body.no-webgl .brand h1 {
+  max-width: none;
+}
+body.no-webgl #status,
+body.no-webgl #guidePanel {
+  position: static;
+}
+body.no-webgl #status {
+  display: block;
+  padding: 0;
+  text-align: left;
+  pointer-events: auto;
+}
+body.no-webgl #guidePanel {
+  max-height: none;
+  overflow: visible;
+  transform: none;
+}
+body.no-webgl .panel-head {
+  position: static;
+}
+
 /* Pilot needs the view, so the deck shrinks to the date, timeline and buttons */
 body.piloting .stats,
 body.piloting .note {

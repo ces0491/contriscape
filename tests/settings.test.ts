@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Blast } from '../src/blast';
 import { COLOUR_ROWS, DEFAULT_COLOURS, luma, readColours, towerPalette, type Rgb } from '../src/colours';
 import { FINALE_SECONDS, Fireworks } from '../src/fireworks';
-import { averageFrame, SLOW_FRAME_MS } from '../src/quality';
+import { averageFrame, countedFrame, SLOW_FRAME_MS, tooSlow } from '../src/quality';
 import { keyTurn } from '../src/steering';
 import { distanceGain, engineTone } from '../src/sound';
 import { COCKPIT_BELOW, nextZoom, ZOOM_MAX, ZOOM_MIN } from '../src/zoom';
@@ -85,6 +85,39 @@ describe('averageFrame', () => {
   it('catches a GPU that really is slow, however slow', () => {
     expect(after(100, 60)).toBeGreaterThan(SLOW_FRAME_MS);
     expect(after(100, 1000)).toBeGreaterThan(SLOW_FRAME_MS);
+  });
+});
+
+describe('tooSlow', () => {
+  /** The frame on which quality first drops a step, or null if it never does. */
+  const firstDrop = (frameMs: number[]) => {
+    let average = 16;
+    let counted = 0;
+    for (const [n, ms] of frameMs.entries()) {
+      average = averageFrame(average, ms);
+      counted += countedFrame(ms);
+      if (tooSlow(average, n + 1, counted)) return n + 1;
+    }
+    return null;
+  };
+  const steady = (ms: number, frames = 600) => Array<number>(frames).fill(ms);
+
+  it('drops within ten frames on a software renderer', () => {
+    // Headless Chromium drew the city at 290 ms a frame at twice the pixel density and 150 ms at once: 3 s and 1.5 s
+    expect(firstDrop(steady(290))).toBeLessThanOrEqual(10);
+    expect(firstDrop(steady(150))).toBeLessThanOrEqual(10);
+  });
+
+  it('leaves a machine holding 30 frames a second alone', () => {
+    expect(firstDrop(steady(33))).toBeNull();
+  });
+
+  it('waits out a burst of slow frames as the city starts', () => {
+    expect(firstDrop([...steady(100, 8), ...steady(16.7)])).toBeNull();
+  });
+
+  it("doesn't let one long first frame, setup and shader compiles, start the judging early", () => {
+    expect(firstDrop([2000, ...steady(100, 5), ...steady(16.7)])).toBeNull();
   });
 });
 

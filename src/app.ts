@@ -15,7 +15,7 @@ import { FINALE_SECONDS, Fireworks } from './fireworks';
 import { Hud, type Scope } from './hud';
 import { CityMap, DEPTH, PLINTH, TOWER, WIDTH } from './map';
 import { findMilestones, type Milestone } from './milestones';
-import { averageFrame, SLOW_FRAME_MS } from './quality';
+import { averageFrame, countedFrame, tooSlow } from './quality';
 import { reviewFacts, reviewTitle, reviewYear } from './review';
 import { buildRoute, lengthAtDay, newPose, poseAt, RISE, type Route } from './routes';
 import { FINISH_FRAGMENT, FINISH_VERTEX } from './shaders';
@@ -1094,12 +1094,16 @@ export function startApp(data: Contributions): void {
   let last = performance.now();
   let frameAverage = 16;
   let frames = 0;
+  let levelMs = 0;
   let quality = 0;
   function adapt(ms: number): void {
     frameAverage = averageFrame(frameAverage, ms);
-    if (++frames < 100 || frameAverage < SLOW_FRAME_MS || quality >= 2) return;
+    frames++;
+    levelMs += countedFrame(ms);
+    if (quality >= 2 || !tooSlow(frameAverage, frames, levelMs)) return;
     quality++;
     frames = 0;
+    levelMs = 0;
     frameAverage = 16;
     if (quality === 1 && pixelRatio > 1) {
       pixelRatio = 1;
