@@ -129,12 +129,13 @@ test('asks the API for the lower-case login, so each user has one cached copy', 
   expect((await request).url()).toMatch(/\/api\/contributions\/octo-dev$/);
 });
 
-test('shows the default city at the root', async ({ page }) => {
+test("shows the default city at the root, under the site's own title", async ({ page }) => {
   await stubApi(page, { body: busy('torvalds') });
   await page.goto('/');
   await cityReady(page);
   await expect(page).toHaveURL(/\/$/);
   await expect(page.locator('#login')).toHaveText('torvalds');
+  await expect(page).toHaveTitle('contriscape: fly through your GitHub contributions');
 });
 
 test('the username box takes you to that city', async ({ page }) => {

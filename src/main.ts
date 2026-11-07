@@ -135,8 +135,11 @@ async function boot(): Promise<void> {
 
   element('status').hidden = true;
   document.body.classList.remove('empty');
-  document.title = `${data.login} · ${APP_NAME}`;
-  if (requested) history.replaceState(null, '', `/${data.login}`);
+  // Google renders the city, so a title set here is the one it indexes. The root keeps the page's own.
+  if (requested) {
+    document.title = `${data.login} · ${APP_NAME}`;
+    history.replaceState(null, '', `/${data.login}`);
+  }
   wireShare(data.login);
 }
 
