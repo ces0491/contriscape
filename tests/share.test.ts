@@ -166,6 +166,10 @@ describe('GET /api/card/:login', () => {
           name: null,
           createdAt: '2026-01-01T00:00:00Z',
           contributionsCollection: { contributionYears: [2026] },
+          bio: null,
+          followers: { totalCount: 0 },
+          pinnedItems: { nodes: [] },
+          repositories: { nodes: [] },
         },
       }),
     );

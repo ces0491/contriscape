@@ -13,6 +13,7 @@ import { Calendar, describeCount, MONTHS } from './calendar';
 import { pushOut } from './collision';
 import { COLOUR_ROWS, DEFAULT_COLOURS, readColours, towerPalette, type Colours } from './colours';
 import { Environment } from './environment';
+import { takeArrival, type Explorer } from './explorer';
 import { buildFighter, Weapons } from './fighter';
 import { FINALE_SECONDS, Fireworks } from './fireworks';
 import { Hud, type Scope } from './hud';
@@ -70,6 +71,8 @@ const CAPTION_SECONDS = 4;
 const BADGE_APPROACH = 10;
 /** How long the offer of the controls stays up after an Autopilot flight ends. */
 const OFFER_SECONDS = 15;
+/** How long a city picked from Explore says whose it is. */
+const ARRIVAL_SECONDS = 12;
 /** How far ahead of the ship a tower can be read by aiming at it. */
 const AIM_RANGE = 95;
 const PARKED_SECONDS = 6;
@@ -94,7 +97,13 @@ const smooth = (k: number) => k * k * (3 - 2 * k);
 const element = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
 /** Each panel, by the id of the button that opens it. */
-const PANELS = { year: 'yearPanel', badges: 'badgePanel', settings: 'settingsPanel', guide: 'guidePanel' };
+const PANELS = {
+  explore: 'explorePanel',
+  year: 'yearPanel',
+  badges: 'badgePanel',
+  settings: 'settingsPanel',
+  guide: 'guidePanel',
+};
 type Panel = keyof typeof PANELS;
 const PANEL_NAMES = Object.keys(PANELS) as Panel[];
 
@@ -118,9 +127,10 @@ function remember(key: string, on: boolean): void {
 
 /**
  * Builds the city and starts the render loop. Throws if WebGL is unavailable. `example` is for the city on the site's
- * front page, which the visitor didn't ask for by name, so the first hint says what it is.
+ * front page, which the visitor didn't ask for by name, so the first hint says what it is. `explorer` is the Explore
+ * panel, which is on the page before there is a city and is handed over here.
  */
-export function startApp(data: Contributions, example = false): void {
+export function startApp(data: Contributions, example: boolean, explorer: Explorer): void {
   // Colours are authored for the display, and every shader writes them straight through
   THREE.ColorManagement.enabled = false;
 
@@ -260,6 +270,7 @@ export function startApp(data: Contributions, example = false): void {
   let brakeHeld = false;
   let brakePointer: number | null = null;
   let offerTimer = 0;
+  let arrivalTimer = 0;
   let wasBoosting = false;
   let touchedTower = -1;
   /** When each nearby tower last whooshed past. */
@@ -475,6 +486,15 @@ export function startApp(data: Contributions, example = false): void {
   function withdrawOffer(): void {
     clearTimeout(offerTimer);
     element('offer').hidden = true;
+  }
+  /** A city picked from Explore opens by saying whose it is, until the visitor does something else. */
+  function greet(from: string): void {
+    hud.showArrival(from, data.name ?? data.login, data.profile?.bio ?? null);
+    arrivalTimer = window.setTimeout(withdrawArrival, ARRIVAL_SECONDS * 1000);
+  }
+  function withdrawArrival(): void {
+    clearTimeout(arrivalTimer);
+    hud.hideArrival();
   }
 
   /* ---------- pilot ---------- */
@@ -772,7 +792,9 @@ export function startApp(data: Contributions, example = false): void {
     const hint = element('hint');
     const introducing = introduce;
     introduce = false;
-    hint.textContent = introducing ? `Example city: ${cal.login}. Enter any GitHub username to fly another.` : HINTS[m];
+    hint.textContent = introducing
+      ? `Example city: ${cal.login}. Enter a GitHub username to fly another, or find one in Explore.`
+      : HINTS[m];
     hint.hidden = false;
     clearTimeout(hintTimer);
     hintTimer = window.setTimeout(() => {
@@ -797,6 +819,7 @@ export function startApp(data: Contributions, example = false): void {
   function setMode(next: Mode, holdFor = 0): void {
     const wasFlying = mode === 'fly' && arrived && !(jump && jump.t < 0.5);
     withdrawOffer();
+    withdrawArrival();
     if (next !== 'fly') stopReview();
     mode = next;
     glide = null;
@@ -885,6 +908,8 @@ export function startApp(data: Contributions, example = false): void {
     });
     panelOpen = open !== null;
     standDownReset();
+    if (open !== null) withdrawArrival();
+    if (open === 'explore') explorer.open();
   }
 
   /* ---------- colours ---------- */
@@ -1291,6 +1316,10 @@ export function startApp(data: Contributions, example = false): void {
     brakeHeld = true;
   });
   element('offerPilot').addEventListener('click', () => setMode('pilot'));
+  element('arrivalMore').addEventListener('click', () => {
+    explorer.show('city');
+    showPanel('explore');
+  });
   hud.scrub.addEventListener('pointerdown', (e) => {
     dragPointer = e.pointerId;
   });
@@ -1537,6 +1566,12 @@ export function startApp(data: Contributions, example = false): void {
   setMode(reduced ? 'orbit' : 'fly', 1.5);
   if (reduced) controls.autoRotate = false;
   if (previewing && review) startReview();
+  explorer.describe(data);
+  explorer.host();
+  // Opened while the city was still loading, so the app takes it over as it stands
+  if (!element('explorePanel').hidden) showPanel('explore');
+  const pickedFrom = takeArrival(data.login);
+  if (pickedFrom) greet(pickedFrom);
   requestAnimationFrame(frame);
 
   if (import.meta.env.DEV || import.meta.env.MODE === 'test') {

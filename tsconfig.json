@@ -14,5 +14,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["api", "shared", "src", "tests", "e2e", "*.ts"]
+  "include": ["api", "scripts", "shared", "src", "tests", "e2e", "*.ts"]
 }

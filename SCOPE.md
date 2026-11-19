@@ -25,6 +25,8 @@ Let anyone enter a GitHub username and fly through a 3D city of that person's pu
 - [x] Tower heights are measured against a busy day, so one outlying day doesn't flatten the rest
 - [x] The end of an Autopilot flight offers the controls
 - [x] A shared link previews with a card of that user's skyline, and falls back to the site's own picture when GitHub can't be read
+- [x] Explore lists busy cities by field and by repo, from a file made ahead of time, and Random city picks one
+- [x] A city says whose it is, from the bio, languages and repos on their GitHub profile, and still loads when GitHub can't give those
 - [x] Unit tests, browser tests under the production CSP, lint and typecheck all pass
 - [x] Name confirmed by Ces
 - [x] Deployed to production with a real token, verified on the live URL
@@ -62,3 +64,4 @@ Ces, after flying a stranger's city on the live URL from a phone and a laptop.
 - 2026-11-19: added music, badge markers, the target lock and a phone Boost button, and reworked the ship, sky, effects and sound mix, at Ces's request
 - 2026-11-19: after a review, changed which years the whole-history flight flies and how it passes the others, marked badges as flown, added a marker back to the city and the front page's example hint, and started histories at the earliest year GitHub lists, at Ces's request
 - 2026-11-19: measured tower heights against a busy day, timed a clear flown without a jump, offered the controls when Autopilot ends, gave phones a Brake button, and added a share card for each username, at Ces's request
+- 2026-11-19: added Explore, Random city and the account of whose city it is, at Ces's request

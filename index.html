@@ -58,19 +58,22 @@
         <h1 id="login"></h1>
         <p id="scopeLabel"></p>
       </div>
-      <form id="lookup" class="lookup" role="search" autocomplete="off">
-        <label class="visually-hidden" for="loginInput">GitHub username</label>
-        <input
-          id="loginInput"
-          name="login"
-          placeholder="GitHub username"
-          maxlength="40"
-          spellcheck="false"
-          autocapitalize="none"
-          autocorrect="off"
-        />
-        <button type="submit">Visit</button>
-      </form>
+      <div class="find">
+        <form id="lookup" class="lookup" role="search" autocomplete="off">
+          <label class="visually-hidden" for="loginInput">GitHub username</label>
+          <input
+            id="loginInput"
+            name="login"
+            placeholder="GitHub username"
+            maxlength="40"
+            spellcheck="false"
+            autocapitalize="none"
+            autocorrect="off"
+          />
+          <button type="submit">Visit</button>
+        </form>
+        <button id="explore" type="button" aria-expanded="false" aria-controls="explorePanel">Explore</button>
+      </div>
       <div class="actions">
         <button id="share" type="button">Copy link</button>
         <div class="modes" role="group" aria-label="Camera">
@@ -133,6 +136,14 @@
       <span>That was Autopilot.</span>
       <button id="offerPilot" type="button">Take the controls</button>
     </div>
+    <div id="arrival" hidden>
+      <div role="status">
+        <small id="arrivalFrom"></small>
+        <b id="arrivalName"></b>
+        <span id="arrivalBio"></span>
+      </div>
+      <button id="arrivalMore" type="button">About</button>
+    </div>
     <div id="tip" hidden></div>
     <div id="toast" role="status" hidden></div>
     <div id="caption" role="status" hidden></div>
@@ -156,6 +167,30 @@
       </p>
       <p id="badgeFlown" hidden></p>
       <ul id="badgeList"></ul>
+    </section>
+    <section id="explorePanel" class="panel" aria-labelledby="exploreTitle" hidden>
+      <div class="panel-head">
+        <h2 id="exploreTitle">Explore</h2>
+        <button id="random" type="button">Random city</button>
+        <button class="panel-close" type="button">Close</button>
+      </div>
+      <div id="exploreViews" role="group" aria-label="Show" hidden>
+        <button id="viewOthers" type="button" aria-pressed="true">Other cities</button>
+        <button id="viewCity" type="button" aria-pressed="false">This city</button>
+      </div>
+      <div id="about" hidden>
+        <p class="about-name"><b id="aboutName"></b><span id="aboutLink"></span></p>
+        <p id="aboutBio"></p>
+        <p id="aboutFacts"></p>
+        <h3 id="aboutReposTitle"></h3>
+        <ul id="aboutRepos"></ul>
+      </div>
+      <div id="others">
+        <p id="exploreNote"></p>
+        <div id="exploreGroups" role="group" aria-label="Choose a list"></div>
+        <p id="exploreBlurb"></p>
+        <ul id="explorePeople"></ul>
+      </div>
     </section>
     <section id="settingsPanel" class="panel" aria-labelledby="settingsTitle" hidden>
       <div class="panel-head">
@@ -277,6 +312,13 @@
       <dl>
         <dt>Visit</dt>
         <dd>Opens the city of the username in the box.</dd>
+        <dt>Explore</dt>
+        <dd>
+          Lists other busy cities, by field and by repo. Pick one, or let Random city choose, and it opens with a line
+          about its owner. This city says whose city you're in, from their GitHub profile: their bio, the languages most
+          of their repos are in, and the repos they pinned. The lists come from GitHub's search and are remade from time
+          to time.
+        </dd>
         <dt>Copy link</dt>
         <dd>Copies the address of this city. Larger screens only.</dd>
         <dt>Pause, Play, Replay</dt>

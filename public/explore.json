@@ -1,0 +1,937 @@
+{
+  "generated": "2026-11-19",
+  "groups": [
+    {
+      "id": "data-science",
+      "title": "Data science",
+      "blurb": "People whose GitHub bio says “data scientist”, most followed first.",
+      "people": [
+        {
+          "login": "AllenDowney",
+          "name": "Allen Downey",
+          "about": "Principal Data Scientist at PyMC Labs, professor emeritus at Olin College, author of Think Python, Think Bayes, Think Stats, Probably Overthinking It."
+        },
+        {
+          "login": "nfultz",
+          "name": "Neal Fultz",
+          "about": "Computational statistician, programmer and data scientist."
+        },
+        { "login": "Pythondeveloper6", "name": "Mahmoud Ahmed", "about": "Fullstack Data Scientist & Instructor" },
+        {
+          "login": "sunnysavita10",
+          "name": "SUNNY SAVITA",
+          "about": "Welcome to my GitHub.My name is Sunny Savita, and I'm a data scientist and AI engineer with almost four years of expertise across many domains."
+        },
+        {
+          "login": "zzsza",
+          "name": "Seong Yun Byeon",
+          "about": "Data Scientist, ML/AI Engineer, Engineering Manager, Cloud GDE"
+        },
+        {
+          "login": "RubensZimbres",
+          "name": "Rubens Zimbres",
+          "about": "Senior Data Scientist/ML Engineer, PhD. Deep Learning and NLP w/ Python. Google Developer Expert (GDE) in ML and GCP. Security+, GCP and AWS Certified."
+        },
+        {
+          "login": "alysonla",
+          "name": "Alyson La",
+          "about": "Former accountant, current data scientist. Always learning."
+        },
+        {
+          "login": "mdancho84",
+          "name": "Matt Dancho",
+          "about": "Hello. I'm Matt. I'm the founder of @business-science where we train business professionals how to become 6-figure data scientists and grow their careers."
+        },
+        {
+          "login": "AmirhosseinHonardoust",
+          "name": "Amir",
+          "about": "Data Scientist & ML Engineer | ML, NLP, Forecasting & Analytics | Building reliable AI systems from data to decision"
+        },
+        {
+          "login": "aasimansari1",
+          "name": "Mohd Aasim Ansari",
+          "about": "🚀 Aspiring Data Scientist & AI Engineer | Python • React • FastAPI • LangChain • CrewAI • RAG • LangGraph"
+        },
+        {
+          "login": "solegalli",
+          "name": "Soledad Galli",
+          "about": "👨‍💻 Data scientist, Python developer, best-selling machine learning instructor, and book author. 📚 Developer of Feature-engine. 🚀"
+        },
+        {
+          "login": "shreekanthashokg-lang",
+          "name": "Shreekanth A Guttedar",
+          "about": "I'm an AI/ML Engineer and Data Scientist based in Bangalore, building production-grade intelligent systems while pursuing my MCA in AI/ML & Data Science"
+        }
+      ]
+    },
+    {
+      "id": "machine-learning",
+      "title": "Machine learning",
+      "blurb": "People whose GitHub bio says “machine learning”, most followed first.",
+      "people": [
+        {
+          "login": "ageron",
+          "name": "Aurélien Geron",
+          "about": "Author of the book Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow. Former PM of YouTube video classification and founder & CTO of Wifirst."
+        },
+        { "login": "tqchen", "name": "Tianqi Chen", "about": "Machine Learning and Systems" },
+        { "login": "mrdbourke", "name": "Daniel Bourke", "about": "Machine Learning Engineer live on YouTube." },
+        {
+          "login": "NeuralNine",
+          "name": "NeuralNine",
+          "about": "🧠 Machine Learning 📊 Data Science 👨‍💼 Owner: Florian Dedov"
+        },
+        {
+          "login": "Germey",
+          "name": "Germey",
+          "about": "Software Engineer, majored in Web Scraping, Web Development, Machine Learning."
+        },
+        {
+          "login": "leimao",
+          "name": "Lei Mao",
+          "about": "Artificial Intelligence, Machine Learning, Computer Science. C++, CUDA, Python, CMake."
+        },
+        {
+          "login": "ogrisel",
+          "name": "Olivier Grisel",
+          "about": "Machine Learning Engineer at :probabl. and core contributor to scikit-learn."
+        },
+        {
+          "login": "omarsar",
+          "name": "Elvis Saravia",
+          "about": "Machine Learning & NLP Research • PhD • Building @dair-ai • Previously: Meta AI, Elastic"
+        },
+        {
+          "login": "Borda",
+          "name": "Jirka Borovec",
+          "about": "Computer Vision & Machine Learning & Bio-Medical Imaging & #DeepLearn & Kaggle Master"
+        },
+        {
+          "login": "ines",
+          "name": "Ines Montani",
+          "about": "Digital native and software developer working on AI, Machine Learning & NLP. Founder @explosion, developing spaCy & Prodigy. (Portrait: Sarah Andersen)"
+        },
+        {
+          "login": "omololevy",
+          "name": "Levy Omolo",
+          "about": "Tech Lead & S. Engineer, Computer Science, Machine Learning || (Python), (JavaScript), (TypeScript)"
+        },
+        {
+          "login": "tridao",
+          "name": "Tri Dao",
+          "about": "Assistant Professor @ Princeton CS, machine learning & systems"
+        }
+      ]
+    },
+    {
+      "id": "statistics",
+      "title": "Statistics",
+      "blurb": "People whose GitHub bio says “statistician”, most followed first.",
+      "people": [
+        {
+          "login": "nfultz",
+          "name": "Neal Fultz",
+          "about": "Computational statistician, programmer and data scientist."
+        },
+        { "login": "TeoCalvo", "name": "Teo Calvo", "about": "Statistician and live coding streamer on Twitch" },
+        {
+          "login": "kbroman",
+          "name": "Karl Broman",
+          "about": "Professor in Dept of Biostatistics & Medical Informatics at UW–Madison. Applied statistician working on statistical genomics."
+        },
+        {
+          "login": "MathematicalStatistics",
+          "name": "Polymath (Math Mage / Stats Sorcerer)",
+          "about": "Mathsochism | Theoretical Statistician | AI Research | Synthetic Elements | Python & R Enthusiast | Tokenmaxxing | GTNH"
+        },
+        {
+          "login": "djnavarro",
+          "name": "Danielle Navarro",
+          "about": "Statistician. Data scientist. Former academic cognitive scientist. Occasional generative artist. Evidently now also a pharmacometrician"
+        },
+        { "login": "nanxstats", "name": "Nan Xiao", "about": "Statistician" },
+        {
+          "login": "njtierney",
+          "name": "Nicholas Tierney",
+          "about": "|| Freelance Statistician and Research Software Engineer | PhD Statistics | Hiker | Runner | Coffee Geek ||"
+        },
+        {
+          "login": "pachadotdev",
+          "name": "Mauricio \"Pachá\" Vargas Sepúlveda",
+          "about": "Statistician interested in applying statistical methods to address specific policy-relevant questions, particularly in international trade."
+        },
+        {
+          "login": "davidwhogg",
+          "name": "David W. Hogg",
+          "about": "Astronomer, physicist, and statistician at NYU, MPIA, and Flatiron"
+        },
+        { "login": "wlandau", "name": "Will Landau", "about": "Statistician and developer" },
+        {
+          "login": "keithmcnulty",
+          "name": "Keith McNulty",
+          "about": "Mathematician. Applied Statistician. Data Scientist. Psychometrician. Certified geek. Final Fantasy nut."
+        },
+        {
+          "login": "rpodcast",
+          "name": "Eric Nantz",
+          "about": "Statistician | R user | Host of the R-Podcast | Linux enthusiast"
+        }
+      ]
+    },
+    {
+      "id": "biostatistics",
+      "title": "Biostatistics",
+      "blurb": "People whose GitHub bio says “biostatistics”, most followed first.",
+      "people": [
+        {
+          "login": "kbroman",
+          "name": "Karl Broman",
+          "about": "Professor in Dept of Biostatistics & Medical Informatics at UW–Madison. Applied statistician working on statistical genomics."
+        },
+        {
+          "login": "mikelove",
+          "name": "Michael Love",
+          "about": "Genetics & Biostatistics at UNC-Chapel Hill. R/Bioconductor developer"
+        },
+        {
+          "login": "ck37",
+          "name": "Chris Kennedy",
+          "about": "Psychiatric AI; biostatistics PhD. {Targeted, deep, machine} learning, NLP, IRT, computer vision, EHRs."
+        },
+        {
+          "login": "eneskemalergin",
+          "name": "Enes Ergin",
+          "about": "Founder @Zenteomics & Bioinformatician @LangeLab Computational Proteomics, Bioinformatics, Biostatistics, Systems Engineering"
+        },
+        {
+          "login": "nhejazi",
+          "name": "nima hejazi",
+          "about": "assistant professor of biostatistics at the harvard school of public health working on causal {inference, machine learning}"
+        },
+        {
+          "login": "agitter",
+          "name": "Anthony Gitter",
+          "about": "Professor in Biostatistics and Medical Informatics at the University of Wisconsin-Madison; Investigator at the Morgridge Institute for Research"
+        }
+      ]
+    },
+    {
+      "id": "bioinformatics",
+      "title": "Bioinformatics",
+      "blurb": "People whose GitHub bio says “bioinformatics”, most followed first.",
+      "people": [
+        {
+          "login": "dataprofessor",
+          "name": "Chanin Nantasenamat",
+          "about": "My name is Chanin Nantasenamat, Ph.D. and I am a Developer Advocate, YouTuber at the \"Data Professor\" channel and ex-Professor of Bioinformatics"
+        },
+        {
+          "login": "crazyhottommy",
+          "name": "Ming Tang",
+          "about": "Director of Bioinformatics. Care about reproducible research and open science"
+        },
+        {
+          "login": "GuangchuangYu",
+          "name": "Guangchuang Yu",
+          "about": "Professor of Bioinformatics at Southern Medical University."
+        },
+        {
+          "login": "tseemann",
+          "name": "Torsten Seemann",
+          "about": "Bioinformatics and genomics for public health and clinical microbiology"
+        },
+        { "login": "kassambara", "name": "Alboukadel KASSAMBARA", "about": "PhD, Cancer Biology and Bioinformatics" },
+        {
+          "login": "vsbuffalo",
+          "name": "Vince Buffalo",
+          "about": "Computational scientist building disease modeling software & more. ♥s statistics, probability, modeling. Author of the O'Reilly book Bioinformatics Data Skill"
+        },
+        {
+          "login": "johanneskoester",
+          "name": "Johannes Köster",
+          "about": "Professor for Bioinformatics and Computational Oncology"
+        },
+        {
+          "login": "AspirinCode",
+          "name": "Jianmin Wang",
+          "about": "Drug Design , Linux enthusiast , Medicinal_Chemistry_&_ Synthesis , Chemoinformatics , Data Science, Python and C/C++ programmer，Bioinformatics，Deep Learning，AI"
+        },
+        { "login": "l0o0", "name": "l0o0", "about": "bioinformatics, data science" },
+        {
+          "login": "althonos",
+          "name": "Martin Larralde",
+          "about": "PhD in Bioinformatics, passionate about programming, SIMD-enthusiast, Pythonista, Rustacean. I write poems, and sometimes they are executable."
+        },
+        {
+          "login": "Ming-Lian",
+          "name": "lianm",
+          "about": "Bioinformatics & Genomics. I think, therefore I am. Learning Through Investigation."
+        },
+        {
+          "login": "kyclark",
+          "name": "Ken Youens-Clark",
+          "about": "BA/MS; Author: Command-Line Rust (O'Reilly), Mastering Python for Bioinformatics (O'Reilly), Tiny Python Projects (Manning)"
+        }
+      ]
+    },
+    {
+      "id": "economics",
+      "title": "Economics",
+      "blurb": "People whose GitHub bio says “economist”, most followed first.",
+      "people": [
+        {
+          "login": "grantmcdermott",
+          "name": "Grant McDermott",
+          "about": "Principal Economist at Amazon. Mix of economics, data science, and open source."
+        },
+        {
+          "login": "jameslamb",
+          "name": "James Lamb",
+          "about": "RAPIDS build engineering at NVIDIA. LightGBM maintainer. Economist at heart."
+        },
+        {
+          "login": "PyRusAdmin",
+          "name": "PyRusAdmin",
+          "about": "Miner, Economist, Python Programmer. I accept orders for the development of software of any complexity. Шахтер, экономист, программист на Python. Я принимаю"
+        },
+        { "login": "SebKrantz", "name": "Sebastian Krantz", "about": "Economist and Software Engineer" },
+        {
+          "login": "rickecon",
+          "name": "Richard Evans",
+          "about": "Senior Economist, Abundance Institute. Director, Open Source Economics Laboratory. President, Open Research Group."
+        },
+        {
+          "login": "meleantonio",
+          "name": "Antonio",
+          "about": "I'm an economist at the London School of Economics. Currently training for the next zombie apocalypse. https://medium.com/@antoniomele1"
+        },
+        {
+          "login": "lrettig",
+          "name": "Lane Rettig",
+          "about": "Stealth AI founder. Also governance research, thinker, rain dancer, writer, marathoner, novice economist, mold breaker. I hack so I don't have to wear a suit."
+        },
+        { "login": "korenmiklos", "name": "Miklós Koren", "about": "Economist running code and trails." },
+        {
+          "login": "gokulsan",
+          "name": "Gokul Alex",
+          "about": "Founder @SusanooSystems @Semiott @GigameshGarages @Epiisteme | Programmer, Philosopher, Poet | Engineer, Economist, Educator"
+        },
+        {
+          "login": "abenassi",
+          "name": "Agustín Benassi",
+          "about": "Economist, programmer and open data activist. Data and technology consultant. Ex Public Data Director in Modernisation Secretariat of Argentina's Government."
+        }
+      ]
+    },
+    {
+      "id": "physics",
+      "title": "Physics",
+      "blurb": "People whose GitHub bio says “physicist”, most followed first.",
+      "people": [
+        {
+          "login": "FavioVazquez",
+          "name": "Favio Vázquez",
+          "about": "Physicist and computational engineer. I have a passion for science, philosophy, programming, and lacanian psychoanalysis. Working on cosmology and big data."
+        },
+        {
+          "login": "lballabio",
+          "name": "Luigi Ballabio",
+          "about": "Co-founder and current maintainer of the QuantLib project. Also husband, father of four, ex-physicist, and amateur musician."
+        },
+        {
+          "login": "WhiteSymmetry",
+          "name": "Mehmet Keçeci",
+          "about": "Physicist (Completed the dissertation phase of the Ph.D. in Physics), Reviewer, Author, Lecturer, Occupational Safety Specialist, Editor <M|ehme|t><K|eçec|i>"
+        },
+        {
+          "login": "henryiii",
+          "name": "Henry Schreiner",
+          "about": "Particle physicist and software architect working with @iris-hep. @scikit-hep, @pybind, and @scikit-build admin. @pypa member."
+        },
+        {
+          "login": "tacaswell",
+          "name": "Thomas A Caswell",
+          "about": "Soft condensed matter physicist with a software bent | There is no magic, only engineering | DSSI @ NSLS2 | Matplotlib Project Lead | PSF Fellow"
+        },
+        {
+          "login": "mhjensen",
+          "name": "Morten Hjorth-Jensen",
+          "about": "I am a theoretical physicist with a strong interest in computational physics and many-body theory in general, quantum computing and AI/Machine Learning"
+        },
+        {
+          "login": "casperdcl",
+          "name": "Casper da Costa-Luis",
+          "about": "Computational Physicist; philosopher; effortlessly superior to LLMs; member of IEEE, IOP, & @python Software Foundation"
+        },
+        {
+          "login": "luanpotter",
+          "name": "Luan Nico",
+          "about": "Software Craftsman / Physicist / Game Developer working on a lot of Open Source projects • @bluefireteam @faire"
+        },
+        {
+          "login": "davidwhogg",
+          "name": "David W. Hogg",
+          "about": "Astronomer, physicist, and statistician at NYU, MPIA, and Flatiron"
+        },
+        {
+          "login": "mstksg",
+          "name": "Justin Le",
+          "about": "jle / mstksg / Lê Anh Khoa: Computational physicist & Haskeller, PhD"
+        },
+        {
+          "login": "ax3l",
+          "name": "Axel Huebl",
+          "about": "computational physicist • accelerates accelerator research • laser-plasma aficionado • PByte connoisseur"
+        },
+        {
+          "login": "JohannesGaessler",
+          "name": "Johannes Gäßler",
+          "about": "Experimental particle physicist. Other interests: statistics, generative neural networks, hardware acceleration."
+        }
+      ]
+    },
+    {
+      "id": "astrophysics",
+      "title": "Astrophysics",
+      "blurb": "People whose GitHub bio says “astrophysics”, most followed first.",
+      "people": [
+        {
+          "login": "rahuldave",
+          "name": "Rahul Dave",
+          "about": "Chief Scientist at Univ.Ai. Former lecturer, Harvard University. Data Science, ML, AI, Bayesian Stats, Cosmology, Astrophysics."
+        },
+        {
+          "login": "jobovy",
+          "name": "Jo Bovy",
+          "about": "Professor of Astronomy & Astrophysics at the University of Toronto. Interested in galaxy structure and dynamics and in open and reproducible science."
+        },
+        {
+          "login": "dr-guangtou",
+          "name": "Song Huang",
+          "about": "I am an associate professor of astrophysics at Tsinghua University in China and the Project Scientist for the 6.5m MUST Project. Love galaxies!"
+        },
+        {
+          "login": "hannorein",
+          "name": "Hanno Rein",
+          "about": "Astrophysics Professor interested in dynamics, iOS developer"
+        },
+        {
+          "login": "Cadair",
+          "name": "Stuart Mumford",
+          "about": "I write open source software for solar and astrophysics. I am the lead-developer of SunPy, contribute to Astropy, and work on DKIST."
+        },
+        {
+          "login": "zonca",
+          "name": "Andrea Zonca",
+          "about": "Cosmology/Astrophysics, High Performance Computing, Python. Maintainer of @healpy. Working on #CMB experiments @simonsobs & @CMB-S4 (previously Planck)."
+        },
+        {
+          "login": "GabrielMissael",
+          "name": "Gabriel Missael Barco",
+          "about": "🇲🇽 @ 🇨🇦 | Astrophysics × Probabilistic ML | PhD student @ Université de Montréal & @mila-iqia"
+        },
+        {
+          "login": "pkgw",
+          "name": "Peter Williams",
+          "about": "Technical Lead, IAU Minor Planet Center, Center for Astrophysics | Harvard & Smithsonian."
+        },
+        {
+          "login": "xuanxu",
+          "name": "Juanjo Bazán",
+          "about": "Astrophysics · Open Science · Ruby, Rails and Python · Web and Scientific software developer · Associate editor of The Journal of Open Source Software"
+        }
+      ]
+    },
+    {
+      "id": "mathematics",
+      "title": "Mathematics",
+      "blurb": "People whose GitHub bio says “mathematician”, most followed first.",
+      "people": [
+        { "login": "gcanti", "name": "Giulio Canti", "about": "mathematician and rock climber" },
+        { "login": "mbrandonw", "name": "Brandon Williams", "about": "Subterranean Homesick Mathematician." },
+        {
+          "login": "syrusakbary",
+          "name": "Syrus Akbary",
+          "about": "Entrepreneur. Mathematician. Spanish. @wasmerio CEO (YC S19). @GraphQL-Python creator. Author of Graphene, pyjade, promises (py) and other cool stuff... 😄"
+        },
+        {
+          "login": "lukastaegert",
+          "name": "Lukas Taegert-Atkinson",
+          "about": "Mathematician, software engineer and senior consultant at @TNG, JavaScript enthusiast and current maintainer of @rollup."
+        },
+        {
+          "login": "1cbyc",
+          "name": "Isaac Emmanuel",
+          "about": "Senior Software Engineer, Mathematician, Father & Husband. | Software Engineer (Open Source & Tooling) @IBM"
+        },
+        { "login": "juanitorduz", "name": "Juan Orduz", "about": "Mathematician & Data Scientist" },
+        {
+          "login": "drvinceknight",
+          "name": "Vince Knight",
+          "about": "Mathematician at Cardiff University. Interests include education, stochastic processes and game theory."
+        },
+        {
+          "login": "keithmcnulty",
+          "name": "Keith McNulty",
+          "about": "Mathematician. Applied Statistician. Data Scientist. Psychometrician. Certified geek. Final Fantasy nut."
+        },
+        {
+          "login": "kengz",
+          "name": "Keng",
+          "about": "Engineer by day, rock climber by night. Mathematician at heart."
+        },
+        {
+          "login": "Syntheticalism",
+          "name": "Ava Syntheticalism",
+          "about": "Software Engineer | Mathematician | Philosopher | Entrepreneur | AI Researcher | Awarded Academic Author"
+        },
+        {
+          "login": "tschm",
+          "name": "Thomas Schmelzer",
+          "about": "Mathematician & Rhodes scholar @ Oxford; quant and software engineer out in the Wild. Now building for Claude, not just with it."
+        },
+        {
+          "login": "derrickstolee",
+          "name": "Derrick Stolee",
+          "about": "I used to be a mathematician in computational graph theory. These days I work in developer tools."
+        }
+      ]
+    },
+    {
+      "id": "security",
+      "title": "Security",
+      "blurb": "People whose GitHub bio says “security researcher”, most followed first.",
+      "people": [
+        {
+          "login": "mohammadhasanii",
+          "name": "Mohammad",
+          "about": "Software Engineer & Independent Security Researcher & @Rawbuffer Founder at @Raventure-Suite @Ourolabs & Contributor @divar-ir @bugcrowd"
+        },
+        {
+          "login": "JoasASantos",
+          "name": "Joas A Santos",
+          "about": "Academic and Professional experience in Cyber Security / Red Team Lead / Information Security Researcher."
+        },
+        { "login": "insidegui", "name": "Guilherme Rambo", "about": "Mac and iOS developer, security researcher." },
+        {
+          "login": "TaroYamada08",
+          "name": "Taro Yamada",
+          "about": "Full Stack Engineer | Security Researcher | Reverse Engineering | Ethical Hacking 🔝⭐⭐⭐⭐⭐"
+        },
+        {
+          "login": "can1357",
+          "name": "Can Bölük",
+          "about": "Security researcher and reverse engineer. Interested in Windows kernel development, low-level programming, static program analysis and cryptography."
+        },
+        {
+          "login": "vanhauser-thc",
+          "name": "van Hauser",
+          "about": "Security researcher since 1994 https://www.mh-sec.de/ https://www.thc.org/"
+        },
+        { "login": "FeeiCN", "name": "Feei", "about": "Security Researcher" },
+        { "login": "ni5arga", "name": "Nisarga Adhikary", "about": "20yo | security researcher & software engineer" },
+        {
+          "login": "thestinger",
+          "name": "Daniel Micay",
+          "about": "Security researcher/engineer working on mobile privacy/security. Founder of @GrapheneOS."
+        },
+        {
+          "login": "p0dalirius",
+          "name": "Rémi GASCOU (Podalirius)",
+          "about": "Senior Security Researcher @SpecterOps, Speaker, 5x Microsoft MVP"
+        },
+        {
+          "login": "mxschmitt",
+          "name": "Max Schmitt",
+          "about": "Open Source enthusiast, security researcher and full stack web developer."
+        },
+        {
+          "login": "firmianay",
+          "name": "一蓑烟雨",
+          "about": "Security researcher & CTF Player & member of @XDSEC, @xdlinux, @LCTF, @Vu1nT0tal"
+        }
+      ]
+    },
+    {
+      "id": "games",
+      "title": "Games",
+      "blurb": "People whose GitHub bio says “game developer”, most followed first.",
+      "people": [
+        {
+          "login": "munificent",
+          "name": "Bob Nystrom",
+          "about": "Programming language developer, ex-game developer, UI nerd, author of \"Game Programming Patterns\" and \"Crafting Interpreters\"."
+        },
+        {
+          "login": "obscuren",
+          "name": "Jeffrey Wilcke",
+          "about": "Video Game Developer, CEO & Founder of @Grid-Games and @ethereum & Gopher"
+        },
+        {
+          "login": "Calinou",
+          "name": "Hugo Locurcio",
+          "about": "Developer for @godotengine. Hobby open source game developer and modder. Avatar by Freyana"
+        },
+        {
+          "login": "CookiePLMonster",
+          "name": "Silent",
+          "about": "Game developer, modder, reverse engineer, legacy code specialist. I port games for a living and patch them as a hobby."
+        },
+        {
+          "login": "TimOliver",
+          "name": "Tim Oliver",
+          "about": "Gamer. Developer. Geek. iOS Software Engineer at @Third-Intelligence. Lover of writing OSS code and singer of bad karaoke. 日本語もオッケ〜"
+        },
+        { "login": "verekia", "name": "Verekia", "about": "Web Game Developer, prev. @yelp" },
+        { "login": "Earthcomputer", "name": "Joseph Burton", "about": "Game developer and Minecraft modder" },
+        {
+          "login": "redblobgames",
+          "name": "Amit Patel",
+          "about": "I make interactive visual explanations of math and algorithms, using motivating examples from computer games. I work both with educators and game developers."
+        },
+        {
+          "login": "gafferongames",
+          "name": "Glenn Fiedler",
+          "about": "Founder of Network Next, Más Bandwidth and Robot Game Developer Collective."
+        },
+        {
+          "login": "KilledByAPixel",
+          "name": "Frank Force",
+          "about": "Game developer and generative artist. Creator of LittleJS and ZzFX. Friend to cats."
+        },
+        {
+          "login": "flexiondotorg",
+          "name": "Martin Wimpress",
+          "about": "Long-time #Linux user, developer, and community builder 🐧 Flake wrangler ️❄️ Maker 🪛 Aspiring game developer ️🕹️ Linux Matters podcast presenter ️🎙️"
+        },
+        {
+          "login": "bjorn",
+          "name": "Thorbjørn Lindeijer",
+          "about": "Professional game developer and maintainer of the Tiled map editor."
+        }
+      ]
+    },
+    {
+      "id": "graphics",
+      "title": "Graphics",
+      "blurb": "People whose GitHub bio says “computer graphics”, most followed first.",
+      "people": [
+        {
+          "login": "Tom94",
+          "name": "Thomas Müller",
+          "about": "Independent researcher. Ex-principal at NVIDIA. Passionate about AI, video games, computer graphics, OSS, etc."
+        },
+        {
+          "login": "stenzek",
+          "name": "Connor McLaughlin",
+          "about": "Likes computer graphics, software security, reverse engineering, ML, HPC."
+        },
+        {
+          "login": "nmwsharp",
+          "name": "Nicholas Sharp",
+          "about": "3D geometry researcher: computer graphics/vision, geometry processing, and 3D machine learning"
+        },
+        {
+          "login": "disjukr",
+          "name": "JongChan Choi (Rieul)",
+          "about": "web, computer graphics, programming languages."
+        },
+        {
+          "login": "davepagurek",
+          "name": "Dave Pagurek",
+          "about": "Artist and computer graphics programmer. I help maintain p5.js and its WebGL mode."
+        },
+        { "login": "TheNumbat", "name": "Max Slater", "about": "Computer Graphics, Programming, Math, OxCaml, C++" },
+        {
+          "login": "owenlamont",
+          "name": "Owen Lamont",
+          "about": "I'm a software engineer with interests in data visualisation, machine learning, computer graphics, Python, and Rust"
+        },
+        {
+          "login": "bhouston",
+          "name": "Ben Houston",
+          "about": "Coding computer graphics since 1990. 4x Entrepreneur (Threekit, Clara.io, Exocortex, Frantic Films Software)"
+        },
+        {
+          "login": "arodic",
+          "name": "Aki Rodić",
+          "about": "Computer graphics and creative technology. Software Engineer. Previously at Adobe, EA Games, Lucasfilm, Pixar, Google."
+        },
+        {
+          "login": "cansik",
+          "name": "Florian Bruggisser",
+          "about": "Software developer with interests in computer graphics, generative art and realtime visual performance."
+        },
+        {
+          "login": "oprogramadorreal",
+          "name": "O Programador",
+          "about": "Full-stack developer exploring AI, computer graphics, physics simulation, game development, and sharing what I learn on YouTube."
+        },
+        {
+          "login": "juniorxsound",
+          "name": "Or Fleisher",
+          "about": "An engineer building computer graphics / computational photography / ML experiences and tools 💻 Former @Nike-Inc @nytimes @vimeo @Volume-GL @ITPNY"
+        }
+      ]
+    },
+    {
+      "id": "compilers",
+      "title": "Compilers",
+      "blurb": "People whose GitHub bio says “compiler”, most followed first.",
+      "people": [
+        {
+          "login": "poteto",
+          "name": "lauren",
+          "about": "▼・ᴥ・▼ Software Engineer @xai-org & @react compiler core team"
+        },
+        {
+          "login": "BaseMax",
+          "name": "Seyyed Ali Mohammadiyeh (Max Base)",
+          "about": "Open Source Maintainer. Full-Time Open-Sourcerer. Full-stack programmer. In the path of a real computer engineer... (Compiler enthusiast)"
+        },
+        {
+          "login": "mattgodbolt",
+          "name": "Matt Godbolt",
+          "about": "Compiler Explorer and jsbeeb creator, ex-Google, ex-games, now trading chap."
+        },
+        {
+          "login": "maximecb",
+          "name": "Maxime Chevalier-Boisvert",
+          "about": "PhD in compiler design. Also having fun with graphics, machine learning, electronics, music and DIY. All opinions are my own."
+        },
+        {
+          "login": "modocache",
+          "name": "Brian Gesiak",
+          "about": "Programming language and compiler engineer. Contributor to LLVM, Clang, Swift, and the Mojo and Move programming languages."
+        },
+        { "login": "Naville", "name": "Zhang", "about": "SMT / SAT, Math, Compiler & Kernel Infrastructure." },
+        {
+          "login": "sandersn",
+          "name": "Nathan Shively-Sanders",
+          "about": "I work on the TypeScript compiler, mostly JS support and AI."
+        },
+        { "login": "alxhub", "name": "Alex Rickabaugh", "about": "Angular Framework/Compiler" },
+        {
+          "login": "Kobzol",
+          "name": "Jakub Beránek",
+          "about": "Member of the Rust Leadership Council and the Rust Compiler and Infrastructure teams. I work as an open-source contributor as a Sovereign Tech Fellow."
+        },
+        { "login": "mattleibow", "name": "Matthew Leibowitz", "about": "Home is where the [.NET] compiler is..." },
+        {
+          "login": "sam-astro",
+          "name": null,
+          "about": "20-yo developer from the US. Experience with C#, C++, C, Python, compiler design, neural networks, hardware design, electrical engineering"
+        },
+        {
+          "login": "mratsim",
+          "name": "Mamy Ratsimbazafy",
+          "about": "I don't usually reach for macro code but when I do, I implement a GPU compiler and a CPU threadpool in macros. 🤠"
+        }
+      ]
+    },
+    {
+      "id": "robotics",
+      "title": "Robotics",
+      "blurb": "People whose GitHub bio says “robotics”, most followed first.",
+      "people": [
+        {
+          "login": "utilForever",
+          "name": "Chris Ohk",
+          "about": "@DIDEN-Robotics Technical Lead, @microsoft MVP, @CppKorea Founder, @reinforcement-learning-kr Administrator"
+        },
+        { "login": "petercorke", "name": "Peter Corke", "about": "Robotics research and education." },
+        {
+          "login": "praeclarum",
+          "name": "Frank A. Krueger",
+          "about": "I am a mobile app developer specializing in iOS and .NET programming. I am into graphics, AI, robotics, and programming languages."
+        },
+        { "login": "ZhuLinsen", "name": "zhulinsen", "about": "LLM | AIGC | Robotics" },
+        {
+          "login": "mithi",
+          "name": "Mithi Sevilla",
+          "about": "Product-focused software engineer. Japanese Language Beginner and Former Robotics Teacher."
+        },
+        {
+          "login": "facontidavide",
+          "name": "Davide Faconti",
+          "about": "C++ enthusiast, passionate about Robotics. Optimizing code for fun and profit."
+        },
+        { "login": "YanjieZe", "name": "Yanjie Ze", "about": "Robotics" },
+        {
+          "login": "terryum",
+          "name": "Terry Taewoong Um",
+          "about": "From lab to life. I'm an AI & robotics researcher, entrepreneur, and writer. I build Physical AI for the beauty industry."
+        },
+        {
+          "login": "araffin",
+          "name": "Antonin RAFFIN",
+          "about": "Research Engineer in Robotics and Machine Learning, with a focus on Reinforcement Learning."
+        },
+        {
+          "login": "benmccann",
+          "name": "Ben McCann",
+          "about": "Co-Founder at Zenos - AI and robotics. Previously Co-Founder of Connectifier - an AI company acquired by LinkedIn. One of the creators of SvelteKit."
+        },
+        {
+          "login": "gisbi-kim",
+          "name": "Giseop Kim",
+          "about": "Assistant Professor of Robotics and Mechatronics Engineering, DGIST"
+        },
+        { "login": "sea-bass", "name": "Sebastian Castro", "about": "Robotics software engineer impostor." }
+      ]
+    },
+    {
+      "id": "most-starred",
+      "title": "Most-starred repos",
+      "blurb": "The people who own the most-starred repos on GitHub.",
+      "people": [
+        {
+          "login": "sindresorhus",
+          "name": "Sindre Sorhus",
+          "about": "😎 Awesome lists about all kinds of interesting topics [NOTE: Pull requests are temporarily disabled until I have a chance to catch up with the existing ones]",
+          "repo": { "name": "awesome", "stars": 539389 }
+        },
+        {
+          "login": "morluto",
+          "name": "morluto",
+          "about": "Reverse engineer anything with agents, from app behavior down to native binaries.",
+          "repo": { "name": "rea", "stars": 469618 }
+        },
+        {
+          "login": "nilbuild",
+          "name": "Kamran Ahmed",
+          "about": "Interactive roadmaps, guides and other educational content to help developers grow in their careers.",
+          "repo": { "name": "developer-roadmap", "stars": 372381 }
+        },
+        {
+          "login": "vinta",
+          "name": "Vinta Chen",
+          "about": "The definitive list that answers \"I want to do X in Python, which tool should I use?\"",
+          "repo": { "name": "awesome-python", "stars": 335833 }
+        },
+        {
+          "login": "mattpocock",
+          "name": "Matt Pocock",
+          "about": "Skills for Real Engineers. Straight from my .agents directory.",
+          "repo": { "name": "skills", "stars": 327987 }
+        },
+        {
+          "login": "obra",
+          "name": "Jesse Vincent",
+          "about": "An agentic skills framework & software development methodology that works.",
+          "repo": { "name": "superpowers", "stars": 321865 }
+        },
+        {
+          "login": "affaan-m",
+          "name": "Affaan Mustafa",
+          "about": "The agent harness performance optimization system. Skills, instincts, memory, security, and research-first development for Claude Code, Codex, Opencode,…",
+          "repo": { "name": "ECC", "stars": 307101 }
+        },
+        {
+          "login": "torvalds",
+          "name": "Linus Torvalds",
+          "about": "Linux kernel source tree",
+          "repo": { "name": "linux", "stars": 256070 }
+        },
+        {
+          "login": "trekhleb",
+          "name": "Oleksii Trekhleb",
+          "about": "📝 Algorithms and data structures implemented in JavaScript with explanations and links to further readings",
+          "repo": { "name": "javascript-algorithms", "stars": 196751 }
+        },
+        {
+          "login": "avelino",
+          "name": "Avelino",
+          "about": "A curated list of awesome Go frameworks, libraries and software",
+          "repo": { "name": "awesome-go", "stars": 194786 }
+        },
+        {
+          "login": "DietrichGebert",
+          "name": null,
+          "about": "Makes your AI agent think like the laziest senior dev in the room. The best code is the code you never wrote.",
+          "repo": { "name": "ponytail", "stars": 194708 }
+        },
+        {
+          "login": "CyC2018",
+          "name": null,
+          "about": ":books: 技术面试必备基础知识、Leetcode、计算机操作系统、计算机网络、系统设计",
+          "repo": { "name": "CS-Notes", "stars": 186549 }
+        }
+      ]
+    },
+    {
+      "id": "new",
+      "title": "New and popular",
+      "blurb": "The people behind the most-starred repos made since 20 Oct 2026.",
+      "people": [
+        {
+          "login": "ccch1mneyyy",
+          "name": "Chimney",
+          "about": "dsh-go — DeepSeek Harness 装进口袋：手机本机运行，也能遥控你的电脑。",
+          "repo": { "name": "dsh-Go", "stars": 28095 }
+        },
+        {
+          "login": "heydamir",
+          "name": "Damir Sokolovsky",
+          "about": "A Claude skill that turns vibecoded, AI-looking UI into a designed interface",
+          "repo": { "name": "unslop", "stars": 18584 }
+        },
+        {
+          "login": "anefzaoui",
+          "name": "Ahmed Nefzaoui",
+          "about": "misterdownloadmanager: The ultimate open-source, clean-room download manager written from scratch in pure Rust for Windows, Mac, and Linux",
+          "repo": { "name": "misterdownloadmanager", "stars": 13644 }
+        },
+        {
+          "login": "libracoder",
+          "name": "Precious Okwu",
+          "about": "A small, fast container runtime for macOS, Windows and Linux with free Ngrok alternative",
+          "repo": { "name": "kiri", "stars": 11157 }
+        },
+        {
+          "login": "JuneYaooo",
+          "name": null,
+          "about": "Reverse-engineer any video, shot by shot: filmed, AI-generated or coded, and how to remake it. Breakdowns in the open VIDEO.md format. 逆向一切视频，逐个镜头看是拍的、AI…",
+          "repo": { "name": "rea-video", "stars": 10973 }
+        },
+        {
+          "login": "zortos293",
+          "name": "Zortos",
+          "about": "VERY experimental Nintendo Switch 2 emulator",
+          "repo": { "name": "Lichii", "stars": 9814 }
+        },
+        {
+          "login": "l0ng-ai",
+          "name": null,
+          "about": "The IDE you know, rebuilt in Rust. IntelliJ IDEA–style keymap, tool windows and search-everywhere in a fast native app: editor, code insight, debugger, Git,…",
+          "repo": { "name": "openidea", "stars": 9495 }
+        },
+        {
+          "login": "wangzan101",
+          "name": "WangZan",
+          "about": "An on-device AI agent for Android that operates apps and the web to get things done for you.",
+          "repo": { "name": "Mika", "stars": 9163 }
+        },
+        { "login": "unclebob", "name": "Robert C. Martin", "about": "", "repo": { "name": "ub-mode", "stars": 8222 } },
+        {
+          "login": "valentderah",
+          "name": "Valiantsin Dzerakh",
+          "about": "Static recompilation of The Legend of Zelda: Tears of the Kingdom to native Windows and Linux x86-64, with a Vulkan renderer. Game files not included.",
+          "repo": { "name": "totk-pc-recomp", "stars": 7734 }
+        },
+        {
+          "login": "anhao",
+          "name": "Alone88",
+          "about": "中文版 AI 姿势参考图库 · 1439 组 / 2878 张图片 / 完整汉化 · 零依赖静态画廊",
+          "repo": { "name": "ai-pose-gallery-zh", "stars": 7341 }
+        },
+        {
+          "login": "Lee-xeo",
+          "name": "Shihao Li",
+          "about": "Cage：为 Claude 特化的轻量化虚拟机，彻底杜绝网络泄露。多平台适配，支持多账号管理、远程部署、移动端操控。",
+          "repo": { "name": "Claude-Cage", "stars": 6851 }
+        }
+      ]
+    }
+  ]
+}

@@ -41,6 +41,14 @@ A city lives at `/<username>`, so the address is the share link. The site root s
 
 A link pasted into Slack, LinkedIn and the like previews with a card of that user's history as a skyline. The site's one page is the same file for every username and can't carry a card of its own, so `vercel.json` sends the programs that fetch previews, picked out by their user agent, to a small page that names the card. People and search engines get the city.
 
+### Explore
+
+Explore, beside the username box, lists other cities to fly, for a visitor with no username in mind. Most of the lists are fields, such as statistics, security or games. A field's list holds up to twelve people whose GitHub bio names it, most followed first, each with 200 followers or more. Two more lists come from repos, as they stood when the lists were made: the people who own the most-starred repos on GitHub, and the people behind the most-starred repos made in the thirty days before. An organisation has no contribution calendar, so a repo counts only if a person owns it. To be listed, an account also needs at least 365 contributions in the year before, so its city has something in it. Random city picks one of them, and never the city already on screen.
+
+A city picked there opens with its owner's name and bio. The panel's other half, This city, says more about any city's owner: the bio, the follower count, the languages most of their repos are in, and the repos they pinned, or their most-starred if they pinned none, each linked to GitHub.
+
+The lists are a file, `public/explore.json`, which `npm run explore` writes from GitHub's search, so opening the panel costs GitHub nothing. They are a snapshot, and the panel gives its date. GitHub's API has no list of trending repos, so the list of new repos is the nearest it gives. Explore also works when a username isn't found, where there is no city to show.
+
 ### Badges
 
 Illustrated medallions float over the days a user hit a milestone: joining GitHub, a first pull request, a thousandth contribution, a longest streak, a busiest day. In Pilot, gold markers show the badges still standing, with their distance. Up to four of the nearest out of view are pinned to the edge of the screen with their artwork, pointing the way. Or open the Badges list and pick one to jump there, and the ship waits in front of it while you line up the shot.
@@ -71,7 +79,7 @@ During December a button offers a flight through the current year, with captions
 
 ## Data and privacy
 
-The page shows what a user's public GitHub profile already shows. Private contributions appear as anonymous counts only if that user has turned them on in their profile settings. Responses are cached on the CDN for six hours, and the site has no database, accounts or cookies. [Vercel Web Analytics](https://vercel.com/docs/analytics/privacy-policy) counts page views without cookies, recording the page, the referrer, a rough location, and the device and browser, with nothing that identifies a visitor. Only production builds load it. Earned badges and settings, including whether sound and music are on, stay in the visitor's own browser. Fonts load from Google Fonts.
+The page shows what a user's public GitHub profile already shows, including the bio and repos in Explore. Private contributions appear as anonymous counts only if that user has turned them on in their profile settings. Responses are cached on the CDN for six hours, and the site has no database, accounts or cookies. [Vercel Web Analytics](https://vercel.com/docs/analytics/privacy-policy) counts page views without cookies, recording the page, the referrer, a rough location, and the device and browser, with nothing that identifies a visitor. Only production builds load it. Earned badges and settings, including whether sound and music are on, stay in the visitor's own browser. Fonts load from Google Fonts.
 
 Tower height is the square root of the day's contributions, measured against a busy day for that user: 99 in 100 of their active days have no more. The few days above that stand a little taller, by up to a third, so one enormous day doesn't leave every other tower a stub. The busiest day is still the tallest tower. With fewer than 50 active days, heights are measured against the busiest. The towers' colours and the music's notes follow the same measure.
 
@@ -87,20 +95,22 @@ npm run dev
 
 `GITHUB_TOKEN` is a [personal access token (classic)](https://github.com/settings/tokens) with no scopes ticked. GitHub's GraphQL API needs a token even for public data, so it lives on the server. `npm run dev` runs the API inside the Vite dev server, with no Vercel login needed.
 
-| Command            | Does                                                                                                      |
-| ------------------ | --------------------------------------------------------------------------------------------------------- |
-| `npm test`         | API, route, ride, badge, year, zoom, colour, show, sound, music, aiming, collision, sight and clock tests |
-| `npm run test:e2e` | Browser tests with a stubbed API, under the production CSP                                                |
-| `npm run lint`     | ESLint                                                                                                    |
-| `npm run build`    | Typecheck, then build to `dist`                                                                           |
+| Command            | Does                                                                                                               |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `npm test`         | API, route, ride, badge, year, zoom, colour, show, sound, music, aiming, collision, sight, clock and Explore tests |
+| `npm run test:e2e` | Browser tests with a stubbed API, under the production CSP                                                         |
+| `npm run lint`     | ESLint                                                                                                             |
+| `npm run build`    | Typecheck, then build to `dist`                                                                                    |
+| `npm run explore`  | Rewrites `public/explore.json` from GitHub's search. Needs `GITHUB_TOKEN`, from the environment or `.env.local`    |
 
 `npx playwright install chromium` fetches the browser for the end-to-end tests.
 
 ## How it's built
 
-- `api/contributions/[login].ts` is a Vercel Function that validates the login and sets cache headers. `api/_lib/github.ts` talks to GitHub.
+- `api/contributions/[login].ts` is a Vercel Function that validates the login and sets cache headers. `api/_lib/github.ts` talks to GitHub, and reads the user's profile in the same request as their account.
 - `api/card/[login].ts` draws the card a shared link previews with, and `api/share/[login].ts` is the page a preview fetcher reads. `api/_lib/card.ts` lays the card out, and `api/_lib/png.ts` and `api/_lib/letters.ts` draw it as rectangles and block capitals with Node's own zlib, so it needs no image library.
 - `shared/contract.ts` holds the API's schema, used on both sides.
+- `scripts/catalogue.ts` builds Explore's lists from GitHub's search and `scripts/explore.ts` writes them to `public/explore.json`. `scripts/run.ts` loads them through Vite, so there is no build step. `shared/explore.ts` holds the file's schema and the random pick, and `src/explorer.ts` is the panel.
 - `src/main.ts` loads a city. A browser without WebGL 2 gets the Guide as the page instead, and the API isn't called.
 - `src/calendar.ts`, `src/map.ts` and `src/routes.ts` hold the data, the city grid and the flight paths. `src/milestones.ts` and `src/review.ts` work out the badges and the year story, `src/run.ts` keeps the clock on a timed clear, and `src/colours.ts`, `src/zoom.ts`, `src/steering.ts` and `src/quality.ts` hold the colour palettes, the zoom steps, the key response and the frame average that lowers quality on a slow GPU. `src/aim.ts` picks the badge to lock on to and curves a bolt towards it, `src/lights.ts` chooses which flashes light the towers each frame, and `src/markers.ts` places the markers and chooses which to show. `src/collision.ts` pushes the ship back out of a tower it has hit, and `src/sight.ts` holds the lines of sight: the tower being aimed at, whether one hides a badge, how far back the chase camera can sit, and the height to come at a badge from. None of them need WebGL, which is what makes them testable.
 - `src/world.ts`, `src/fighter.ts`, `src/badges.ts`, `src/blast.ts`, `src/fireworks.ts` and `src/app.ts` are the three.js scene, the ship and its guns, the floating badges, their explosions, the show for a cleared city and the flight modes. `src/environment.ts` renders what the ship's metal and glass reflect, and `src/trails.ts` draws the vapour off its wingtips.
@@ -109,7 +119,7 @@ npm run dev
 
 ## GitHub's limits
 
-GitHub allows a token 5,000 GraphQL points an hour. A username not in the cache costs 1 point, plus 1 for every three years of history, so a typical user costs 4 to 8 points. That covers roughly 600 to 1,200 new usernames an hour, and repeat visits cost nothing. A history starts at the earliest year GitHub lists for the user, which can be before the account was made, and goes back no more than 30 years, so the most a username can cost is 11 points. A card the CDN doesn't hold costs the same as a visit and is cached as long. Past that, visitors see a message asking them to try again. Requests covering all of a long history at once fail on GitHub's side, so the API fetches three years at a time.
+GitHub allows a token 5,000 GraphQL points an hour. A username not in the cache costs 1 point, plus 1 for every three years of history, so a typical user costs 4 to 8 points. That covers roughly 600 to 1,200 new usernames an hour, and repeat visits cost nothing. A history starts at the earliest year GitHub lists for the user, which can be before the account was made, and goes back no more than 30 years, so the most a username can cost is 11 points. The profile comes in the account's request, for the same point. If GitHub refuses that request, the account is asked for again without the profile, which costs one more. A card the CDN doesn't hold costs the same as a visit and is cached as long. Past that, visitors see a message asking them to try again. Requests covering all of a long history at once fail on GitHub's side, so the API fetches three years at a time.
 
 ## Deploying
 

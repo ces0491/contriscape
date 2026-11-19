@@ -70,6 +70,52 @@ async function stubApi(page: Page, reply: { status?: number; body: unknown; head
   );
 }
 
+/** What Explore offers in these tests: two people, one of them in both lists. */
+const CATALOGUE = {
+  generated: '2026-11-02',
+  groups: [
+    {
+      id: 'statistics',
+      title: 'Statistics',
+      blurb: 'People whose GitHub bio says “statistician”, most followed first.',
+      people: [
+        { login: 'octo-dev', name: 'Octo Dev', about: 'Statistician' },
+        { login: 'ada-l', name: 'Ada L', about: 'Statistician. Writes R.' },
+      ],
+    },
+    {
+      id: 'most-starred',
+      title: 'Most-starred repos',
+      blurb: 'The people who own the most-starred repos on GitHub.',
+      people: [{ login: 'ada-l', name: 'Ada L', about: 'An engine', repo: { name: 'engine', stars: 250000 } }],
+    },
+  ],
+};
+
+const profiled = (login: string): Contributions => ({
+  ...busy(login),
+  name: 'Ada L',
+  profile: {
+    bio: 'Statistician. Writes R.',
+    followers: 1486,
+    languages: ['R', 'C'],
+    repos: [
+      { owner: login, name: 'engine', description: 'An engine', stars: 250000, language: 'C' },
+      { owner: 'someone-else', name: 'charts', description: null, stars: 1, language: null },
+    ],
+    pinned: true,
+  },
+});
+
+/** Serves the lists, and a city for whichever username is asked for. Only `ada-l` has a profile. */
+async function stubExplore(page: Page) {
+  await page.route('**/explore.json', (route) => route.fulfill({ json: CATALOGUE }));
+  await page.route('**/api/contributions/*', (route) => {
+    const login = new URL(route.request().url()).pathname.split('/').pop() ?? '';
+    return route.fulfill({ json: login === 'ada-l' ? profiled(login) : busy(login) });
+  });
+}
+
 const cityReady = (page: Page) => expect(page.locator('body')).not.toHaveClass(/empty/, { timeout: 20_000 });
 
 const shipLive = (page: Page) =>
@@ -154,7 +200,9 @@ test('the front page says its city is an example, then gives the controls', asyn
   await page.goto('/');
   await cityReady(page);
   const hint = page.locator('#hint');
-  await expect(hint).toHaveText('Example city: torvalds. Enter any GitHub username to fly another.');
+  await expect(hint).toHaveText(
+    'Example city: torvalds. Enter a GitHub username to fly another, or find one in Explore.',
+  );
   await expect(hint).toHaveText(/zoom/, { timeout: 60_000 });
 });
 
@@ -268,6 +316,109 @@ for (const [name, status, error, message] of [
     await expect(page.locator('.deck')).toBeHidden();
   });
 }
+
+test('Explore lists other cities, and one picked there opens saying whose it is', async ({ page }) => {
+  const faults = watchForFaults(page);
+  await stubExplore(page);
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#explore');
+  await expect(page.locator('#explorePanel')).toBeVisible();
+  await expect(page.locator('#exploreGroups button')).toHaveText(['Statistics', 'Most-starred repos']);
+  await expect(page.locator('#exploreNote')).toContainText('2 Nov 2026');
+  await expect(page.locator('#about')).toBeHidden();
+  await expect(page.locator('#explorePeople a[aria-current]')).toContainText('Octo Dev');
+
+  await page.locator('#exploreGroups button', { hasText: 'Most-starred' }).click();
+  await expect(page.locator('#explorePeople a')).toHaveCount(1);
+  await expect(page.locator('#explorePeople a')).toContainText('engine, 250,000 stars. An engine');
+  await page.locator('#explorePeople a').click();
+  await expect(page).toHaveURL(/\/ada-l$/);
+  await cityReady(page);
+
+  const arrival = page.locator('#arrival');
+  await expect(arrival).toBeVisible();
+  await expect(page.locator('#arrivalFrom')).toHaveText('Most-starred repos');
+  await expect(page.locator('#arrivalName')).toHaveText('Ada L');
+  await expect(page.locator('#arrivalBio')).toHaveText('Statistician. Writes R.');
+
+  await page.click('#arrivalMore');
+  await expect(arrival).toBeHidden();
+  await expect(page.locator('#about')).toBeVisible();
+  await expect(page.locator('#others')).toBeHidden();
+  await expect(page.locator('#aboutFacts')).toHaveText('1,486 followers. Repos mostly in R and C.');
+  await expect(page.locator('#aboutReposTitle')).toHaveText('Pinned');
+  const repos = page.locator('#aboutRepos a');
+  await expect(repos).toHaveText(['engine', 'someone-else/charts']);
+  await expect(repos.first()).toHaveAttribute('href', 'https://github.com/ada-l/engine');
+  await expect(repos.first()).toHaveAttribute('target', '_blank');
+  await expect(repos.first()).toHaveAttribute('rel', 'noopener noreferrer');
+
+  // The Explore button is for finding somewhere else, so it comes back on the lists
+  await page.click('#explore');
+  await expect(page.locator('#explorePanel')).toBeHidden();
+  await page.click('#explore');
+  await expect(page.locator('#others')).toBeVisible();
+  await expect(page.locator('#about')).toBeHidden();
+  expect(faults).toEqual([]);
+});
+
+test('Random city flies somewhere other than here, and the introduction goes when the visitor takes over', async ({
+  page,
+}) => {
+  await stubExplore(page);
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#explore');
+  await page.click('#random');
+  await expect(page).toHaveURL(/\/ada-l$/);
+  await cityReady(page);
+  await expect(page.locator('#arrivalFrom')).toHaveText('Statistics');
+  await page.click('#m-pilot');
+  await expect(page.locator('#arrival')).toBeHidden();
+});
+
+test('with no city to show, Explore still offers the lists, on the narrowest phone', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 320, height: 640 }, hasTouch: true, isMobile: true });
+  const page = await context.newPage();
+  await stubApi(page, { status: 404, body: { error: 'not-found' } });
+  let down = true;
+  await page.route('**/explore.json', (route) =>
+    down ? route.fulfill({ status: 500, body: '' }) : route.fulfill({ json: CATALOGUE }),
+  );
+  await page.goto('/nobody-here');
+  const status = page.locator('#status');
+  await expect(status).toContainText('No GitHub user');
+  const button = await page.locator('#explore').boundingBox();
+  expect((button?.x ?? 0) + (button?.width ?? 0)).toBeLessThanOrEqual(320);
+
+  await page.tap('#explore');
+  const panel = page.locator('#explorePanel');
+  await expect(panel).toBeVisible();
+  await expect(page.locator('#exploreNote')).toContainText("didn't load");
+  // The panel would sit across the message, and there is no city to switch to
+  await expect(status).toBeHidden();
+  await expect(page.locator('#exploreViews')).toBeHidden();
+
+  down = false;
+  await panel.locator('.panel-close').tap();
+  await expect(panel).toBeHidden();
+  await expect(status).toBeVisible();
+  await page.tap('#explore');
+  await expect(page.locator('#explorePeople a')).toHaveCount(2);
+  const box = await panel.boundingBox();
+  expect(box?.x).toBeGreaterThanOrEqual(0);
+  expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(320);
+  const { scroll, client } = await page.evaluate(() => ({
+    scroll: document.documentElement.scrollWidth,
+    client: document.documentElement.clientWidth,
+  }));
+  expect(scroll).toBeLessThanOrEqual(client);
+
+  await page.locator('#explorePeople a').nth(1).tap();
+  await expect(page).toHaveURL(/\/ada-l$/);
+  await context.close();
+});
 
 test('flies an account with no contributions', async ({ page }) => {
   const faults = watchForFaults(page);
@@ -1385,6 +1536,7 @@ test('each panel closes from its own button', async ({ page }) => {
   await page.goto('/octo-dev');
   await cityReady(page);
   for (const [button, panel] of [
+    ['#explore', '#explorePanel'],
     ['#badges', '#badgePanel'],
     ['#year', '#yearPanel'],
     ['#settings', '#settingsPanel'],

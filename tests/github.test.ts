@@ -9,11 +9,37 @@ const calendar = (entries: [string, number][]) => ({
   contributionCalendar: { weeks: [{ contributionDays: days(entries) }] },
 });
 const ok = (data: unknown) => new Response(JSON.stringify({ data }), { status: 200 });
-/** GitHub's reply about the account: when it was made, and the years it lists contributions in. */
-const account = (login: string, created: string, listed: number[] = [], name: string | null = null) =>
+const NO_PROFILE = { bio: null, followers: { totalCount: 0 }, pinnedItems: { nodes: [] }, repositories: { nodes: [] } };
+/** GitHub's reply about the account: when it was made, the years it lists contributions in, and its profile. */
+const account = (
+  login: string,
+  created: string,
+  listed: number[] = [],
+  name: string | null = null,
+  profile: object = NO_PROFILE,
+) =>
   ok({
-    user: { login, name, createdAt: `${created}T00:00:00Z`, contributionsCollection: { contributionYears: listed } },
+    user: {
+      login,
+      name,
+      createdAt: `${created}T00:00:00Z`,
+      contributionsCollection: { contributionYears: listed },
+      ...profile,
+    },
   });
+const repo = (
+  owner: string,
+  name: string,
+  stars: number,
+  language: string | null,
+  description: string | null = null,
+) => ({
+  name,
+  owner: { login: owner },
+  description,
+  stargazerCount: stars,
+  primaryLanguage: language ? { name: language } : null,
+});
 
 interface Sent {
   query: string;
@@ -159,6 +185,86 @@ describe('fetchContributions', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('reads the profile in the same request as the account', async () => {
+    const profile = {
+      bio: '  Statistician.\r\nWrites R packages. ',
+      followers: { totalCount: 1486 },
+      pinnedItems: {
+        nodes: [
+          repo('stats', 'qtl', 90, 'R', 'QTL mapping\n in R'),
+          {},
+          repo('someone-else', 'charts', 87, 'CoffeeScript'),
+        ],
+      },
+      repositories: {
+        nodes: [repo('stats', 'slides', 363, null), repo('stats', 'qtl', 90, 'R'), repo('stats', 'broman', 183, 'R')],
+      },
+    };
+    fetchMock.mockResolvedValueOnce(account('stats', '2026-01-01', [2026], 'A Statistician', profile));
+    fetchMock.mockResolvedValueOnce(ok({ user: { y2026: calendar([]) } }));
+    const result = await fetchContributions('stats', 'token', NOW);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(sent(fetchMock.mock.calls[0]).query).toContain('pinnedItems');
+    expect(result.profile).toEqual({
+      bio: 'Statistician. Writes R packages.',
+      followers: 1486,
+      // qtl is pinned and among the most-starred, and counts once
+      languages: ['R', 'CoffeeScript'],
+      // The pin GitHub sent nothing for is dropped, and the rest are kept in the user's order
+      repos: [
+        { owner: 'stats', name: 'qtl', description: 'QTL mapping in R', stars: 90, language: 'R' },
+        { owner: 'someone-else', name: 'charts', description: null, stars: 87, language: 'CoffeeScript' },
+      ],
+      pinned: true,
+    });
+  });
+
+  it('shows the most-starred repos of a user who pinned none', async () => {
+    const starred = Array.from({ length: 8 }, (_, i) => repo('plain', `repo-${i}`, 100 - i, i < 5 ? 'Go' : 'C'));
+    const profile = { ...NO_PROFILE, repositories: { nodes: starred } };
+    fetchMock.mockResolvedValueOnce(account('plain', '2026-01-01', [2026], null, profile));
+    fetchMock.mockResolvedValueOnce(ok({ user: { y2026: calendar([]) } }));
+    const { profile: read } = await fetchContributions('plain', 'token', NOW);
+
+    expect(read?.pinned).toBe(false);
+    expect(read?.repos.map((r) => r.name)).toEqual(['repo-0', 'repo-1', 'repo-2', 'repo-3', 'repo-4', 'repo-5']);
+    expect(read?.languages).toEqual(['Go', 'C']);
+    expect(read?.bio).toBeNull();
+  });
+
+  it('loads the city without a profile when the profile is what GitHub refuses', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: null, errors: [{ message: 'Something went wrong' }] })),
+    );
+    fetchMock.mockResolvedValueOnce(
+      ok({
+        user: {
+          login: 'heavy',
+          name: null,
+          createdAt: '2026-01-01T00:00:00Z',
+          contributionsCollection: { contributionYears: [2026] },
+        },
+      }),
+    );
+    fetchMock.mockResolvedValueOnce(ok({ user: { y2026: calendar([['2026-01-02', 4]]) } }));
+    const result = await fetchContributions('heavy', 'token', NOW);
+
+    expect(result.years['2026'][1]).toBe(4);
+    expect(result.profile).toBeUndefined();
+    expect(sent(fetchMock.mock.calls[1]).query).not.toContain('pinnedItems');
+  });
+
+  it('loads the city without a profile when the profile comes back in a shape it does not know', async () => {
+    fetchMock.mockResolvedValueOnce(account('odd', '2026-01-01', [2026], null, { bio: 7 }));
+    fetchMock.mockResolvedValueOnce(account('odd', '2026-01-01', [2026], null, {}));
+    fetchMock.mockResolvedValueOnce(ok({ user: { y2026: calendar([]) } }));
+    const result = await fetchContributions('odd', 'token', NOW);
+
+    expect(result.login).toBe('odd');
+    expect(result.profile).toBeUndefined();
+  });
+
   it('reports the wait when GitHub says the quota has run out', async () => {
     const reset = Math.floor(Date.now() / 1000) + 120;
     fetchMock.mockResolvedValueOnce(
@@ -255,10 +361,12 @@ describe('GET /api/contributions/:login', () => {
   });
 
   it('logs the kind of error when GitHub answers with one it has no message for', async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ data: null, errors: [{ type: 'SOMETHING_NEW', message: 'nope' }] })),
+    // Asked again without the profile, and refused again
+    fetchMock.mockImplementation(
+      async () => new Response(JSON.stringify({ data: null, errors: [{ type: 'SOMETHING_NEW', message: 'nope' }] })),
     );
     expect((await GET(request('oddity'))).status).toBe(502);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(console.error).toHaveBeenCalledWith(expect.stringContaining('SOMETHING_NEW'));
   });
 

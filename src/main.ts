@@ -2,6 +2,7 @@ import { inject } from '@vercel/analytics';
 import { contributionsSchema, LOGIN_PATTERN, type ApiError, type Contributions } from '../shared/contract';
 import { startApp } from './app';
 import { APP_NAME, DEFAULT_LOGIN } from './brand';
+import { Explorer } from './explorer';
 import './style.css';
 
 const MESSAGE_SECONDS = 5;
@@ -109,6 +110,8 @@ async function boot(): Promise<void> {
     showGuideInstead();
     return;
   }
+  // Before any city loads, so a visitor whose username isn't found still has somewhere to go
+  const explorer = new Explorer();
   const requested = location.pathname.replace(/^\/|\/$/g, '');
   const login = requested || DEFAULT_LOGIN;
 
@@ -125,7 +128,7 @@ async function boot(): Promise<void> {
   }
 
   try {
-    startApp(data, !requested);
+    startApp(data, !requested, explorer);
   } catch (error) {
     // The renderer asks for its own context, which can fail where the probe's didn't
     console.error(error);

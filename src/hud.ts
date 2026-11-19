@@ -207,6 +207,20 @@ export class Hud {
     if (text !== null && run.textContent !== text) run.textContent = text;
   }
 
+  /** Whose city this is and which list it was picked from, for a visitor arriving from Explore. */
+  showArrival(from: string, name: string, bio: string | null): void {
+    element('arrivalFrom').textContent = from;
+    element('arrivalName').textContent = name;
+    const line = element('arrivalBio');
+    line.textContent = bio ?? '';
+    line.hidden = !bio;
+    element('arrival').hidden = false;
+  }
+
+  hideArrival(): void {
+    element('arrival').hidden = true;
+  }
+
   showCaption(title: string, detail: string): void {
     const caption = element('caption');
     this.fill(caption, title, detail);
