@@ -10,6 +10,7 @@ import { APP_NAME } from './brand';
 import { BADGE_RADIUS, Badges } from './badges';
 import { Blast } from './blast';
 import { Calendar, describeCount, MONTHS } from './calendar';
+import { pushOut } from './collision';
 import { COLOUR_ROWS, DEFAULT_COLOURS, readColours, towerPalette, type Colours } from './colours';
 import { Environment } from './environment';
 import { buildFighter, Weapons } from './fighter';
@@ -17,12 +18,13 @@ import { FINALE_SECONDS, Fireworks } from './fireworks';
 import { Hud, type Scope } from './hud';
 import { Flashes } from './lights';
 import { CityMap, DEPTH, PLINTH, TOWER, WIDTH } from './map';
-import { Markers, placeMarker, type Insets, type Placed } from './markers';
+import { chooseMarkers, HomeMarker, Markers, placeMarker, type Insets, type Placed } from './markers';
 import { findMilestones, type Milestone } from './milestones';
 import { averageFrame, countedFrame, tooSlow } from './quality';
 import { reviewFacts, reviewTitle, reviewYear } from './review';
 import { buildRoute, lengthAtDay, newPose, poseAt, RISE, type Route } from './routes';
 import { FINISH_FRAGMENT, FINISH_VERTEX } from './shaders';
+import { approachHeight, blockedBetween, clearReach, towerAlong } from './sight';
 import { Sound, stereo } from './sound';
 import { keyTurn } from './steering';
 import { Trails } from './trails';
@@ -38,6 +40,9 @@ const CHASE_DISTANCE = 2.4;
 /** How far below the route ahead the autopilot looks, per unit of altitude, so the view tips down onto the roofs. */
 const LOOK_DOWN = 0.15;
 const MAX_LOOK_DOWN = 2;
+/** The autopilot's view leans where its route asks once the screen is this much wider than tall, and fully from here. */
+const LEAN_FROM = 0.75;
+const LEAN_FULL = 1.5;
 const INVERT_KEY = 'contriscape:invert-y';
 const MOUSE_KEY = 'contriscape:mouse-steer';
 const SOUND_KEY = 'contriscape:sound';
@@ -49,6 +54,12 @@ const WHOOSH_REACH = 1.9;
 const WHOOSH_AGAIN = 1;
 /** Pixels between markers, so they don't sit on one another. Markers in view are smaller and need half. */
 const MARKER_ROOM = 44;
+/** The way back is marked once the ship is this far outside the city with no badge left to lead it there. */
+const HOME_BEYOND = 40;
+/** The marker for the way back points at the nearest edge of the city, this far up its towers. */
+const HOME_HEIGHT = 6;
+/** How far the ship flies after a jump from the Badges list before a badge it shoots counts as one it flew to. */
+const FLOWN_AFTER = 120;
 /** Badges out of view that get a marker at the edge, nearest first. */
 const EDGE_MARKERS = 4;
 /** Pixels from the side of the view to a pinned marker's centre: half its artwork, its pointer, and a margin. */
@@ -56,6 +67,8 @@ const PINNED_SIDE = 50;
 const REVIEW_HASH = '#your-year';
 const CAPTION_SECONDS = 4;
 const BADGE_APPROACH = 10;
+/** How far ahead of the ship a tower can be read by aiming at it. */
+const AIM_RANGE = 95;
 const PARKED_SECONDS = 6;
 /** How long the ship stays put to watch a badge go up. */
 const BLAST_WATCH = 1.4;
@@ -100,8 +113,11 @@ function remember(key: string, on: boolean): void {
   }
 }
 
-/** Builds the city and starts the render loop. Throws if WebGL is unavailable. */
-export function startApp(data: Contributions): void {
+/**
+ * Builds the city and starts the render loop. Throws if WebGL is unavailable. `example` is for the city on the site's
+ * front page, which the visitor didn't ask for by name, so the first hint says what it is.
+ */
+export function startApp(data: Contributions, example = false): void {
   // Colours are authored for the display, and every shader writes them straight through
   THREE.ColorManagement.enabled = false;
 
@@ -157,6 +173,7 @@ export function startApp(data: Contributions): void {
     badges.milestones.map((_, i) => badges.picture(i)),
     badges.milestones.map((m) => m.name),
   );
+  const home = new HomeMarker(element('markers'));
 
   const composer = new EffectComposer(
     renderer,
@@ -227,6 +244,10 @@ export function startApp(data: Contributions): void {
   let lightsOn = true;
   /** The badge the targeting computer is locked on to, or -1. */
   let locked = -1;
+  /** How far the ship has flown since a jump from the Badges list. Far enough, and a badge it shoots was flown to. */
+  let sinceJump = Infinity;
+  /** Whether the next hint introduces the example city, before the controls. */
+  let introduce = example;
   let boostHeld = false;
   let boostPointer: number | null = null;
   let wasBoosting = false;
@@ -289,7 +310,6 @@ export function startApp(data: Contributions): void {
   const v1 = new THREE.Vector3();
   const v2 = new THREE.Vector3();
   const v3 = new THREE.Vector3();
-  const v4 = new THREE.Vector3();
   const q1 = new THREE.Quaternion();
   const q2 = new THREE.Quaternion();
   const m1 = new THREE.Matrix4();
@@ -311,32 +331,11 @@ export function startApp(data: Contributions): void {
     i <= play || i > shared.uMax.value ? map.top[i] : PLINTH + (map.top[i] - PLINTH) * 0.04;
   const chaseDistance = () => (zoom < COCKPIT_BELOW ? 0 : CHASE_DISTANCE * zoom * (1 + BOOST_PULL * surge));
 
-  const towerAt = (p: THREE.Vector3, roof = standing): number => {
-    const i = map.cellIndex(p.x, p.z);
-    const inside =
-      i >= 0 && counts[i] && Math.abs(p.x - map.cx[i]) < TOWER / 2 && Math.abs(p.z - map.cz[i]) < TOWER / 2;
-    return inside && p.y < roof(i) ? i : -1;
-  };
-
-  /** How far from a towards b is clear of towers, as a fraction of the way. */
-  function clearReach(a: THREE.Vector3, b: THREE.Vector3): number {
-    const steps = Math.min(16, Math.ceil(a.distanceTo(b) / 0.7));
-    let clear = 0;
-    for (let k = 1; k <= steps; k++) {
-      v4.lerpVectors(a, b, k / steps);
-      let blocked = false;
-      map.towersNear(v4.x, v4.z, 0.24, (i) => {
-        if (v4.y < standing(i) + 0.24) blocked = true;
-      });
-      if (blocked) break;
-      clear = k / steps;
-    }
-    return clear;
-  }
+  const towerAt = (p: THREE.Vector3): number => map.towerAt(p.x, p.y, p.z, standing);
 
   /** The chase position: eases in when a tower gets in the way and back out slowly, so the view never steps. */
   function chasePoint(ship: THREE.Vector3, wanted: THREE.Vector3, dt: number, out: THREE.Vector3): THREE.Vector3 {
-    const clear = clearReach(ship, wanted);
+    const clear = clearReach(map, standing, ship, wanted);
     reach = snap ? clear : reach + (clear - reach) * (1 - Math.exp(-(clear < reach ? 9 : 2.5) * dt));
     return out.lerpVectors(ship, wanted, reach);
   }
@@ -417,6 +416,10 @@ export function startApp(data: Contributions): void {
     } else {
       v1.copy(pt.p);
     }
+    // The view leans towards the city where the route asks, by as much as the screen has width for. Upright on a phone
+    // it has none, and the ship would be pushed out of the side of the view.
+    const lean = pt.lean * clamp((camera.aspect - LEAN_FROM) / (LEAN_FULL - LEAN_FROM), 0, 1);
+    if (lean) v3.sub(v1).applyAxisAngle(UP, -lean).add(v1);
     // The route is already smooth, so the camera rides it exactly. Filtering again would add lag that shifts with frame time.
     aimCamera(v1, v3, pt.roll * (d > 0 ? 0.3 : 0.6), dt, Infinity, 6);
   }
@@ -482,31 +485,6 @@ export function startApp(data: Contributions): void {
     shared.uHit.value = day;
     hitGlow = 1;
   }
-  function collide(): void {
-    map.towersNear(ship.pos.x, ship.pos.z, SHIP_RADIUS, (i) => {
-      const roof = standing(i);
-      const rise = roof + SHIP_RADIUS - ship.pos.y;
-      if (rise <= 0) return;
-      const dx = ship.pos.x - map.cx[i];
-      const dz = ship.pos.z - map.cz[i];
-      const px = TOWER / 2 + SHIP_RADIUS - Math.abs(dx);
-      const pz = TOWER / 2 + SHIP_RADIUS - Math.abs(dz);
-      if (rise < Math.min(px, pz) && rise < 1.2) {
-        ship.pos.y = roof + SHIP_RADIUS;
-        if (ship.pitch < 0) ship.pitch *= 0.5;
-        return;
-      }
-      const alongX = px < pz;
-      const nx = alongX ? Math.sign(dx) || 1 : 0;
-      const nz = alongX ? 0 : Math.sign(dz) || 1;
-      const dot = ship.fwd.x * nx + ship.fwd.z * nz;
-      if (alongX) ship.pos.x += nx * px;
-      else ship.pos.z += nz * pz;
-      const headOn = dot < -0.45;
-      if (headOn) ship.yaw = Math.atan2(-(ship.fwd.x - 2 * dot * nx), -(ship.fwd.z - 2 * dot * nz));
-      bump(i, headOn);
-    });
-  }
   /** Towers rushing past the ship each whoosh on their own side, louder the faster and closer they go by. */
   function whooshPast(speed: number): void {
     if (speed < 8) return;
@@ -558,6 +536,7 @@ export function startApp(data: Contributions): void {
     ship.pitch = clamp(ship.pitch - sy * 1.5 * dt, -1.3, 1.3);
     const wanted = holding ? 0 : boosting ? BOOST : keys.has('KeyC') ? BRAKE : CRUISE;
     ship.speed += (wanted - ship.speed) * (1 - Math.exp(-2.4 * dt));
+    sinceJump += ship.speed * dt;
 
     q1.setFromEuler(e1.set(ship.pitch, ship.yaw, 0, 'YXZ'));
     ship.quat.copy(q1);
@@ -572,7 +551,7 @@ export function startApp(data: Contributions): void {
     for (let n = 0; n < steps; n++) {
       ship.pos.addScaledVector(ship.vel, dt / steps);
       ship.pos.y = clamp(ship.pos.y, FLOOR, 190);
-      collide();
+      pushOut(map, standing, ship, SHIP_RADIUS, bump);
     }
     // The street stops a dive, and levelling off keeps the guns pointing along it instead of into it
     if (ship.pos.y <= FLOOR) ship.pitch = Math.max(0, ship.pitch);
@@ -618,15 +597,7 @@ export function startApp(data: Contributions): void {
     return stereo(sight.dot(across), sight.length());
   }
   /** Whether a tower stands between the ship and a point. */
-  function blockedTo(p: THREE.Vector3): boolean {
-    across.subVectors(p, ship.pos);
-    const span = across.length() - 1.5;
-    across.normalize();
-    for (let t = 1; t < span; t += 0.6) {
-      if (towerAt(sight.copy(ship.pos).addScaledVector(across, t)) >= 0) return true;
-    }
-    return false;
-  }
+  const blockedTo = (p: THREE.Vector3): boolean => blockedBetween(map, standing, ship.pos, p);
   /** The badge to lock on to: standing, near the line of fire and in range, with no tower in the way. Or -1. */
   function findLock(): number {
     if (!(mode === 'pilot' && ship.live && !(jump && jump.t < 0.5))) return -1;
@@ -674,6 +645,7 @@ export function startApp(data: Contributions): void {
   function updateMarkers(): void {
     if (!(mode === 'pilot' && ship.live && !(jump && jump.t < 0.5))) {
       markers.hideAll();
+      home.place(null, 0);
       return;
     }
     const width = stage.clientWidth;
@@ -691,34 +663,27 @@ export function startApp(data: Contributions): void {
           distance: ship.pos.distanceTo(at),
         };
       })
-      .filter((c) => c !== null)
-      .sort((a, b) => a.distance - b.distance);
-    const kept: Placed[] = [];
-    let atEdge = 0;
+      .filter((c) => c !== null);
     const shown = new Set<number>();
-    for (const { i, placed, distance } of candidates) {
-      const room = placed.inside ? MARKER_ROOM / 2 : MARKER_ROOM;
-      if (!placed.inside && atEdge >= EDGE_MARKERS) continue;
-      if (kept.some((other) => Math.hypot(other.x - placed.x, other.y - placed.y) < room)) continue;
-      kept.push(placed);
-      if (!placed.inside) atEdge++;
+    for (const { i, placed, distance } of chooseMarkers(candidates, MARKER_ROOM, EDGE_MARKERS)) {
       shown.add(i);
       markers.place(i, placed, distance);
     }
     badges.milestones.forEach((_, i) => {
       if (!shown.has(i)) markers.place(i, null, 0);
     });
-  }
-  function aimedTower(): number {
-    const step = 0.6;
-    v2.copy(ship.pos);
-    for (let t = 0; t < 95; t += step) {
-      v2.addScaledVector(ship.fwd, step);
-      if (v2.y < 0) return -1;
-      const i = towerAt(v2);
-      if (i >= 0) return i;
+
+    // Badge markers lead back to the city. With none left, a ship that has flown clear of it is shown the way.
+    const beyond = candidates.length || locked >= 0 ? 0 : map.outside(ship.pos.x, ship.pos.z);
+    if (beyond <= HOME_BEYOND) {
+      home.place(null, 0);
+      return;
     }
-    return -1;
+    across.set(clamp(ship.pos.x, 0, WIDTH), HOME_HEIGHT, clamp(ship.pos.z, 0, map.depth));
+    const behind = sight.copy(across).applyMatrix4(camera.matrixWorldInverse).z > 0;
+    sight.copy(across).project(camera);
+    const placed = placeMarker(sight.x, sight.y, behind, width, height, insets);
+    home.place(placed.inside ? placed : pin(sight.x, sight.y, behind, width, height), beyond);
   }
   function updateTargeting(): void {
     const flying = aboard() && !(jump && jump.t < 0.5);
@@ -753,7 +718,7 @@ export function startApp(data: Contributions): void {
       return;
     }
 
-    const i = flying ? aimedTower() : -1;
+    const i = flying ? towerAlong(map, standing, ship.pos, ship.fwd, AIM_RANGE) : -1;
     if (i < 0) {
       bracket.hidden = lock.hidden = true;
       if (mode !== 'orbit') shared.uHover.value = -1;
@@ -785,11 +750,15 @@ export function startApp(data: Contributions): void {
   };
   function showHint(m: Mode): void {
     const hint = element('hint');
-    hint.textContent = HINTS[m];
+    const introducing = introduce;
+    introduce = false;
+    hint.textContent = introducing ? `Example city: ${cal.login}. Enter any GitHub username to fly another.` : HINTS[m];
     hint.hidden = false;
     clearTimeout(hintTimer);
     hintTimer = window.setTimeout(() => {
-      hint.hidden = true;
+      // The controls follow the introduction, for whichever way of flying is on by then
+      if (introducing) showHint(mode);
+      else hint.hidden = true;
     }, 9000);
   }
   function glideOut(): void {
@@ -932,6 +901,7 @@ export function startApp(data: Contributions): void {
     const button = element('badgeReset');
     if (button.dataset.armed) {
       badges.reset();
+      sinceJump = Infinity;
       standDownReset();
       drawBadges();
       return;
@@ -946,6 +916,7 @@ export function startApp(data: Contributions): void {
         detail: m.detail,
         date: cal.formatShort(m.day),
         earned: badges.isEarned(i),
+        flown: badges.isFlown(i),
         picture: badges.picture(i),
       })),
       visitBadge,
@@ -953,13 +924,17 @@ export function startApp(data: Contributions): void {
   }
   function earn(badge: Milestone): void {
     const cleared = badges.allEarned;
+    const index = badges.milestones.indexOf(badge);
+    // Shot from where the Badges list set the ship down, or soon after, a badge is earned without having been flown to
+    const flown = sinceJump >= FLOWN_AFTER;
+    if (flown) badges.fly(index);
     aiming = false;
     // A parked ship stays for the show. One already flying carries on underneath it.
     if (time < parkedUntil) parkedUntil = time + (cleared ? FINALE_SECONDS : BLAST_WATCH);
     if (cleared) sound.fanfare();
     else sound.chime();
     if (!reduced) {
-      const at = badges.position(badges.milestones.indexOf(badge));
+      const at = badges.position(index);
       blasts[nextBlast++ % BLASTS].start(at);
       flashes.add({ x: at.x, y: at.y, z: at.z, r: 3.2, g: 1.7, b: 0.6, reach: 26, start: time, life: 1.1 });
       sound.blast(stereoFor(at));
@@ -977,8 +952,9 @@ export function startApp(data: Contributions): void {
       }
     }
     const total = badges.milestones.length;
+    const inFlight = (cleared ? badges.allFlown : flown) ? ' in flight' : '';
     hud.showToast(
-      cleared ? 'City cleared' : `Badge earned: ${badge.name}`,
+      cleared ? `City cleared${inFlight}` : `Badge earned${inFlight}: ${badge.name}`,
       cleared
         ? `${total} of ${total} badges earned on ${cal.login}`
         : `${badge.detail} · ${cal.formatShort(badge.day)}`,
@@ -990,16 +966,8 @@ export function startApp(data: Contributions): void {
   function visitBadge(index: number): void {
     showPanel(null);
     const target = badges.position(index);
-    const clearAt = (height: number) => {
-      for (let k = 0; k <= 20; k++) {
-        v2.set(target.x, height + ((target.y - height) * k) / 20, target.z + (BADGE_APPROACH * (20 - k)) / 20);
-        // Against the finished city, because every tower is up by the time the ship arrives
-        if (towerAt(v2, (i) => map.top[i]) >= 0) return false;
-      }
-      return true;
-    };
-    let height = target.y;
-    while (height < target.y + 40 && !clearAt(height)) height += 1.5;
+    // Against the finished city, because every tower is up by the time the ship arrives
+    const height = approachHeight(map, target, BADGE_APPROACH);
     const arrive = () => {
       ship.pos.set(target.x, height, target.z + BADGE_APPROACH);
       ship.yaw = 0;
@@ -1009,6 +977,7 @@ export function startApp(data: Contributions): void {
       ship.slide.set(0, 0, 0);
       ship.live = true;
       snap = true;
+      sinceJump = 0;
       // A badge already blown up leaves nothing to wait for
       aiming = !badges.isEarned(index);
       parkedUntil = aiming ? time + PARKED_SECONDS : 0;
@@ -1128,6 +1097,8 @@ export function startApp(data: Contributions): void {
     }
     if (mode !== 'pilot') return;
     if (e.pointerType === 'mouse') {
+      // Only the main button fires. The others open menus or scroll, and can keep their release from the page.
+      if (e.button !== 0) return;
       firePointer = e.pointerId;
       firing = true;
     } else {
@@ -1162,6 +1133,10 @@ export function startApp(data: Contributions): void {
   canvas.addEventListener('click', (e) => {
     if (mode === 'orbit') pickAt = { x: e.clientX, y: e.clientY };
   });
+  // The browser's menu has no place over a ship being flown. Orbit's controls already hold it back there.
+  canvas.addEventListener('contextmenu', (e) => {
+    if (mode === 'pilot') e.preventDefault();
+  });
   window.addEventListener(
     'wheel',
     (e) => {
@@ -1189,7 +1164,8 @@ export function startApp(data: Contributions): void {
     if (e.code === 'Space' && !typing && !(e.target instanceof HTMLButtonElement)) {
       e.preventDefault();
       if (mode === 'pilot') firing = true;
-      else togglePlay();
+      // A held key repeats, and each repeat would flip the pause back
+      else if (!e.repeat) togglePlay();
       return;
     }
     if (e.code === 'KeyN' && !typing && !e.repeat && !e.metaKey && !e.ctrlKey) setSound(!sound.enabled);
@@ -1545,6 +1521,9 @@ export function startApp(data: Contributions): void {
         },
         get locked() {
           return locked;
+        },
+        get sinceJump() {
+          return sinceJump;
         },
       },
     });

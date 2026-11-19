@@ -49,30 +49,81 @@ export function placeMarker(
   return { x: width / 2 + dx * t, y: height / 2 + dy * t, inside: false, angle };
 }
 
+/** A marker that could be shown: whose it is, where it would sit, and how far away its badge is. */
+export interface Candidate {
+  i: number;
+  placed: Placed;
+  distance: number;
+}
+
+/**
+ * Which markers to show, nearest first. One that would sit within `room` pixels of a marker already kept is dropped,
+ * so the nearer badge keeps its marker, and only `edgeLimit` are pinned to the edge, so the edge stays readable.
+ * Markers in view are smaller and need half the room.
+ */
+export function chooseMarkers(candidates: Candidate[], room: number, edgeLimit: number): Candidate[] {
+  const kept: Candidate[] = [];
+  let atEdge = 0;
+  for (const candidate of [...candidates].sort((a, b) => a.distance - b.distance)) {
+    const { placed } = candidate;
+    if (!placed.inside && atEdge >= edgeLimit) continue;
+    const needed = placed.inside ? room / 2 : room;
+    if (kept.some((other) => Math.hypot(other.placed.x - placed.x, other.placed.y - placed.y) < needed)) continue;
+    kept.push(candidate);
+    if (!placed.inside) atEdge++;
+  }
+  return kept;
+}
+
 /** Badges this close are big enough on screen to need no marker. */
 const NEAR = 14;
+
+interface Item {
+  box: HTMLElement;
+  distance: HTMLElement;
+  shown: boolean;
+}
+
+/** One marker, hidden to begin with: a pointer, what stands for the thing it marks, and the distance to it. */
+function build(layer: HTMLElement, kind: string, name: string, art: HTMLElement): Item {
+  const box = document.createElement('div');
+  box.className = kind;
+  box.hidden = true;
+  box.title = name;
+  const distance = document.createElement('span');
+  box.append(document.createElement('i'), art, distance);
+  layer.append(box);
+  return { box, distance, shown: false };
+}
+
+/** Puts a marker where it has been placed, or hides it with `null`. */
+function move(item: Item, placed: Placed | null, distance: number): void {
+  const show = placed !== null;
+  if (show !== item.shown) {
+    item.box.hidden = !show;
+    item.shown = show;
+  }
+  if (!placed) return;
+  item.box.classList.toggle('edge', !placed.inside);
+  item.box.style.transform = `translate(${placed.x.toFixed(1)}px,${placed.y.toFixed(1)}px)`;
+  item.box.style.setProperty('--turn', `${placed.angle.toFixed(3)}rad`);
+  const text = String(Math.round(distance));
+  if (item.distance.textContent !== text) item.distance.textContent = text;
+}
 
 /**
  * Markers for the badges still standing: a gold diamond with the distance over one in view, and the badge's own artwork
  * with a pointer at the edge of the view for one out of it.
  */
 export class Markers {
-  private readonly items: { box: HTMLElement; distance: HTMLElement; shown: boolean }[];
+  private readonly items: Item[];
 
   constructor(layer: HTMLElement, pictures: string[], names: string[]) {
     this.items = pictures.map((picture, i) => {
-      const box = document.createElement('div');
-      box.className = 'marker';
-      box.hidden = true;
-      const pointer = document.createElement('i');
       const image = document.createElement('img');
       image.src = picture;
       image.alt = '';
-      const distance = document.createElement('span');
-      box.title = names[i];
-      box.append(pointer, image, distance);
-      layer.append(box);
-      return { box, distance, shown: false };
+      return build(layer, 'marker', names[i], image);
     });
   }
 
@@ -85,21 +136,27 @@ export class Markers {
 
   /** Places one marker, or hides it with `null`. */
   place(index: number, placed: Placed | null, distance: number): void {
-    const item = this.items[index];
-    const show = placed !== null && !(placed.inside && distance < NEAR);
-    if (show !== item.shown) {
-      item.box.hidden = !show;
-      item.shown = show;
-    }
-    if (!show || !placed) return;
-    item.box.classList.toggle('edge', !placed.inside);
-    item.box.style.transform = `translate(${placed.x.toFixed(1)}px,${placed.y.toFixed(1)}px)`;
-    item.box.style.setProperty('--turn', `${placed.angle.toFixed(3)}rad`);
-    const text = String(Math.round(distance));
-    if (item.distance.textContent !== text) item.distance.textContent = text;
+    move(this.items[index], placed !== null && placed.inside && distance < NEAR ? null : placed, distance);
   }
 
   hideAll(): void {
     this.items.forEach((_, i) => this.place(i, null, 0));
+  }
+}
+
+/**
+ * The way back to the city, for a ship that has flown clear of it: the same diamond and edge pointer as a badge's
+ * marker, in the buildings' colour, with a skyline where a badge has its artwork.
+ */
+export class HomeMarker {
+  private readonly item: Item;
+
+  constructor(layer: HTMLElement) {
+    this.item = build(layer, 'marker home', 'The city', document.createElement('b'));
+  }
+
+  /** Places the marker, or hides it with `null`. */
+  place(placed: Placed | null, distance: number): void {
+    move(this.item, placed, distance);
   }
 }

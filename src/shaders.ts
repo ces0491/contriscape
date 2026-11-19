@@ -92,7 +92,8 @@ void main(){
   gl_FragColor=vec4(col,1.);
 }`;
 
-const DUSK = /* glsl */ `vec3 dusk(vec3 d){float a=pow(max(dot(normalize(vec3(d.x,0.,d.z)),vec3(0.,0.,-1.)),0.),5.);
+/* The length is held off zero because straight up and straight down have no heading, and dividing by nothing is NaN. */
+const DUSK = /* glsl */ `vec3 dusk(vec3 d){float a=pow(clamp(-d.z/max(length(d.xz),1e-5),0.,1.),5.);
   return vec3(.2,.13,.16)*a*exp(-abs(d.y)*13.);}`;
 
 export const SOLID_VERTEX = /* glsl */ `varying vec3 vN,vV;
@@ -173,7 +174,7 @@ float lat=vP.y/330.+.05*sin(vP.x*.018+sin(vP.z*.014)*2.);
 float b=.5+.5*sin(lat*24.);float fine=.5+.5*sin(lat*67.+1.3);
 vec3 base=mix(vec3(.15,.12,.21),vec3(.42,.3,.31),b);base=mix(base,vec3(.6,.47,.38),fine*.22);
 vec3 c=base*(.018+1.05*day*pow(max(l,0.)+.05,.85));
-float rim=pow(1.-max(normalize(vR).z,0.),3.);
+float rim=pow(clamp(1.-normalize(vR).z,0.,1.),3.);
 c+=vec3(.22,.42,.85)*rim*(.1+.9*smoothstep(-.35,.5,l));
 gl_FragColor=vec4(c,1.);}`;
 
@@ -205,7 +206,7 @@ gl_FragColor=vec4(vec3(1.,.62,.28)*smoothstep(1.,.1,r)*1.25,1.);}`;
 export const BEACON_VERTEX = /* glsl */ `attribute float aDay,aPhase;uniform float uPlay,uRise,uMax,uTime,uPx;varying float vOn;
 void main(){float g=aDay>uMax?1.:clamp((uPlay-aDay)/uRise,0.,1.);
 vec4 mv=modelViewMatrix*vec4(position,1.);
-vOn=step(1.,g)*(.22+.78*pow(.5+.5*sin(uTime*2.3+aPhase),5.));
+vOn=step(1.,g)*(.22+.78*pow(clamp(.5+.5*sin(uTime*2.3+aPhase),0.,1.),5.));
 gl_PointSize=clamp(220./-mv.z,5.,26.)*uPx;gl_Position=projectionMatrix*mv;}`;
 
 export const BEACON_FRAGMENT = /* glsl */ `varying float vOn;
@@ -306,8 +307,11 @@ void main(){vSide=aSide;
 vA=aAlpha*smoothstep(1.5,5.,distance(cameraPosition,position));
 gl_Position=projectionMatrix*viewMatrix*vec4(position,1.);}`;
 
+/* Both are clamped because a ribbon seen nearly edge on is drawn as slivers, and multisampling shades a pixel from its
+ * centre even where only a corner of it is covered. That far outside a sliver the values run to hundreds, and one such
+ * pixel is enough for the bloom pass to put a white ball over the wingtip. */
 export const TRAIL_FRAGMENT = /* glsl */ `uniform vec3 uColour;varying float vA,vSide;
-void main(){gl_FragColor=vec4(uColour*vA*(1.-vSide*vSide),1.);}`;
+void main(){float a=clamp(vA,0.,1.);float s=clamp(vSide,-1.,1.);gl_FragColor=vec4(uColour*a*(1.-s*s),1.);}`;
 
 export const BADGE_GLOW_VERTEX = /* glsl */ `attribute float aLit;uniform float uPx,uTime;varying float vLit;
 void main(){vec4 mv=modelViewMatrix*vec4(position,1.);vLit=aLit*(.7+.3*sin(uTime*3.));

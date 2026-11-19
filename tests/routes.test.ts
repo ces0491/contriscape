@@ -3,7 +3,17 @@ import { describe, expect, it } from 'vitest';
 import type { Contributions } from '../shared/contract';
 import { Calendar } from '../src/calendar';
 import { CELL, CityMap, DEPTH, TOWER } from '../src/map';
-import { alleyRoute, buildRoute, flightLevel, lengthAtDay, newPose, poseAt, RISE, type Route } from '../src/routes';
+import {
+  alleyRoute,
+  buildRoute,
+  featuredYears,
+  flightLevel,
+  lengthAtDay,
+  newPose,
+  poseAt,
+  RISE,
+  type Route,
+} from '../src/routes';
 
 const SNAPSHOT = '2026-11-02';
 const SHIP_HALF_SPAN = 0.42;
@@ -157,7 +167,12 @@ describe('ride quality', () => {
   const headingOf = (a: Vector3, b: Vector3) => Math.atan2(b.x - a.x, b.z - a.z);
   const wrap = (d: number) => Math.atan2(Math.sin(d), Math.cos(d));
 
-  describe.each(['every day extremely busy', 'long history, 18 years', 'quiet for years, then busy'])('%s', (name) => {
+  describe.each([
+    'every day extremely busy',
+    'long history, 18 years',
+    'quiet for years, then busy',
+    'busy years with a gap between',
+  ])('%s', (name) => {
     const map = new CityMap(new Calendar(FIXTURES[name]));
     const { samples } = buildRoute(map, 'all', new Vector3(0, 4, map.depth / 2));
     const among = (s: Route['samples'][number]) => {
@@ -210,6 +225,74 @@ describe('ride quality', () => {
         expect(Math.abs(samples[i].pace - samples[i - 1].pace)).toBeLessThan(0.25);
       }
     });
+  });
+});
+
+describe('the years a whole history flies through', () => {
+  const featured = (data: Contributions) => featuredYears(new Calendar(data));
+
+  it('takes the busiest year and the latest busy one, when the busiest is long past', () => {
+    expect(featured(history(2010, (y) => (y === 2012 ? 20 : y === 2026 ? 5 : 2)))).toEqual([2012, 2026]);
+  });
+
+  it('leaves out a recent year with too little in it to fly through', () => {
+    const trickle = history(2010, (y, d) => (y === 2012 ? 20 : y === 2026 ? Number(d === 40) : 2));
+    expect(featured(trickle)).toEqual([2012, 2025]);
+  });
+
+  it('takes the last two busy years when the latest is the busiest', () => {
+    expect(featured(history(2020, (y) => y - 2015))).toEqual([2025, 2026]);
+  });
+
+  it('takes the one year with anything much in it', () => {
+    expect(featured(history(2022, (y, d) => (y === 2024 ? 30 : Number(d === 9))))).toEqual([2024]);
+  });
+
+  it('takes the latest year of a history with nothing in it', () => {
+    expect(featured(FIXTURES['no contributions at all'])).toEqual([2026]);
+  });
+});
+
+describe('passing the years a flight does not fly through', () => {
+  const cal = new Calendar(FIXTURES['long history, 18 years']);
+  const map = new CityMap(cal);
+  const { samples } = buildRoute(map, 'all', new Vector3(0, 4, map.depth / 2));
+  const [firstRun] = featuredYears(cal);
+  const reached = samples.findIndex((s) => s.p.x > 0);
+  const lane = samples.slice(0, reached);
+
+  it('is over the first block it flies through within 17 seconds, past sixteen years', () => {
+    expect(firstRun - cal.firstYear).toBe(16);
+    expect(seconds({ samples: lane, len: 0 })).toBeLessThan(17);
+  });
+
+  it('keeps west of the blocks until then, clear of every tower', () => {
+    for (const s of lane) expect(s.p.x).toBeLessThan(0);
+  });
+
+  it('runs the date ahead, so a year has risen, bar its last weeks, by the time the ship is beside it', () => {
+    let beside = 0;
+    for (const s of lane) {
+      const year = cal.lastYear - Math.floor(s.p.z / (DEPTH + 7));
+      const inBlock = s.p.z >= map.blockZ(year) && s.p.z <= map.blockZ(year) + DEPTH;
+      if (!inBlock || year <= cal.firstYear || year >= firstRun) continue;
+      beside++;
+      expect(s.day).toBeGreaterThanOrEqual(cal.span(year).b - 28);
+    }
+    expect(beside).toBeGreaterThan(100);
+  });
+
+  it('leans the view towards the city on the lane, and looks straight ahead once among the towers', () => {
+    const passing = lane.filter((s) => Math.abs(s.p.x + 12) < 0.01 && s.p.z < map.depth - 40);
+    const settled = passing.slice(40, -160);
+    expect(settled.length).toBeGreaterThan(200);
+    for (const s of settled) expect(s.lean).toBeGreaterThan(0.2);
+    for (const s of samples.slice(reached + 60, reached + 300)) expect(s.lean).toBeCloseTo(0, 5);
+  });
+
+  it('has the date on the first day of the year it flies as it turns in', () => {
+    expect(lane.at(-1)?.day).toBeGreaterThanOrEqual(cal.span(firstRun).a);
+    expect(lane.at(-1)?.day).toBeLessThan(cal.span(firstRun).a + 60);
   });
 });
 

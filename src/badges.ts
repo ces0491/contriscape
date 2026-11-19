@@ -14,7 +14,7 @@ const STACK = 2.1;
 const FACE_TINT = new THREE.Color(0.8, 0.8, 0.8);
 const RIM = new THREE.Color(1.6, 1.15, 0.45);
 
-function readEarned(key: string): Set<string> {
+function readIds(key: string): Set<string> {
   try {
     const saved: unknown = JSON.parse(localStorage.getItem(key) ?? '[]');
     return new Set(Array.isArray(saved) ? saved.filter((id) => typeof id === 'string') : []);
@@ -23,10 +23,21 @@ function readEarned(key: string): Set<string> {
   }
 }
 
+function saveIds(key: string, ids: Set<string>): void {
+  try {
+    localStorage.setItem(key, JSON.stringify([...ids]));
+  } catch {
+    // Private windows can refuse storage. The badge still counts for this visit.
+  }
+}
+
 /** The milestones as medallions floating over their days. What a visitor earns stays in their own browser. */
 export class Badges {
   readonly earned: Set<string>;
+  /** The earned badges this visitor flew to, rather than jumping to them from the list. */
+  readonly flown: Set<string>;
   private readonly key: string;
+  private readonly flownKey: string;
   private readonly places: THREE.Vector3[] = [];
   private readonly tokens: THREE.Group[] = [];
   private readonly canvases: HTMLCanvasElement[] = [];
@@ -42,7 +53,9 @@ export class Badges {
     shared: Shared,
   ) {
     this.key = `contriscape:badges:${login.toLowerCase()}`;
-    this.earned = readEarned(this.key);
+    this.earned = readIds(this.key);
+    this.flownKey = `contriscape:flown:${login.toLowerCase()}`;
+    this.flown = readIds(this.flownKey);
 
     const stacked = new Map<number, number>();
     const edge = new THREE.CylinderGeometry(BADGE_RADIUS, BADGE_RADIUS, THICKNESS, 40);
@@ -113,6 +126,22 @@ export class Badges {
     return this.milestones.every(({ id }) => this.earned.has(id));
   }
 
+  isFlown(index: number): boolean {
+    const { id } = this.milestones[index];
+    return this.earned.has(id) && this.flown.has(id);
+  }
+
+  /** Whether every badge here was flown to. */
+  get allFlown(): boolean {
+    return this.milestones.every((_, i) => this.isFlown(i));
+  }
+
+  /** Marks a badge as one the visitor flew to. */
+  fly(index: number): void {
+    this.flown.add(this.milestones[index].id);
+    saveIds(this.flownKey, this.flown);
+  }
+
   picture(index: number): string {
     return this.canvases[index].toDataURL('image/png');
   }
@@ -135,11 +164,7 @@ export class Badges {
       const badge = this.milestones[i];
       if (badge.day > play || this.earned.has(badge.id) || point.distanceTo(this.places[i]) > HIT_RADIUS) continue;
       this.earned.add(badge.id);
-      try {
-        localStorage.setItem(this.key, JSON.stringify([...this.earned]));
-      } catch {
-        // Private windows can refuse storage. The badge still counts for this visit.
-      }
+      saveIds(this.key, this.earned);
       return badge;
     }
     return null;
@@ -148,8 +173,10 @@ export class Badges {
   /** Forgets what this visitor has earned on this city, so the badges can be shot again. */
   reset(): void {
     this.earned.clear();
+    this.flown.clear();
     try {
       localStorage.removeItem(this.key);
+      localStorage.removeItem(this.flownKey);
     } catch {
       // Storage that can't be reached has nothing saved in it.
     }

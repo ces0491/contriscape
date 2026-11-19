@@ -4,6 +4,7 @@ import { holdsLock, LOCK_CONE, LOCK_RANGE, lockCone, lockOn, turnTowards } from 
 import { Weapons } from '../src/fighter';
 import { flashLevel, Flashes, LIGHT_SLOTS, type Flash } from '../src/lights';
 import { placeMarker, type Insets } from '../src/markers';
+import { TRAIL_FRAGMENT } from '../src/shaders';
 import { Trails } from '../src/trails';
 
 const ahead = new Vector3(0, 0, -1);
@@ -198,6 +199,13 @@ describe('Trails', () => {
       trails.update(new Vector3(-1, 0, -n * 0.5), new Vector3(1, 0, -n * 0.5), 1, n / 60, camera);
     }
     expect(drawn(scene)).toBeGreaterThan(0);
+  });
+
+  it('clamps what its shader is handed, which multisampling can throw far out of range on a thin ribbon', () => {
+    expect(TRAIL_FRAGMENT).toContain('clamp(vA,0.,1.)');
+    expect(TRAIL_FRAGMENT).toContain('clamp(vSide,-1.,1.)');
+    // Nothing but the clamped copies reaches the colour
+    expect(TRAIL_FRAGMENT.split('gl_FragColor')[1]).not.toMatch(/vA|vSide/);
   });
 
   it('starts again after a jump instead of stretching across the city', () => {

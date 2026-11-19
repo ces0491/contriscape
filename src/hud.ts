@@ -220,7 +220,7 @@ export class Hud {
 
   /** The badge count, and the list a visitor can jump to a badge from. */
   renderBadges(
-    rows: { name: string; detail: string; date: string; earned: boolean; picture: string }[],
+    rows: { name: string; detail: string; date: string; earned: boolean; flown: boolean; picture: string }[],
     visit: (index: number) => void,
   ): void {
     const button = element('badges');
@@ -229,6 +229,10 @@ export class Hud {
     button.hidden = rows.length === 0;
     button.classList.toggle('complete', rows.length > 0 && earned === rows.length);
     element('badgeReset').hidden = earned === 0;
+    const flown = rows.filter((r) => r.flown).length;
+    const tally = element('badgeFlown');
+    tally.hidden = flown === 0;
+    tally.textContent = `${flown} of ${rows.length} flown to.`;
     const list = element('badgeList');
     list.replaceChildren(
       ...rows.map((row, i) => {
@@ -241,6 +245,11 @@ export class Hud {
         image.alt = '';
         const name = document.createElement('b');
         name.textContent = `${row.earned ? '✓ ' : ''}${row.name}`;
+        if (row.flown) {
+          const tag = document.createElement('em');
+          tag.textContent = 'Flown';
+          name.append(tag);
+        }
         const detail = document.createElement('span');
         detail.textContent = `${row.detail} · ${row.date}`;
         const words = document.createElement('div');

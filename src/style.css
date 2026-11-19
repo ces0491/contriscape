@@ -289,6 +289,33 @@ input,
 .marker.edge span {
   top: 20px;
 }
+/* The way back to the city, in the buildings' colour, with three towers where a badge has its artwork. */
+.marker.home i {
+  border-color: var(--g4);
+}
+.marker.home span {
+  color: var(--g4);
+}
+.marker.home b {
+  display: none;
+}
+.marker.home.edge b {
+  display: block;
+  position: absolute;
+  left: -16px;
+  top: -16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background:
+    linear-gradient(var(--g4), var(--g4)) 9px 13px / 4px 10px no-repeat,
+    linear-gradient(var(--g4), var(--g4)) 14px 7px / 4px 16px no-repeat,
+    linear-gradient(var(--g4), var(--g4)) 19px 11px / 4px 12px no-repeat,
+    var(--night);
+  box-shadow:
+    0 0 0 2px var(--g4),
+    0 0 10px rgba(0, 0, 0, 0.6);
+}
 
 .hud {
   position: fixed;
@@ -927,6 +954,17 @@ button:focus-visible {
 }
 #badgeList .earned b {
   color: var(--g4);
+}
+#badgeList em {
+  margin-left: 7px;
+  padding: 1px 4px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  color: var(--gold);
+  font: 600 9px/1 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: 1px;
 }
 #summary {
   top: 50%;

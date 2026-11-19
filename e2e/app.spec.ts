@@ -30,12 +30,19 @@ interface CityDebug {
   jump: { done: boolean } | null;
   firing: boolean;
   locked: number;
+  sinceJump: number;
   bloom: { enabled: boolean };
   stick: { x: number };
   endFlight: () => void;
   visitBadge: (index: number) => void;
   map: { top: ArrayLike<number> };
-  ship: { live: boolean; speed: number; yaw: number; pitch: number; pos: { x: number; y: number } };
+  ship: {
+    live: boolean;
+    speed: number;
+    yaw: number;
+    pitch: number;
+    pos: { x: number; y: number; z: number; set(x: number, y: number, z: number): void };
+  };
   camera: { matrixWorld: { elements: number[] } };
   weapons: { activeBolts: number };
   badges: { tokens: { visible: boolean }[]; milestones: { id: string; name: string }[]; earned: Set<string> };
@@ -138,6 +145,22 @@ test("shows the default city at the root, under the site's own title", async ({ 
   await expect(page).toHaveURL(/\/$/);
   await expect(page.locator('#login')).toHaveText('torvalds');
   await expect(page).toHaveTitle('contriscape: fly through your GitHub contributions');
+});
+
+test('the front page says its city is an example, then gives the controls', async ({ page }) => {
+  await stubApi(page, { body: busy('torvalds') });
+  await page.goto('/');
+  await cityReady(page);
+  const hint = page.locator('#hint');
+  await expect(hint).toHaveText('Example city: torvalds. Enter any GitHub username to fly another.');
+  await expect(hint).toHaveText(/zoom/, { timeout: 60_000 });
+});
+
+test('a city asked for by name goes straight to the controls', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await expect(page.locator('#hint')).toHaveText(/zoom/);
 });
 
 test('the username box takes you to that city', async ({ page }) => {
@@ -659,6 +682,82 @@ test('music has its own switch, remembered, and the chords start with the sound'
   await expect(page.locator('#music')).toHaveAttribute('aria-pressed', 'false');
 });
 
+test('holding Space in Autopilot pauses once, however long it is held', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await expect(page.locator('#play')).toHaveText('Pause');
+  // A held key sends the press again and again
+  for (let n = 0; n < 5; n++) await page.keyboard.down('Space');
+  await page.keyboard.up('Space');
+  await expect(page.locator('#play')).toHaveText('Play');
+  await page.keyboard.press('Space');
+  await expect(page.locator('#play')).toHaveText('Pause');
+});
+
+test('only the main mouse button fires, and Pilot keeps the browser menu away', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  const menuHeldBack = () =>
+    page.evaluate(() => {
+      const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+      document.getElementById('gl')?.dispatchEvent(event);
+      return event.defaultPrevented;
+    });
+  expect(await menuHeldBack()).toBe(false);
+  await page.click('#m-pilot');
+  await shipLive(page);
+  expect(await menuHeldBack()).toBe(true);
+  await page.mouse.move(720, 450);
+  await page.mouse.down({ button: 'right' });
+  expect(await page.evaluate(() => window.__city.firing)).toBe(false);
+  await page.mouse.up({ button: 'right' });
+  await page.mouse.down();
+  expect(await page.evaluate(() => window.__city.firing)).toBe(true);
+  await page.mouse.up();
+  expect(await page.evaluate(() => window.__city.firing)).toBe(false);
+});
+
+test('with no badge left to lead it, a ship clear of the city is shown the way back', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  // A marker is a point its parts hang from, with no size of its own, so what tells is whether it is hidden
+  const home = page.locator('.marker.home');
+  const flyTo = (x: number) =>
+    page.evaluate((x) => {
+      const { ship } = window.__city;
+      ship.pos.set(x, 20, 8);
+      ship.yaw = Math.PI / 2;
+      ship.pitch = 0;
+    }, x);
+
+  // Badges still standing have markers of their own, which point at the city
+  await page.click('#m-pilot');
+  await shipLive(page);
+  await flyTo(-200);
+  await expect.poll(() => page.locator('.marker:not(.home):not([hidden])').count()).toBeGreaterThan(0);
+  await expect(home).toHaveJSProperty('hidden', true);
+
+  const all = await page.evaluate(() => window.__city.badges.milestones.map(({ id }) => id));
+  await page.evaluate((ids) => localStorage.setItem('contriscape:badges:octo-dev', JSON.stringify(ids)), all);
+  await page.reload();
+  await cityReady(page);
+  await page.click('#m-pilot');
+  await shipLive(page);
+  await expect(home).toHaveJSProperty('hidden', true);
+  await flyTo(-200);
+  await expect(home).toHaveJSProperty('hidden', false);
+  // Flying west, the city is behind, so the marker is pinned to the edge with its distance
+  await expect(home).toHaveClass(/edge/);
+  expect(Number(await home.locator('span').textContent())).toBeGreaterThan(150);
+  await flyTo(40);
+  await expect(home).toHaveJSProperty('hidden', true);
+  await page.click('#m-orbit');
+  await expect(home).toHaveJSProperty('hidden', true);
+});
+
 test('gold markers lead to the badges in Pilot, and step aside in Autopilot', async ({ page }) => {
   await stubApi(page, { body: busy('octo-dev') });
   await page.goto('/octo-dev');
@@ -837,6 +936,61 @@ test('shooting a badge earns it, and it stays earned', async ({ page }) => {
   await page.reload();
   await cityReady(page);
   await expect(page.locator('#badges')).toHaveText(/^Badges 1\/\d+$/);
+});
+
+test('a badge jumped to from the list is earned, and one flown to is marked as flown', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  const rows = page.locator('#badgeList button');
+  const tally = page.locator('#badgeFlown');
+
+  await page.click('#badges');
+  await rows.nth(0).click();
+  await shipLive(page);
+  expect(await page.evaluate(() => window.__city.sinceJump)).toBeLessThan(5);
+  await page.keyboard.down('Space');
+  await expect(page.locator('#toast b')).toHaveText(/^Badge earned: /, { timeout: 30_000 });
+  await page.keyboard.up('Space');
+  await page.click('#badges');
+  await expect(rows.nth(0)).toContainText('✓');
+  await expect(rows.nth(0).locator('em')).toHaveCount(0);
+  await expect(tally).toBeHidden();
+
+  // Jump to the next to learn where to line up on it, fly well away, and come back to that spot
+  await rows.nth(1).click();
+  await shipLive(page);
+  const pose = await page.evaluate(() => {
+    const { ship } = window.__city;
+    return { x: ship.pos.x, y: ship.pos.y, z: ship.pos.z, yaw: ship.yaw, pitch: ship.pitch };
+  });
+  await page.keyboard.down('ShiftLeft');
+  await expect.poll(() => page.evaluate(() => window.__city.sinceJump), { timeout: 120_000 }).toBeGreaterThan(125);
+  await page.keyboard.up('ShiftLeft');
+  await page.evaluate((pose) => {
+    const { ship } = window.__city;
+    ship.pos.set(pose.x, pose.y, pose.z);
+    ship.yaw = pose.yaw;
+    ship.pitch = pose.pitch;
+    ship.speed = 0;
+  }, pose);
+  await page.keyboard.down('Space');
+  await expect(page.locator('#toast b')).toHaveText(/^Badge earned in flight: /, { timeout: 30_000 });
+  await page.keyboard.up('Space');
+  await page.click('#badges');
+  await expect(rows.nth(1).locator('em')).toHaveText('Flown');
+  await expect(tally).toHaveText(/^1 of \d+ flown to\.$/);
+
+  // Flown stays flown, and a reset forgets it with the rest
+  await page.reload();
+  await cityReady(page);
+  await page.click('#badges');
+  await expect(rows.nth(1).locator('em')).toHaveText('Flown');
+  await page.click('#badgeReset');
+  await page.click('#badgeReset');
+  await expect(rows.locator('em')).toHaveCount(0);
+  await expect(tally).toBeHidden();
+  expect(await page.evaluate(() => localStorage.getItem('contriscape:flown:octo-dev'))).toBeNull();
 });
 
 /** Loads a city with every badge earned but the first, then lines up that last one. */
@@ -1154,6 +1308,13 @@ test.describe('your year on GitHub', () => {
     await expect(page.locator('#summaryFacts')).toContainText('On 2025');
     await page.click('#summaryClose');
     await expect(page.locator('#summary')).toBeHidden();
+  });
+
+  test('keeps the link that opened it in the address bar', async ({ page }) => {
+    await stubApi(page, { body: busy('octo-dev') });
+    await page.goto('/Octo-Dev#your-year');
+    await cityReady(page);
+    await expect(page).toHaveURL(/\/octo-dev#your-year$/);
   });
 
   test('can be opened from a link at any time of year', async ({ page }) => {

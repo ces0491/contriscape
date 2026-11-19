@@ -16,6 +16,8 @@ The name is short for contribution landscape: GitHub's calendar counts commits, 
 
 Autopilot keeps to a steady height through each year, set by that year's towers. It sits above about two thirds of the days, so the busiest ones rise past the ship.
 
+A flight through the whole history flies down the alleys of two years: the busiest, and the latest busy one. It passes the others at speed up the west side of the city, over the year numbers painted there, with the date running ahead so each year rises as the ship reaches it. Picking a year from All years flies that year alone.
+
 Scroll zooms in all three. In Autopilot and Pilot it runs from far behind the ship into the cockpit, and scrolling out leaves the cockpit again.
 
 | Pilot control  | Action                |
@@ -35,11 +37,13 @@ On a phone, drag to steer, pinch to zoom, and use the Fire and Boost buttons.
 
 All years opens the list of years, which keeps the screen the same size however long the history is. Settings holds sound, music, mouse steering, Invert Y and the colours. N switches sound on and off in Autopilot and Orbit as well as Pilot. The Guide button on the page covers the controls, the buttons and where the badges come from. Esc closes any panel.
 
-A city lives at `/<username>`, so the address is the share link. The site root shows `torvalds`.
+A city lives at `/<username>`, so the address is the share link. The site root shows `torvalds` as an example, and its first hint says so.
 
 ### Badges
 
 Illustrated medallions float over the days a user hit a milestone: joining GitHub, a first pull request, a thousandth contribution, a longest streak, a busiest day. In Pilot, gold markers show the badges still standing, with their distance. Up to four of the nearest out of view are pinned to the edge of the screen with their artwork, pointing the way. Or open the Badges list and pick one to jump there, and the ship waits in front of it while you line up the shot.
+
+A badge found by its marker is earned as flown, and the list tags it and keeps count. One shot from where a jump set the ship down, or within 120 units of flying after it, is earned without the tag. With no badge left standing, a marker in the buildings' colour points back to the city once the ship is more than 40 units clear of it.
 
 Aim close to a badge with no tower in the way and the targeting computer locks on, with a tone and its name. Shots fired while locked curve into it, which helps on a phone. A hit blows the badge up and earns it. These are this site's own badges, dated from GitHub's API. GitHub has no API for its profile achievements, so they aren't shown. Earned badges are stored only in the visitor's browser and don't change anything on GitHub. Reset, at the top of the list, brings back the ones earned on that city after a second press.
 
@@ -79,12 +83,12 @@ npm run dev
 
 `GITHUB_TOKEN` is a [personal access token (classic)](https://github.com/settings/tokens) with no scopes ticked. GitHub's GraphQL API needs a token even for public data, so it lives on the server. `npm run dev` runs the API inside the Vite dev server, with no Vercel login needed.
 
-| Command            | Does                                                                             |
-| ------------------ | -------------------------------------------------------------------------------- |
-| `npm test`         | API, route, ride, badge, year, zoom, colour, show, sound, music and aiming tests |
-| `npm run test:e2e` | Browser tests with a stubbed API, under the production CSP                       |
-| `npm run lint`     | ESLint                                                                           |
-| `npm run build`    | Typecheck, then build to `dist`                                                  |
+| Command            | Does                                                                                               |
+| ------------------ | -------------------------------------------------------------------------------------------------- |
+| `npm test`         | API, route, ride, badge, year, zoom, colour, show, sound, music, aiming, collision and sight tests |
+| `npm run test:e2e` | Browser tests with a stubbed API, under the production CSP                                         |
+| `npm run lint`     | ESLint                                                                                             |
+| `npm run build`    | Typecheck, then build to `dist`                                                                    |
 
 `npx playwright install chromium` fetches the browser for the end-to-end tests.
 
@@ -93,14 +97,14 @@ npm run dev
 - `api/contributions/[login].ts` is a Vercel Function that validates the login and sets cache headers. `api/_lib/github.ts` talks to GitHub.
 - `shared/contract.ts` holds the API's schema, used on both sides.
 - `src/main.ts` loads a city. A browser without WebGL 2 gets the Guide as the page instead, and the API isn't called.
-- `src/calendar.ts`, `src/map.ts` and `src/routes.ts` hold the data, the city grid and the flight paths. `src/milestones.ts` and `src/review.ts` work out the badges and the year story, and `src/colours.ts`, `src/zoom.ts`, `src/steering.ts` and `src/quality.ts` hold the colour palettes, the zoom steps, the key response and the frame average that lowers quality on a slow GPU. `src/aim.ts` picks the badge to lock on to and curves a bolt towards it, `src/lights.ts` chooses which flashes light the towers each frame, and `src/markers.ts` places the badge markers. None of them need WebGL, which is what makes them testable.
+- `src/calendar.ts`, `src/map.ts` and `src/routes.ts` hold the data, the city grid and the flight paths. `src/milestones.ts` and `src/review.ts` work out the badges and the year story, and `src/colours.ts`, `src/zoom.ts`, `src/steering.ts` and `src/quality.ts` hold the colour palettes, the zoom steps, the key response and the frame average that lowers quality on a slow GPU. `src/aim.ts` picks the badge to lock on to and curves a bolt towards it, `src/lights.ts` chooses which flashes light the towers each frame, and `src/markers.ts` places the markers and chooses which to show. `src/collision.ts` pushes the ship back out of a tower it has hit, and `src/sight.ts` holds the lines of sight: the tower being aimed at, whether one hides a badge, how far back the chase camera can sit, and the height to come at a badge from. None of them need WebGL, which is what makes them testable.
 - `src/world.ts`, `src/fighter.ts`, `src/badges.ts`, `src/blast.ts`, `src/fireworks.ts` and `src/app.ts` are the three.js scene, the ship and its guns, the floating badges, their explosions, the show for a cleared city and the flight modes. `src/environment.ts` renders what the ship's metal and glass reflect, and `src/trails.ts` draws the vapour off its wingtips.
 - `src/badge-art.ts` draws the badge artwork at runtime, and `src/hud.ts` is everything on screen that isn't the 3D scene.
 - `src/sound.ts` makes the sound effects and mixes them with the music from `src/music.ts`, all with the Web Audio API, and builds nothing until the visitor's first click, tap or key press.
 
 ## GitHub's limits
 
-GitHub allows a token 5,000 GraphQL points an hour. A username not in the cache costs 1 point, plus 1 for every three years of history, so a typical user costs 4 to 8 points. That covers roughly 600 to 1,200 new usernames an hour, and repeat visits cost nothing. Past that, visitors see a message asking them to try again. Requests covering all of a long history at once fail on GitHub's side, so the API fetches three years at a time.
+GitHub allows a token 5,000 GraphQL points an hour. A username not in the cache costs 1 point, plus 1 for every three years of history, so a typical user costs 4 to 8 points. That covers roughly 600 to 1,200 new usernames an hour, and repeat visits cost nothing. A history starts at the earliest year GitHub lists for the user, which can be before the account was made, and goes back no more than 30 years, so the most a username can cost is 11 points. Past that, visitors see a message asking them to try again. Requests covering all of a long history at once fail on GitHub's side, so the API fetches three years at a time.
 
 ## Deploying
 

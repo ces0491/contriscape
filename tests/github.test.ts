@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET } from '../api/contributions/[login]';
-import { fetchContributions, GitHubError, yearCounts } from '../api/_lib/github';
+import { fetchContributions, GitHubError, historyYears, MAX_YEARS, yearCounts } from '../api/_lib/github';
 
 const NOW = new Date('2026-03-10T12:00:00Z');
 
@@ -9,6 +9,11 @@ const calendar = (entries: [string, number][]) => ({
   contributionCalendar: { weeks: [{ contributionDays: days(entries) }] },
 });
 const ok = (data: unknown) => new Response(JSON.stringify({ data }), { status: 200 });
+/** GitHub's reply about the account: when it was made, and the years it lists contributions in. */
+const account = (login: string, created: string, listed: number[] = [], name: string | null = null) =>
+  ok({
+    user: { login, name, createdAt: `${created}T00:00:00Z`, contributionsCollection: { contributionYears: listed } },
+  });
 
 interface Sent {
   query: string;
@@ -49,9 +54,43 @@ describe('yearCounts', () => {
   });
 });
 
+describe('historyYears', () => {
+  it('starts when the account was made if GitHub lists nothing earlier', () => {
+    expect(historyYears(2023, [], 2026)).toEqual([2023, 2024, 2025, 2026]);
+    expect(historyYears(2023, [2026, 2025], 2026)).toEqual([2023, 2024, 2025, 2026]);
+  });
+
+  it('starts at the earliest year GitHub lists, which can be before the account was made', () => {
+    const years = historyYears(2007, [2026, 2008, 2007, 2006], 2026);
+    expect(years[0]).toBe(2006);
+    expect(years).toHaveLength(21);
+  });
+
+  it('goes no further back than the limit, however early a commit is dated', () => {
+    const years = historyYears(2012, [2026, 2012, 1970], 2026);
+    expect(years).toHaveLength(MAX_YEARS);
+    expect(years.at(-1)).toBe(2026);
+  });
+
+  it('still covers this year for an account GitHub dates after it', () => {
+    expect(historyYears(2027, [2027], 2026)).toEqual([2026]);
+  });
+});
+
 describe('fetchContributions', () => {
+  it('fetches a year GitHub lists before the account was made', async () => {
+    fetchMock.mockResolvedValueOnce(account('early', '2025-06-01', [2026, 2025, 2024]));
+    fetchMock.mockResolvedValueOnce(
+      ok({ user: { y2024: calendar([['2024-03-01', 2]]), y2025: calendar([]), y2026: calendar([]) } }),
+    );
+    const result = await fetchContributions('early', 'token', NOW);
+    expect(Object.keys(result.years)).toEqual(['2024', '2025', '2026']);
+    expect(result.years['2024'][60]).toBe(2);
+    expect(sent(fetchMock.mock.calls[0]).query).toContain('contributionYears');
+  });
+
   it('fetches long histories in chunks of three years', async () => {
-    fetchMock.mockResolvedValueOnce(ok({ user: { login: 'veteran', name: null, createdAt: '2017-05-01T00:00:00Z' } }));
+    fetchMock.mockResolvedValueOnce(account('veteran', '2017-05-01'));
     for (const years of [[2017, 2018, 2019], [2020, 2021, 2022], [2023, 2024, 2025], [2026]]) {
       const user = Object.fromEntries(years.map((y) => [`y${y}`, calendar([])]));
       fetchMock.mockResolvedValueOnce(ok({ user }));
@@ -74,7 +113,7 @@ describe('fetchContributions', () => {
   });
 
   it('keeps the earliest of each first across the years', async () => {
-    fetchMock.mockResolvedValueOnce(ok({ user: { login: 'firsts', name: null, createdAt: '2020-03-01T00:00:00Z' } }));
+    fetchMock.mockResolvedValueOnce(account('firsts', '2020-03-01'));
     const year = (extra: object) => ({ ...calendar([]), ...extra });
     fetchMock.mockResolvedValueOnce(
       ok({
@@ -97,9 +136,7 @@ describe('fetchContributions', () => {
   });
 
   it('sends the login as a variable, keeping it out of the query text', async () => {
-    fetchMock.mockResolvedValueOnce(
-      ok({ user: { login: 'someone', name: 'Some One', createdAt: '2026-01-01T00:00:00Z' } }),
-    );
+    fetchMock.mockResolvedValueOnce(account('someone', '2026-01-01', [2026], 'Some One'));
     fetchMock.mockResolvedValueOnce(ok({ user: { y2026: calendar([]) } }));
     await fetchContributions('someone', 'token', NOW);
     for (const call of fetchMock.mock.calls) {
@@ -110,7 +147,7 @@ describe('fetchContributions', () => {
 
   it('retries a GitHub 502 once', async () => {
     fetchMock.mockResolvedValueOnce(new Response('bad gateway', { status: 502 }));
-    fetchMock.mockResolvedValueOnce(ok({ user: { login: 'retry', name: null, createdAt: '2026-01-01T00:00:00Z' } }));
+    fetchMock.mockResolvedValueOnce(account('retry', '2026-01-01'));
     fetchMock.mockResolvedValueOnce(ok({ user: { y2026: calendar([]) } }));
     await expect(fetchContributions('retry', 'token', NOW)).resolves.toMatchObject({ login: 'retry' });
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -143,13 +180,13 @@ describe('GET /api/contributions/:login', () => {
   });
 
   it('accepts the login parameter added by the Vercel rewrite', async () => {
-    fetchMock.mockResolvedValueOnce(ok({ user: { login: 'found', name: null, createdAt: '2026-01-01T00:00:00Z' } }));
+    fetchMock.mockResolvedValueOnce(account('found', '2026-01-01'));
     fetchMock.mockResolvedValueOnce(ok({ user: { y2026: calendar([]) } }));
     expect((await GET(request('found?login=found'))).status).toBe(200);
   });
 
   it('reads the login from the parameter when the path is the route pattern', async () => {
-    fetchMock.mockResolvedValueOnce(ok({ user: { login: 'found', name: null, createdAt: '2026-01-01T00:00:00Z' } }));
+    fetchMock.mockResolvedValueOnce(account('found', '2026-01-01'));
     fetchMock.mockResolvedValueOnce(ok({ user: { y2026: calendar([]) } }));
     expect((await GET(request('[login]?login=found'))).status).toBe(200);
   });
@@ -169,7 +206,7 @@ describe('GET /api/contributions/:login', () => {
   });
 
   it('caches a found user at the CDN', async () => {
-    fetchMock.mockResolvedValueOnce(ok({ user: { login: 'found', name: null, createdAt: '2026-01-01T00:00:00Z' } }));
+    fetchMock.mockResolvedValueOnce(account('found', '2026-01-01'));
     fetchMock.mockResolvedValueOnce(ok({ user: { y2026: calendar([['2026-01-01', 3]]) } }));
     const reply = await GET(request('found'));
     expect(reply.status).toBe(200);

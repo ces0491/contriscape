@@ -69,6 +69,17 @@ export class CityMap {
     return week < 0 || week >= GRID_WEEKS ? -1 : this.grid[this.slot(year, week, Math.floor(local / CELL))];
   }
 
+  /**
+   * The tower a point is inside, or -1. `roof` gives each tower's height at the moment, which is lower while it is
+   * still rising. Without it the finished city is used.
+   */
+  towerAt(x: number, y: number, z: number, roof: (day: number) => number = (day) => this.top[day]): number {
+    const i = this.cellIndex(x, z);
+    if (i < 0 || !this.cal.counts[i]) return -1;
+    const inside = Math.abs(x - this.cx[i]) < TOWER / 2 && Math.abs(z - this.cz[i]) < TOWER / 2;
+    return inside && y < roof(i) ? i : -1;
+  }
+
   /** Calls `visit` for each tower whose footprint lies within `radius` of a point. Radius must be under CELL. */
   towersNear(x: number, z: number, radius: number, visit: (day: number) => void): void {
     const reach = TOWER / 2 + radius;
@@ -80,6 +91,11 @@ export class CityMap {
         }
       }
     }
+  }
+
+  /** How far a point on the ground is outside the city's blocks, or 0 among them. */
+  outside(x: number, z: number): number {
+    return Math.hypot(Math.max(-x, 0, x - WIDTH), Math.max(-z, 0, z - this.depth));
   }
 
   /** The street beside a year's block, on the side of its busier neighbour. */

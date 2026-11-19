@@ -11,6 +11,11 @@ const MS_PER_DAY = 864e5;
  * so a request covers three years.
  */
 const YEARS_PER_REQUEST = 3;
+/**
+ * The longest history fetched, counted back from this year. A commit can carry any date, so without a limit one dated
+ * decades back would cost a request for every three years in between.
+ */
+export const MAX_YEARS = 30;
 const CONCURRENT_REQUESTS = 3;
 const TIMEOUT_MS = 9000;
 const RETRIES = 1;
@@ -38,7 +43,12 @@ const replySchema = z.object({
 });
 
 const userSchema = z.object({
-  user: z.object({ login: z.string(), name: z.string().nullable(), createdAt: z.iso.datetime() }),
+  user: z.object({
+    login: z.string(),
+    name: z.string().nullable(),
+    createdAt: z.iso.datetime(),
+    contributionsCollection: z.object({ contributionYears: z.array(z.number().int()) }),
+  }),
 });
 
 const occurrence = z.object({ occurredAt: z.iso.datetime().optional() }).nullish();
@@ -60,7 +70,8 @@ const yearsSchema = z.object({ user: z.record(z.string(), calendarSchema) });
 
 type Day = z.infer<typeof calendarSchema>['contributionCalendar']['weeks'][number]['contributionDays'][number];
 
-const USER_QUERY = 'query($login:String!){user(login:$login){login name createdAt}}';
+const USER_QUERY =
+  'query($login:String!){user(login:$login){login name createdAt contributionsCollection{contributionYears}}}';
 
 const firstOf = (field: string, type: string) =>
   `${field}{... on ${type}{occurredAt} ... on RestrictedContribution{occurredAt}}`;
@@ -153,11 +164,25 @@ async function inBatches<T, R>(items: T[], size: number, work: (item: T) => Prom
   return results;
 }
 
+/**
+ * The years to fetch, oldest first. GitHub counts commits dated before the account was made, so a history can start
+ * before its account does. It starts at the earliest year GitHub lists, and no more than `MAX_YEARS` back.
+ */
+export function historyYears(created: number, listed: number[], current: number): number[] {
+  const first = Math.max(Math.min(created, ...listed), current - MAX_YEARS + 1);
+  const years: number[] = [];
+  for (let y = Math.min(first, current); y <= current; y++) years.push(y);
+  return years;
+}
+
 export async function fetchContributions(login: string, token: string, now = new Date()): Promise<Contributions> {
   const { user } = userSchema.parse(await post(token, USER_QUERY, login));
   const today = now.toISOString().slice(0, 10);
-  const span: number[] = [];
-  for (let y = Number(user.createdAt.slice(0, 4)); y <= now.getUTCFullYear(); y++) span.push(y);
+  const span = historyYears(
+    Number(user.createdAt.slice(0, 4)),
+    user.contributionsCollection.contributionYears,
+    now.getUTCFullYear(),
+  );
 
   const replies = await inBatches(chunked(span), CONCURRENT_REQUESTS, (years) =>
     post(token, yearsQuery(years), login).then((data) => yearsSchema.parse(data).user),

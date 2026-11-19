@@ -1,14 +1,30 @@
 import { CatmullRomCurve3, Vector3 } from 'three';
 import type { Calendar } from './calendar';
-import { CELL, DEPTH, ROWS, WIDTH, YEAR_PITCH, type CityMap } from './map';
+import { CELL, DEPTH, ROAD, ROWS, WIDTH, YEAR_PITCH, type CityMap } from './map';
 
 /** Days a tower takes to rise. */
 export const RISE = 14;
 /** How far ahead of the ship the date runs, so towers go up in view. */
 const LEAD = 56;
-/** Alley runs in a flight. Older years are crossed at speed, so long histories stay watchable. */
+/** Alley runs in a flight. The other years are passed at speed, so long histories stay watchable. */
 const MAX_RUNS = 2;
-const CROSSING_SECONDS = 10;
+/** A year this share of the busiest year's size is busy enough to fly through. */
+const BUSY_SHARE = 0.05;
+/** Seconds to pass a stretch of years the flight doesn't fly through, however many there are. */
+const PASSING_SECONDS = 8;
+const SLOWEST_PASS = 25;
+/** Days the date runs ahead of the ship as it passes those years, so each one rises as the ship comes up to it. */
+const PASSING_LEAD = 500;
+/** The passing lane runs up the west side of the blocks, over the year numbers painted there. */
+const WEST_LANE = -12;
+const LANE_HEIGHT = 10;
+/** Radius of the turns between the lane and the streets and alleys that meet it. */
+const LANE_TURN = 9;
+/** Radians the view on the lane turns from straight ahead towards the blocks, where the towers are going up. */
+const LANE_LEAN = 0.27;
+/** How much speed the ship gains or sheds from one year to the next on the lane, and what it has left at the turn. */
+const PASSING_GAIN = 12;
+const TURN_IN_PACE = 16;
 const CLEARANCE = 0.62;
 const CLIMB_SLOPE = 0.45;
 const RING_RADIUS = 13;
@@ -30,6 +46,7 @@ const TURN_SMOOTHING = 3;
 const LIFT_SMOOTHING = 3;
 const BANK_SMOOTHING = 2;
 const PACE_SMOOTHING = 20;
+const LEAN_SMOOTHING = 8;
 const BRAKING_DISTANCE = 8;
 
 export interface Waypoint {
@@ -41,6 +58,8 @@ export interface Waypoint {
   gaze: number;
   g?: Vector3;
   spin?: number;
+  /** Radians the view turns to the right of the way ahead, on a screen wide enough to keep the ship in it. */
+  lean?: number;
 }
 
 export interface Sample {
@@ -52,6 +71,7 @@ export interface Sample {
   gaze: number;
   spin: number;
   roll: number;
+  lean: number;
 }
 
 export interface Route {
@@ -200,62 +220,113 @@ function finale(map: CityMap, year: number, last: Waypoint, day: number): Waypoi
   return exitPoints({ x: last.x + 7, y: 4.5, z: last.z, day, pace: 10, gaze: 0 }, 1, 0);
 }
 
+/**
+ * The years a whole-history flight flies through: the busiest year and the latest busy one, so the flight shows where
+ * the history's weight is as well as where it has got to. When those are the same year, the busy year before it comes
+ * too.
+ */
+export function featuredYears(cal: Calendar): number[] {
+  const biggest = Math.max(...cal.years.map((y) => cal.yearTotal(y)));
+  if (!biggest) return [cal.lastYear];
+  const busy = cal.years.filter((y) => cal.yearTotal(y) >= biggest * BUSY_SHARE);
+  const latest = busy[busy.length - 1];
+  const heaviest = busy.reduce((best, y) => (cal.yearTotal(y) >= cal.yearTotal(best) ? y : best));
+  return heaviest === latest ? busy.slice(-MAX_RUNS) : [heaviest, latest];
+}
+
+/**
+ * North up the passing lane, one point beside the middle of each year. The date runs ahead of the ship, held between
+ * the dates either side of the stretch. The ship comes onto the lane at `entryPace`, builds to its passing speed over
+ * the first years and sheds it over the last, in time for the turn off the lane.
+ */
+function passYears(map: CityMap, years: number[], from: number, to: number, entryPace: number): Waypoint[] {
+  const pace = Math.max(SLOWEST_PASS, (years.length * YEAR_PITCH) / PASSING_SECONDS);
+  const last = years.length - 1;
+  return years.map((year, i) => ({
+    x: WEST_LANE,
+    y: LANE_HEIGHT,
+    z: map.blockZ(year) + DEPTH / 2,
+    day: clamp(map.cal.span(year).a + 182 + PASSING_LEAD, from, to),
+    pace: Math.min(pace, entryPace + PASSING_GAIN * i, TURN_IN_PACE + PASSING_GAIN * (last - i)),
+    gaze: 0,
+    lean: LANE_LEAN,
+  }));
+}
+
+/** A quarter turn to the right, off the lane and into an alley, levelling out at the height the alley is flown at. */
+function turnIn(entry: number, day: number, y: number): Waypoint[] {
+  const out: Waypoint[] = [];
+  for (let k = 0; k <= 4; k++) {
+    const a = (k / 4) * (Math.PI / 2);
+    out.push({
+      x: WEST_LANE + LANE_TURN * (1 - Math.cos(a)),
+      y,
+      z: entry + LANE_TURN * (1 - Math.sin(a)),
+      day,
+      pace: 10,
+      gaze: 0,
+    });
+  }
+  return out;
+}
+
+/** A quarter turn to the right, off the west end of a street and onto the lane heading north. */
+function turnOut(street: number, day: number, y: number): Waypoint[] {
+  const out: Waypoint[] = [];
+  for (let k = 0; k <= 4; k++) {
+    const a = (k / 4) * (Math.PI / 2);
+    out.push({
+      x: WEST_LANE + LANE_TURN * (1 - Math.sin(a)),
+      y,
+      z: street - LANE_TURN * (1 - Math.cos(a)),
+      day,
+      pace: 12,
+      gaze: 0,
+    });
+  }
+  return out;
+}
+
 function routeAll(map: CityMap, centre: Vector3): Route {
   const { cal } = map;
-  const biggest = Math.max(...cal.years.map((y) => cal.yearTotal(y)));
-  const busy = biggest ? cal.years.filter((y) => cal.yearTotal(y) >= biggest * 0.05) : [cal.lastYear];
-  const runs = busy.slice(-MAX_RUNS);
-  const opening = runs[0];
-  const crossed = cal.years.filter((y) => y < opening);
-  const lane = 24 * CELL;
-  const zS = map.blockZ(opening) + DEPTH + (YEAR_PITCH - DEPTH) / 2;
+  const runs = featuredYears(cal);
+  const alleys = runs.map((y) => alleyRoute(map, y));
+  const entryOf = (i: number) => map.blockZ(runs[i]) + alleys[i][0] * CELL;
+  const levelOf = (i: number) => Math.max(3.4, flightLevel(map, runs[i]));
   const south = map.depth;
-  const crossingPace = Math.max(25, (crossed.length * YEAR_PITCH) / CROSSING_SECONDS);
+  const start = cal.span(runs[0]).a;
 
-  // Older years go by at speed, so they are crossed above the rooftops
-  let roofs = 1;
-  for (let i = 0; i < cal.span(opening).a; i++) roofs = Math.max(roofs, map.top[i]);
-  const cruise = crossed.length ? roofs + 4 : 5;
-  const descending = (k: number) => 3.6 + (cruise - 3.6) * k;
-
+  // In from the south-west and down onto the lane, then past the years before the first run
   const wp: Waypoint[] = [
-    { x: lane + 16, y: Math.max(34, cruise + 6), z: south + 62, day: 0, pace: 32, gaze: 0.25, g: centre },
-    { x: lane + 5, y: Math.max(14, cruise + 2), z: south + 26, day: 0, pace: 28, gaze: 0 },
-    { x: lane, y: cruise, z: south + 5, day: 0, pace: 25, gaze: 0 },
+    { x: WEST_LANE - 18, y: 34, z: south + 78, day: 0, pace: 32, gaze: 0.25, g: centre },
+    { x: WEST_LANE - 6, y: 20, z: south + 44, day: 0, pace: 30, gaze: 0 },
+    { x: WEST_LANE, y: LANE_HEIGHT, z: south + 14, day: 0, pace: 28, gaze: 0 },
+    ...passYears(
+      map,
+      cal.years.filter((y) => y < runs[0]),
+      0,
+      start,
+      28,
+    ),
+    ...turnIn(entryOf(0), start, levelOf(0)),
   ];
-  crossed.forEach((y) => {
-    const { a } = cal.span(y);
-    wp.push({ x: lane, y: cruise, z: map.blockZ(y) + DEPTH, day: a, pace: crossingPace, gaze: 0 });
-    wp.push({ x: lane, y: cruise, z: map.blockZ(y) + DEPTH * 0.4, day: a + 180, pace: crossingPace, gaze: 0 });
-  });
-  wp.pop();
 
-  const start = cal.span(opening).a;
-  wp.push(
-    { x: lane - 4, y: descending(0.75), z: zS + 11, day: start, pace: 20, gaze: 0 },
-    { x: lane - 14, y: descending(0.45), z: zS + 2, day: start, pace: 16, gaze: 0 },
-    { x: lane - 26, y: descending(0.2), z: zS, day: start, pace: 14, gaze: 0 },
-    { x: 12, y: 3.6, z: zS, day: start, pace: 12, gaze: 0 },
-  );
-
-  let previousZ = zS;
   runs.forEach((y, i) => {
-    const route = alleyRoute(map, y);
-    const entry = map.blockZ(y) + route[0] * CELL;
-    const { a, b } = cal.span(y);
-    const level = flightLevel(map, y);
-    wp.push(...uTurn(-5, Math.max(previousZ, entry + TURN_WIDTH), entry, -1, a, 10, Math.max(3.4, level)));
+    const route = alleys[i];
+    const { b } = cal.span(y);
     wp.push(...runPoints(map, y, route, i * 1.7));
     if (i === runs.length - 1) return;
 
+    // Round the east end of the block and back west along a street, to where the next run starts
+    const next = cal.span(runs[i + 1]).a;
+    const between = cal.years.filter((other) => other > y && other < runs[i + 1]);
     const exit = map.blockZ(y) + route[route.length - 1] * CELL;
-    const street = map.streetFor(y);
+    const street = between.length ? map.blockZ(y) - ROAD / 2 : map.streetFor(y);
     const X = route.length * CELL;
     wp.push(
-      ...uTurn(X + 5, exit, Math.min(street, exit - TURN_WIDTH), 1, b, 10, Math.max(4.2, level)).map((p, k) => ({
-        ...p,
-        x: Math.max(p.x, WIDTH + k / 9),
-      })),
+      ...uTurn(X + 5, exit, Math.min(street, exit - TURN_WIDTH), 1, b, 10, Math.max(4.2, flightLevel(map, y))).map(
+        (p, k) => ({ ...p, x: Math.max(p.x, WIDTH + k / 9) }),
+      ),
     );
     for (let x = WIDTH - 14; x > 8; x -= 24) {
       const k = (WIDTH - x) / WIDTH;
@@ -269,7 +340,16 @@ function routeAll(map: CityMap, centre: Vector3): Route {
         spin: smooth(clamp((k - 0.3) / 0.25, 0, 1)) * Math.PI * 2,
       });
     }
-    previousZ = street;
+    if (between.length) {
+      wp.push(
+        ...turnOut(street, b, 5),
+        ...passYears(map, between, b, next, TURN_IN_PACE),
+        ...turnIn(entryOf(i + 1), next, levelOf(i + 1)),
+      );
+    } else {
+      const entry = entryOf(i + 1);
+      wp.push(...uTurn(-5, Math.max(street, entry + TURN_WIDTH), entry, -1, next, 10, levelOf(i + 1)));
+    }
   });
 
   const lastRun = runs[runs.length - 1];
@@ -343,6 +423,7 @@ function evenlySpaced(wp: Waypoint[]) {
     pace: [] as number[],
     gaze: [] as number[],
     spin: [] as number[],
+    lean: [] as number[],
   };
   const count = Math.ceil(lengths[steps] / STEP) + 1;
   let at = 0;
@@ -367,6 +448,7 @@ function evenlySpaced(wp: Waypoint[]) {
     out.pace.push(A.pace + (B.pace - A.pace) * t);
     out.gaze.push(A.gaze + (B.gaze - A.gaze) * t);
     out.spin.push((A.spin as number) + ((B.spin as number) - (A.spin as number)) * t);
+    out.lean.push((A.lean ?? 0) + ((B.lean ?? 0) - (A.lean ?? 0)) * t);
   }
   return out;
 }
@@ -417,6 +499,7 @@ function sampled(map: CityMap, wp: Waypoint[], centre: Vector3): Route {
 
   const gaze = blurredTwice(raw.gaze, turn);
   const spin = blurredTwice(raw.spin, turn);
+  const lean = blurredTwice(raw.lean, samplesWithin(LEAN_SMOOTHING));
   const gx = blurredTwice(raw.gx, turn);
   const gy = blurredTwice(raw.gy, turn);
   const gz = blurredTwice(raw.gz, turn);
@@ -438,6 +521,7 @@ function sampled(map: CityMap, wp: Waypoint[], centre: Vector3): Route {
       gaze: gaze[i],
       spin: spin[i],
       roll: roll[i],
+      lean: lean[i],
     };
   });
   return { samples, len };
@@ -455,9 +539,19 @@ export interface Pose {
   gaze: number;
   roll: number;
   spin: number;
+  lean: number;
 }
 
-export const newPose = (): Pose => ({ p: new Vector3(), g: new Vector3(), day: 0, pace: 0, gaze: 0, roll: 0, spin: 0 });
+export const newPose = (): Pose => ({
+  p: new Vector3(),
+  g: new Vector3(),
+  day: 0,
+  pace: 0,
+  gaze: 0,
+  roll: 0,
+  spin: 0,
+  lean: 0,
+});
 
 export function poseAt(route: Route, s: number, out: Pose): Pose {
   const S = route.samples;
@@ -478,6 +572,7 @@ export function poseAt(route: Route, s: number, out: Pose): Pose {
   out.gaze = A.gaze + (B.gaze - A.gaze) * k;
   out.roll = A.roll + (B.roll - A.roll) * k;
   out.spin = A.spin + (B.spin - A.spin) * k;
+  out.lean = A.lean + (B.lean - A.lean) * k;
   return out;
 }
 

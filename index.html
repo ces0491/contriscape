@@ -144,7 +144,11 @@
         <button id="badgeReset" type="button" hidden>Reset</button>
         <button class="panel-close" type="button">Close</button>
       </div>
-      <p>Milestones from this history. Pick one to fly there, then shoot it to earn it.</p>
+      <p>
+        Milestones from this history. Pick one to jump to it, then shoot it to earn it. Find one by its gold marker
+        instead and it's earned as flown.
+      </p>
+      <p id="badgeFlown" hidden></p>
       <ul id="badgeList"></ul>
     </section>
     <section id="settingsPanel" class="panel" aria-labelledby="settingsTitle" hidden>
@@ -179,13 +183,15 @@
         <dt>Autopilot</dt>
         <dd>
           Replays the history as a flight. The city rises as the date passes. The ship flies above most days, so the
-          busiest rise past it.
+          busiest rise past it. A flight through the whole history flies down two years, the busiest and the latest busy
+          one, and passes the others at speed.
         </dd>
         <dt>Pilot</dt>
         <dd>
           You fly. Aim at a tower to read its date and count. A tap of a steering key nudges the nose and holding it
           turns harder. Gold markers show the badges still standing, with arrows at the edge of the screen for those out
-          of view. The ship stops while a panel is open.
+          of view. With no badge left, a marker in the buildings' colour points back to the city once you have flown
+          clear of it. The ship stops while a panel is open.
         </dd>
         <dt>Orbit</dt>
         <dd>Rotate and zoom around the finished city. Point at a tower to read it.</dd>
@@ -274,9 +280,10 @@
         <dd>Drag it to move through the dates.</dd>
         <dt>Badges</dt>
         <dd>
-          Lists the milestones in this history. Pick one to fly to it. The ship waits there while you line up the shot,
+          Lists the milestones in this history. Pick one to jump to it. The ship waits there while you line up the shot,
           and Shift or the Boost button flies off. Aim close to a badge and the targeting computer locks on, with a tone
-          and the badge's name, and shots fired while locked curve into it.
+          and the badge's name, and shots fired while locked curve into it. A badge you find by its gold marker, without
+          the jump, is earned as flown, and the list keeps count of those.
         </dd>
         <dt>Settings</dt>
         <dd>

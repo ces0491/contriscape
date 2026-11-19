@@ -125,7 +125,7 @@ async function boot(): Promise<void> {
   }
 
   try {
-    startApp(data);
+    startApp(data, !requested);
   } catch (error) {
     // The renderer asks for its own context, which can fail where the probe's didn't
     console.error(error);
@@ -138,7 +138,8 @@ async function boot(): Promise<void> {
   // Google renders the city, so a title set here is the one it indexes. The root keeps the page's own.
   if (requested) {
     document.title = `${data.login} · ${APP_NAME}`;
-    history.replaceState(null, '', `/${data.login}`);
+    // The fragment stays, because `#your-year` is what opens the year's flight
+    history.replaceState(null, '', `/${data.login}${location.hash}`);
   }
   wireShare(data.login);
 }
