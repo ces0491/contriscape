@@ -67,7 +67,7 @@ interface Rig {
   engine: Engine;
 }
 
-/** What the music plays from: the days' counts and the busiest of them. */
+/** What the music plays from: the days' counts, and the count that plays the top note. */
 export interface Tune {
   counts: ArrayLike<number>;
   peak: number;

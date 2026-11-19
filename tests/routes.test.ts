@@ -316,6 +316,17 @@ describe('Calendar', () => {
     expect(cal.cellOf(3)).toEqual({ year: 2026, week: 1, row: 0 });
   });
 
+  it('takes a busy day as its benchmark, leaving out the rare day far above the rest', () => {
+    const spiky = new Calendar(FIXTURES['one enormous spike']);
+    expect(spiky.peak).toBe(5000);
+    expect(spiky.benchmark).toBe(2);
+  });
+
+  it('takes the busiest day as its benchmark when there are too few active days to say what is rare', () => {
+    const brief = new Calendar({ login: 'x', name: null, snapshot: '2026-01-05', years: { '2026': [1, 0, 3, 40, 2] } });
+    expect(brief.benchmark).toBe(40);
+  });
+
   it('survives a user with no data', () => {
     const cal = new Calendar({ login: 'x', name: null, snapshot: '2026-06-01', years: {} });
     expect(cal.years).toEqual([2026]);
@@ -339,6 +350,43 @@ describe('CityMap', () => {
   it('scales the tallest tower to the same height for any peak', () => {
     const big = new CityMap(new Calendar(FIXTURES['one enormous spike']));
     expect(Math.max(...big.top)).toBeCloseTo(Math.max(...map.top), 3);
+  });
+
+  it('stands ordinary days tall beside one enormous day', () => {
+    const big = new CityMap(new Calendar(FIXTURES['one enormous spike']));
+    const tallest = big.towerHeight(5000);
+    // Measured against the spike alone, a day of 2 would stand the square root of 2 in 5,000 of that: a fiftieth
+    expect(big.towerHeight(2) / tallest).toBeGreaterThan(0.7);
+    expect(big.towerHeight(2)).toBeLessThan(tallest);
+  });
+
+  it('keeps a busier day a taller tower, and never a shorter one however far past the benchmark', () => {
+    const big = new CityMap(new Calendar(FIXTURES['one enormous spike']));
+    for (const count of [1, 2, 3, 5, 8, 12]) {
+      expect(big.towerHeight(count + 1)).toBeGreaterThan(big.towerHeight(count));
+    }
+    // Hundreds of times the benchmark, the easing has nothing left to give and the towers stand level
+    for (const count of [50, 500, 4999]) {
+      expect(big.towerHeight(count + 1)).toBeGreaterThanOrEqual(big.towerHeight(count));
+    }
+  });
+
+  it('leaves a history with no outlying day at the square root of each day against the busiest', () => {
+    const few = new Calendar({ login: 'x', name: null, snapshot: '2026-01-05', years: { '2026': [1, 4, 9, 36, 16] } });
+    const small = new CityMap(few);
+    const tallest = small.towerHeight(36);
+    for (const count of [1, 4, 9, 16]) expect(small.towerHeight(count)).toBeCloseTo(tallest * Math.sqrt(count / 36), 6);
+  });
+
+  it("gives a day's share of the tallest tower, for its colour and its note", () => {
+    const big = new CityMap(new Calendar(FIXTURES['one enormous spike']));
+    expect(big.share(0)).toBe(0);
+    expect(big.share(5000)).toBeCloseTo(1, 6);
+    expect(big.share(2)).toBeCloseTo(big.towerHeight(2) / big.towerHeight(5000), 6);
+    // The music's top note sits where the heights top out, well below the spike
+    expect(big.fullCount).toBeLessThan(10);
+    expect(big.fullCount).toBeGreaterThan(2);
+    expect(map.fullCount).toBeGreaterThanOrEqual(cal.benchmark);
   });
 
   it('keeps blocks and streets apart', () => {

@@ -10,6 +10,18 @@ export const DEPTH = ROWS * CELL;
 export const WIDTH = WEEKS * CELL;
 export const YEAR_PITCH = DEPTH + ROAD;
 const TALLEST = 28;
+/**
+ * How far past a benchmark day the busiest day can stand, as a share of the benchmark's height. Days above the
+ * benchmark ease towards this, so one enormous day adds a little height and doesn't flatten every other tower.
+ */
+const OVERSHOOT = 1 / 3;
+
+/**
+ * A day's height against a benchmark day's, given the square root of the ratio of their counts. It rises in step up to
+ * the benchmark and eases off above it, always climbing, so a busier day is still a taller tower.
+ */
+const standing = (ratio: number): number =>
+  ratio <= 1 ? ratio : 1 + OVERSHOOT * (1 - Math.exp(-(ratio - 1) / OVERSHOOT));
 /** The last week of a leap year starting on a Saturday spills into a 54th column. */
 const GRID_WEEKS = WEEKS + 1;
 
@@ -21,11 +33,12 @@ export class CityMap {
   readonly top: Float32Array;
   readonly depth: number;
   private readonly grid: Int32Array;
-  private readonly scale: number;
+  /** The busiest day's standing against the benchmark, which every height is divided by so that day is the tallest. */
+  private readonly crest: number;
 
   constructor(readonly cal: Calendar) {
     const { days } = cal;
-    this.scale = cal.peak ? TALLEST / Math.sqrt(cal.peak) : 1;
+    this.crest = cal.peak ? standing(Math.sqrt(cal.peak / cal.benchmark)) : 1;
     this.depth = this.blockZ(cal.firstYear) + DEPTH;
     this.grid = new Int32Array(cal.years.length * GRID_WEEKS * ROWS).fill(-1);
     this.cx = new Float32Array(days);
@@ -48,8 +61,21 @@ export class CityMap {
     return (this.cal.lastYear - year) * YEAR_PITCH;
   }
 
+  /** A day's height as a share of the tallest tower's: 0 with no contributions, 1 on the busiest day. */
+  share(count: number): number {
+    return count ? standing(Math.sqrt(count / this.cal.benchmark)) / this.crest : 0;
+  }
+
   towerHeight(count: number): number {
-    return count ? this.scale * Math.sqrt(count) : 0.1;
+    return count ? TALLEST * this.share(count) : 0.1;
+  }
+
+  /**
+   * The count that would stand as tall as the tallest tower if days above the benchmark weren't eased. The music takes
+   * its top note from this, so its notes spread over the scale as the towers spread over the heights.
+   */
+  get fullCount(): number {
+    return this.cal.benchmark * this.crest * this.crest;
   }
 
   /** The tower height at a grid position, or 0 where there is no tower. */

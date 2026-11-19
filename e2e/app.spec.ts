@@ -35,6 +35,8 @@ interface CityDebug {
   stick: { x: number };
   endFlight: () => void;
   visitBadge: (index: number) => void;
+  approach: (index: number) => { x: number; y: number; z: number; pitch: number };
+  run: { timed: boolean; seconds: number };
   map: { top: ArrayLike<number> };
   ship: {
     live: boolean;
@@ -758,6 +760,84 @@ test('with no badge left to lead it, a ship clear of the city is shown the way b
   await expect(home).toHaveJSProperty('hidden', true);
 });
 
+test('when an Autopilot flight ends it offers the controls, and taking them starts Pilot', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  const offer = page.locator('#offer');
+  await expect(offer).toBeHidden();
+  await page.evaluate(() => window.__city.endFlight());
+  await expect(offer).toBeVisible();
+  await page.click('#offerPilot');
+  await expect(offer).toBeHidden();
+  expect(await page.evaluate(() => window.__city.mode)).toBe('pilot');
+
+  // Picking another way of flying takes the offer away too
+  await page.click('#m-fly');
+  await page.evaluate(() => window.__city.endFlight());
+  await expect(offer).toBeVisible();
+  await page.click('#m-fly');
+  await expect(offer).toBeHidden();
+});
+
+test('a city flown clear from its first badge is timed, and a jump from the list stops the clock', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  const clock = page.locator('#run');
+  const count = await page.evaluate(() => window.__city.badges.milestones.length);
+  const has = (index: number) =>
+    page.evaluate((index) => {
+      const { badges } = window.__city;
+      return badges.earned.has(badges.milestones[index].id);
+    }, index);
+  /** Sets the ship down where the list would, without the jump that would stop the clock, and shoots. */
+  const flyClear = async () => {
+    for (let index = 0; index < count; index++) {
+      // Badges that share a day hang one over the other, and a pair of bolts can take both
+      if (await has(index)) continue;
+      await page.evaluate((index) => {
+        const { ship, approach } = window.__city;
+        const to = approach(index);
+        ship.pos.set(to.x, to.y, to.z);
+        ship.yaw = 0;
+        ship.pitch = to.pitch;
+        ship.speed = 0;
+      }, index);
+      await page.keyboard.down('Space');
+      await expect.poll(() => has(index), { timeout: 60_000 }).toBe(true);
+      await page.keyboard.up('Space');
+    }
+  };
+
+  await expect(clock).toBeHidden();
+  await page.click('#m-pilot');
+  await shipLive(page);
+  await expect(clock).toHaveText(/^Clear \d+:\d\d$/);
+  await flyClear();
+  await expect(page.locator('#toast b')).toHaveText('City cleared in flight');
+  await expect(page.locator('#toast span')).toHaveText(/ in \d+:\d\d$/);
+  await expect(clock).toBeHidden();
+  const best = Number(await page.evaluate(() => localStorage.getItem('contriscape:best:octo-dev')));
+  expect(best).toBeGreaterThan(0);
+  await page.click('#badges');
+  await expect(page.locator('#badgeFlown')).toContainText(/Fastest clear \d+:\d\d\./);
+
+  // A reset puts the clock back to nothing and keeps the fastest clear
+  await page.click('#badgeReset');
+  await page.click('#badgeReset');
+  await expect(page.locator('#badgeFlown')).toHaveText(/^Fastest clear \d+:\d\d\.$/);
+  await page.keyboard.press('Escape');
+  await expect(clock).toBeVisible();
+  expect(await page.evaluate(() => window.__city.run.seconds)).toBeLessThan(best);
+
+  // A jump carries the ship across the city in no time, so the clear it helps isn't timed
+  await page.click('#badges');
+  await page.locator('#badgeList button').first().click();
+  await expect(clock).toBeHidden();
+  expect(await page.evaluate(() => window.__city.run.timed)).toBe(false);
+});
+
 test('gold markers lead to the badges in Pilot, and step aside in Autopilot', async ({ page }) => {
   await stubApi(page, { body: busy('octo-dev') });
   await page.goto('/octo-dev');
@@ -991,6 +1071,40 @@ test('a badge jumped to from the list is earned, and one flown to is marked as f
   await expect(rows.locator('em')).toHaveCount(0);
   await expect(tally).toBeHidden();
   expect(await page.evaluate(() => localStorage.getItem('contriscape:flown:octo-dev'))).toBeNull();
+});
+
+test('on a phone, holding Brake slows the ship and letting go lets it pick up again', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 664 }, hasTouch: true, isMobile: true });
+  const page = await context.newPage();
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await expect(page.locator('#brake')).toBeHidden();
+  await page.tap('#m-pilot');
+  await shipLive(page);
+  await expect(page.locator('#brake')).toBeVisible();
+  // Clear of the towers, so a bump doesn't do the slowing
+  await page.evaluate(() => window.__city.ship.pos.set(-150, 30, 8));
+  const speed = () => page.evaluate(() => window.__city.ship.speed);
+  await expect.poll(speed, { timeout: 30_000 }).toBeGreaterThan(15);
+  const box = await page.locator('#brake').boundingBox();
+  const at = { x: (box?.x ?? 0) + (box?.width ?? 0) / 2, y: (box?.y ?? 0) + (box?.height ?? 0) / 2, id: 4 };
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [at] });
+  await expect.poll(speed, { timeout: 30_000 }).toBeLessThan(8);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await expect.poll(speed, { timeout: 30_000 }).toBeGreaterThan(14);
+  // The three buttons sit clear of one another
+  const boxes = await Promise.all(['#fire', '#boost', '#brake'].map((id) => page.locator(id).boundingBox()));
+  for (let a = 0; a < boxes.length; a++) {
+    for (let b = a + 1; b < boxes.length; b++) {
+      const [p, q] = [boxes[a], boxes[b]];
+      if (!p || !q) throw new Error('a button has no box');
+      const apart = p.x + p.width <= q.x || q.x + q.width <= p.x || p.y + p.height <= q.y || q.y + q.height <= p.y;
+      expect(apart).toBe(true);
+    }
+  }
+  await context.close();
 });
 
 /** Loads a city with every badge earned but the first, then lines up that last one. */

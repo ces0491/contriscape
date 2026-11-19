@@ -1,5 +1,6 @@
 import { LOGIN_PATTERN, type ApiError } from '../../shared/contract.js';
 import { fetchContributions, GitHubError } from '../_lib/github.js';
+import { requestedLogin } from '../_lib/request.js';
 
 const FOUND = 'public, max-age=300, s-maxage=21600, stale-while-revalidate=86400';
 const NOT_FOUND = 'public, max-age=300, s-maxage=3600';
@@ -7,18 +8,6 @@ const UNCACHED = 'no-store';
 
 const failure = (error: ApiError, status: number, cache: string, headers: Record<string, string> = {}): Response =>
   Response.json({ error }, { status, headers: { 'cache-control': cache, ...headers } });
-
-/**
- * The login from the path, or from the `login` parameter Vercel's rewrite adds.
- * Any other parameter is refused: the CDN caches per query string, so `?x=1`, `?x=2` would each cost GitHub quota.
- */
-function requestedLogin(url: URL): string | null {
-  if ([...url.searchParams.keys()].some((name) => name !== 'login')) return null;
-  const segment = url.pathname.split('/').pop() ?? '';
-  const query = url.searchParams.get('login');
-  if (segment === '[login]') return query;
-  return query === null || query === segment ? segment : null;
-}
 
 export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);

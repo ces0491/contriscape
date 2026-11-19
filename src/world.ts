@@ -89,7 +89,7 @@ function lineGeometry(count: number, point: () => number[]): THREE.BufferGeometr
 
 function addTowers(scene: THREE.Scene, map: CityMap, shared: Shared): THREE.InstancedMesh {
   const { cal, cx, cz } = map;
-  const { days, counts, peak } = cal;
+  const { days, counts } = cal;
   const box = new THREE.BoxGeometry(1, 1, 1);
   box.translate(0, 0.5, 0);
   const aDay = new Float32Array(days);
@@ -109,7 +109,7 @@ function addTowers(scene: THREE.Scene, map: CityMap, shared: Shared): THREE.Inst
     placed.setPosition(cx[i], PLINTH, cz[i]);
     towers.setMatrixAt(i, placed);
     aDay[i] = i;
-    aMag[i] = counts[i] ? Math.sqrt(counts[i] / peak) : 0;
+    aMag[i] = map.share(counts[i]);
     aSeed[i] = (i * 0.6180339887) % 1;
   }
   box.setAttribute('aDay', new THREE.InstancedBufferAttribute(aDay, 1));

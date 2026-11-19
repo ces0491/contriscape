@@ -200,6 +200,13 @@ export class Hud {
     }, TOAST_SECONDS * 1000);
   }
 
+  /** The clock on a timed clear, under the date, or nothing with `null`. */
+  showRun(text: string | null): void {
+    const run = element('run');
+    run.hidden = text === null;
+    if (text !== null && run.textContent !== text) run.textContent = text;
+  }
+
   showCaption(title: string, detail: string): void {
     const caption = element('caption');
     this.fill(caption, title, detail);
@@ -222,6 +229,7 @@ export class Hud {
   renderBadges(
     rows: { name: string; detail: string; date: string; earned: boolean; flown: boolean; picture: string }[],
     visit: (index: number) => void,
+    best: string | null,
   ): void {
     const button = element('badges');
     const earned = rows.filter((r) => r.earned).length;
@@ -231,8 +239,9 @@ export class Hud {
     element('badgeReset').hidden = earned === 0;
     const flown = rows.filter((r) => r.flown).length;
     const tally = element('badgeFlown');
-    tally.hidden = flown === 0;
-    tally.textContent = `${flown} of ${rows.length} flown to.`;
+    const notes = [flown ? `${flown} of ${rows.length} flown to.` : '', best ? `Fastest clear ${best}.` : ''];
+    tally.textContent = notes.filter(Boolean).join(' ');
+    tally.hidden = tally.textContent === '';
     const list = element('badgeList');
     list.replaceChildren(
       ...rows.map((row, i) => {

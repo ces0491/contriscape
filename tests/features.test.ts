@@ -4,6 +4,7 @@ import { BADGE_ART } from '../src/badge-art';
 import { Calendar } from '../src/calendar';
 import { findMilestones } from '../src/milestones';
 import { reviewFacts, reviewYear } from '../src/review';
+import { formatClock, Run } from '../src/run';
 
 const SNAPSHOT = '2026-12-15';
 
@@ -113,6 +114,62 @@ describe('findMilestones', () => {
       ),
     );
     for (const m of found) expect(m.name).not.toMatch(github);
+  });
+});
+
+describe('formatClock', () => {
+  it('shows minutes and seconds, whole and padded', () => {
+    expect(formatClock(0)).toBe('0:00');
+    expect(formatClock(9.9)).toBe('0:09');
+    expect(formatClock(75)).toBe('1:15');
+    expect(formatClock(3725)).toBe('62:05');
+  });
+});
+
+describe('Run', () => {
+  it('times a clear flown from a city with no badge earned', () => {
+    const run = new Run(true);
+    expect(run.timed).toBe(true);
+    run.tick(1.5);
+    run.tick(2);
+    expect(run.seconds).toBeCloseTo(3.5);
+    expect(run.finish()).toBeCloseTo(3.5);
+  });
+
+  it('stops the clock once the city is cleared', () => {
+    const run = new Run(true);
+    run.tick(4);
+    run.finish();
+    run.tick(10);
+    expect(run.seconds).toBeCloseTo(4);
+    expect(run.timed).toBe(false);
+    expect(run.finish()).toBeNull();
+  });
+
+  it('gives no time to a clear that took a jump from the list', () => {
+    const run = new Run(true);
+    run.tick(3);
+    run.jumped();
+    run.tick(3);
+    expect(run.timed).toBe(false);
+    expect(run.finish()).toBeNull();
+  });
+
+  it('gives no time to a visit that began with badges already earned', () => {
+    const run = new Run(false);
+    run.tick(5);
+    expect(run.timed).toBe(false);
+    expect(run.finish()).toBeNull();
+  });
+
+  it('starts over from nothing when the badges are reset', () => {
+    const run = new Run(false);
+    run.tick(5);
+    run.reset();
+    expect(run.timed).toBe(true);
+    expect(run.seconds).toBe(0);
+    run.tick(2);
+    expect(run.finish()).toBeCloseTo(2);
   });
 });
 

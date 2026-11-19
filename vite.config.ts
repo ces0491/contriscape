@@ -6,22 +6,28 @@ interface VercelHeaders {
   headers: { source: string; headers: { key: string; value: string }[] }[];
 }
 
-/** Runs the Vercel function inside the dev server, so `npm run dev` needs no Vercel login. */
+/** The Vercel functions, by the path each answers. */
+const FUNCTIONS = ['contributions', 'card', 'share'];
+
+/** Runs the Vercel functions inside the dev server, so `npm run dev` needs no Vercel login. */
 function apiInDev(): Plugin {
   return {
     name: 'api-in-dev',
     configureServer(server) {
-      server.middlewares.use('/api/contributions', (req, res, next) => {
-        void (async () => {
-          const route = (await server.ssrLoadModule('/api/contributions/[login].ts')) as {
-            GET: (request: Request) => Promise<Response>;
-          };
-          const reply = await route.GET(new Request(`http://localhost${req.originalUrl}`));
-          res.statusCode = reply.status;
-          reply.headers.forEach((value, key) => res.setHeader(key, value));
-          res.end(await reply.text());
-        })().catch(next);
-      });
+      for (const name of FUNCTIONS) {
+        server.middlewares.use(`/api/${name}`, (req, res, next) => {
+          void (async () => {
+            const route = (await server.ssrLoadModule(`/api/${name}/[login].ts`)) as {
+              GET: (request: Request) => Response | Promise<Response>;
+            };
+            const reply = await route.GET(new Request(`http://${req.headers.host ?? 'localhost'}${req.originalUrl}`));
+            res.statusCode = reply.status;
+            reply.headers.forEach((value, key) => res.setHeader(key, value));
+            // As bytes, because the card is a picture
+            res.end(Buffer.from(await reply.arrayBuffer()));
+          })().catch(next);
+        });
+      }
     },
   };
 }

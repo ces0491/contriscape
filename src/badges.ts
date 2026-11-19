@@ -23,6 +23,15 @@ function readIds(key: string): Set<string> {
   }
 }
 
+function readSeconds(key: string): number | null {
+  try {
+    const saved = Number(localStorage.getItem(key));
+    return Number.isFinite(saved) && saved > 0 ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
 function saveIds(key: string, ids: Set<string>): void {
   try {
     localStorage.setItem(key, JSON.stringify([...ids]));
@@ -38,6 +47,8 @@ export class Badges {
   readonly flown: Set<string>;
   private readonly key: string;
   private readonly flownKey: string;
+  private readonly bestKey: string;
+  private fastest: number | null;
   private readonly places: THREE.Vector3[] = [];
   private readonly tokens: THREE.Group[] = [];
   private readonly canvases: HTMLCanvasElement[] = [];
@@ -56,6 +67,8 @@ export class Badges {
     this.earned = readIds(this.key);
     this.flownKey = `contriscape:flown:${login.toLowerCase()}`;
     this.flown = readIds(this.flownKey);
+    this.bestKey = `contriscape:best:${login.toLowerCase()}`;
+    this.fastest = readSeconds(this.bestKey);
 
     const stacked = new Map<number, number>();
     const edge = new THREE.CylinderGeometry(BADGE_RADIUS, BADGE_RADIUS, THICKNESS, 40);
@@ -134,6 +147,23 @@ export class Badges {
   /** Whether every badge here was flown to. */
   get allFlown(): boolean {
     return this.milestones.every((_, i) => this.isFlown(i));
+  }
+
+  /** The fastest timed clear of this city in this browser, in seconds, or null. A reset leaves it standing. */
+  get best(): number | null {
+    return this.fastest;
+  }
+
+  /** Takes a timed clear, and says whether it is the fastest yet. */
+  recordClear(seconds: number): boolean {
+    if (this.fastest !== null && seconds >= this.fastest) return false;
+    this.fastest = seconds;
+    try {
+      localStorage.setItem(this.bestKey, String(seconds));
+    } catch {
+      // Private windows can refuse storage. The time still stands for this visit.
+    }
+    return true;
   }
 
   /** Marks a badge as one the visitor flew to. */

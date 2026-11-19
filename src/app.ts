@@ -23,6 +23,7 @@ import { findMilestones, type Milestone } from './milestones';
 import { averageFrame, countedFrame, tooSlow } from './quality';
 import { reviewFacts, reviewTitle, reviewYear } from './review';
 import { buildRoute, lengthAtDay, newPose, poseAt, RISE, type Route } from './routes';
+import { formatClock, Run } from './run';
 import { FINISH_FRAGMENT, FINISH_VERTEX } from './shaders';
 import { approachHeight, blockedBetween, clearReach, towerAlong } from './sight';
 import { Sound, stereo } from './sound';
@@ -67,6 +68,8 @@ const PINNED_SIDE = 50;
 const REVIEW_HASH = '#your-year';
 const CAPTION_SECONDS = 4;
 const BADGE_APPROACH = 10;
+/** How long the offer of the controls stays up after an Autopilot flight ends. */
+const OFFER_SECONDS = 15;
 /** How far ahead of the ship a tower can be read by aiming at it. */
 const AIM_RANGE = 95;
 const PARKED_SECONDS = 6;
@@ -167,13 +170,17 @@ export function startApp(data: Contributions, example = false): void {
   const badges = new Badges(scene, map, findMilestones(cal), cal.login, shared);
   const blasts = Array.from({ length: BLASTS }, () => new Blast(scene, Math.random));
   const fireworks = new Fireworks(scene, shared.uPx, Math.random);
-  const sound = new Sound(recall(SOUND_KEY, true), recall(MUSIC_KEY, true), cal);
+  const sound = new Sound(recall(SOUND_KEY, true), recall(MUSIC_KEY, true), {
+    counts: cal.counts,
+    peak: map.fullCount,
+  });
   const markers = new Markers(
     element('markers'),
     badges.milestones.map((_, i) => badges.picture(i)),
     badges.milestones.map((m) => m.name),
   );
   const home = new HomeMarker(element('markers'));
+  const run = new Run(badges.milestones.length > 0 && badges.earned.size === 0);
 
   const composer = new EffectComposer(
     renderer,
@@ -250,6 +257,9 @@ export function startApp(data: Contributions, example = false): void {
   let introduce = example;
   let boostHeld = false;
   let boostPointer: number | null = null;
+  let brakeHeld = false;
+  let brakePointer: number | null = null;
+  let offerTimer = 0;
   let wasBoosting = false;
   let touchedTower = -1;
   /** When each nearby tower last whooshed past. */
@@ -455,6 +465,16 @@ export function startApp(data: Contributions, example = false): void {
     camera.lookAt(scope.key === 'all' ? LANDING_AIM : focusFor());
     setMode('orbit');
     if (finished) hud.showSummary(reviewTitle(review.year), reviewFacts(review, cal));
+    else offerControls();
+  }
+  /** After watching a flight is the moment to offer one. The offer goes when it's taken, or another mode is. */
+  function offerControls(): void {
+    element('offer').hidden = false;
+    offerTimer = window.setTimeout(withdrawOffer, OFFER_SECONDS * 1000);
+  }
+  function withdrawOffer(): void {
+    clearTimeout(offerTimer);
+    element('offer').hidden = true;
   }
 
   /* ---------- pilot ---------- */
@@ -534,7 +554,7 @@ export function startApp(data: Contributions, example = false): void {
     }
     ship.yaw -= sx * 2 * dt;
     ship.pitch = clamp(ship.pitch - sy * 1.5 * dt, -1.3, 1.3);
-    const wanted = holding ? 0 : boosting ? BOOST : keys.has('KeyC') ? BRAKE : CRUISE;
+    const wanted = holding ? 0 : boosting ? BOOST : keys.has('KeyC') || brakeHeld ? BRAKE : CRUISE;
     ship.speed += (wanted - ship.speed) * (1 - Math.exp(-2.4 * dt));
     sinceJump += ship.speed * dt;
 
@@ -628,7 +648,7 @@ export function startApp(data: Contributions, example = false): void {
       return;
     }
     // Clear of the artwork across, and of the distance under it, which reaches furthest down
-    const left = fire.getBoundingClientRect().left - MARKER_ROOM / 2;
+    const left = element('brake').getBoundingClientRect().left - MARKER_ROOM / 2;
     const top = element('boost').getBoundingClientRect().top - MARKER_ROOM;
     buttons = { left, top, frame: { ...pinned, right: stage.clientWidth - left + PINNED_SIDE } };
   }
@@ -776,6 +796,7 @@ export function startApp(data: Contributions, example = false): void {
   }
   function setMode(next: Mode, holdFor = 0): void {
     const wasFlying = mode === 'fly' && arrived && !(jump && jump.t < 0.5);
+    withdrawOffer();
     if (next !== 'fly') stopReview();
     mode = next;
     glide = null;
@@ -785,13 +806,14 @@ export function startApp(data: Contributions, example = false): void {
     );
     showHint(next);
     document.body.classList.toggle('piloting', next === 'pilot');
-    element('fire').hidden = element('boost').hidden = !(touch && next === 'pilot');
+    element('fire').hidden = element('boost').hidden = element('brake').hidden = !(touch && next === 'pilot');
     measureInsets();
     syncCursor();
     keys.clear();
     stick.set(0, 0);
     firing = false;
     boostHeld = false;
+    brakeHeld = false;
     if (next === 'fly') {
       startFlight(holdFor);
     } else if (next === 'pilot') {
@@ -902,6 +924,7 @@ export function startApp(data: Contributions, example = false): void {
     if (button.dataset.armed) {
       badges.reset();
       sinceJump = Infinity;
+      run.reset();
       standDownReset();
       drawBadges();
       return;
@@ -920,6 +943,7 @@ export function startApp(data: Contributions, example = false): void {
         picture: badges.picture(i),
       })),
       visitBadge,
+      badges.best === null ? null : formatClock(badges.best),
     );
   }
   function earn(badge: Milestone): void {
@@ -953,25 +977,42 @@ export function startApp(data: Contributions, example = false): void {
     }
     const total = badges.milestones.length;
     const inFlight = (cleared ? badges.allFlown : flown) ? ' in flight' : '';
+    // A clear flown from the first badge to the last has been on the clock
+    const took = cleared ? run.finish() : null;
+    // A first timed clear is the fastest by default, so only a time that beats an earlier one is called that
+    const toBeat = badges.best;
+    const quickest = took !== null && badges.recordClear(took) && toBeat !== null;
+    const clocked = took === null ? '' : ` in ${formatClock(took)}${quickest ? ', your fastest' : ''}`;
     hud.showToast(
       cleared ? `City cleared${inFlight}` : `Badge earned${inFlight}: ${badge.name}`,
       cleared
-        ? `${total} of ${total} badges earned on ${cal.login}`
+        ? `${total} of ${total} badges earned on ${cal.login}${clocked}`
         : `${badge.detail} · ${cal.formatShort(badge.day)}`,
       badges.pictureFor(badge.id),
     );
     drawBadges();
   }
-  /** Lines the ship up in front of a badge, clear of towers and aimed straight at it. */
-  function visitBadge(index: number): void {
-    showPanel(null);
+  /** Where a ship lines up on a badge: to its south, clear of towers and aimed straight at it. */
+  function approach(index: number): { x: number; y: number; z: number; pitch: number } {
     const target = badges.position(index);
     // Against the finished city, because every tower is up by the time the ship arrives
     const height = approachHeight(map, target, BADGE_APPROACH);
+    return {
+      x: target.x,
+      y: height,
+      z: target.z + BADGE_APPROACH,
+      pitch: Math.atan2(target.y - height, BADGE_APPROACH),
+    };
+  }
+  /** Jumps the ship to where it lines up on a badge, and holds it there while the shot is taken. */
+  function visitBadge(index: number): void {
+    showPanel(null);
+    const to = approach(index);
+    run.jumped();
     const arrive = () => {
-      ship.pos.set(target.x, height, target.z + BADGE_APPROACH);
+      ship.pos.set(to.x, to.y, to.z);
       ship.yaw = 0;
-      ship.pitch = Math.atan2(target.y - height, BADGE_APPROACH);
+      ship.pitch = to.pitch;
       ship.bank = 0;
       ship.speed = 0;
       ship.slide.set(0, 0, 0);
@@ -1122,6 +1163,10 @@ export function startApp(data: Contributions, example = false): void {
       boostPointer = null;
       boostHeld = false;
     }
+    if (e.pointerId === brakePointer) {
+      brakePointer = null;
+      brakeHeld = false;
+    }
     if (e.pointerId === dragPointer) {
       dragPointer = null;
       // Hands the keys back to the ship. Someone who tabbed to the timeline never gets here, so they keep it.
@@ -1157,6 +1202,7 @@ export function startApp(data: Contributions, example = false): void {
     keys.clear();
     firing = false;
     boostHeld = false;
+    brakeHeld = false;
   });
   document.addEventListener('keydown', (e) => {
     if (e.code === 'Escape') showPanel(null);
@@ -1239,6 +1285,12 @@ export function startApp(data: Contributions, example = false): void {
     boostPointer = e.pointerId;
     boostHeld = true;
   });
+  element('brake').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    brakePointer = e.pointerId;
+    brakeHeld = true;
+  });
+  element('offerPilot').addEventListener('click', () => setMode('pilot'));
   hud.scrub.addEventListener('pointerdown', (e) => {
     dragPointer = e.pointerId;
   });
@@ -1459,6 +1511,10 @@ export function startApp(data: Contributions, example = false): void {
     shared.uLights.value = lightsOn ? flashes.fill(time, shared.uLightPos.value, shared.uLightCol.value) : 0;
     environment.flush(time);
     updateCaption();
+    // The clock counts the time the ship is in the visitor's hands
+    const flown = mode === 'pilot' && ship.live && !panelOpen && !(jump && jump.t < 0.5);
+    if (flown) run.tick(dt);
+    hud.showRun(mode === 'pilot' && run.timed ? `Clear ${formatClock(run.seconds)}` : null);
     world.followCamera(camera);
     camera.updateMatrixWorld();
     updateTargeting();
@@ -1503,6 +1559,8 @@ export function startApp(data: Contributions, example = false): void {
         sound,
         endFlight,
         visitBadge,
+        approach,
+        run,
         stick,
         get firing() {
           return firing;

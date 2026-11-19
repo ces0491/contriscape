@@ -18,9 +18,13 @@ Let anyone enter a GitHub username and fly through a 3D city of that person's pu
 - [x] Visitors can change the building and ship colours, choose mouse steering, and read a guide to the controls and badges on the page
 - [x] Sound effects that start only after the visitor's first click, tap or key press, and switch off from Settings or a key, with the choice kept in the visitor's browser
 - [x] Music made from the history, with its own switch in Settings, kept in the visitor's browser
-- [x] In Pilot, markers lead to the badges still standing, a target lock curves shots onto a badge, and phones have a Boost button
+- [x] In Pilot, markers lead to the badges still standing, a target lock curves shots onto a badge, and phones have Boost and Brake buttons
 - [x] A flight through the whole history flies the busiest year and the latest busy one, and passes the others with each rising as the ship reaches it
 - [x] A badge found by its marker is earned as flown, apart from one jumped to from the list
+- [x] A city cleared by flying is timed, and the fastest clear is kept in the visitor's browser
+- [x] Tower heights are measured against a busy day, so one outlying day doesn't flatten the rest
+- [x] The end of an Autopilot flight offers the controls
+- [x] A shared link previews with a card of that user's skyline, and falls back to the site's own picture when GitHub can't be read
 - [x] Unit tests, browser tests under the production CSP, lint and typecheck all pass
 - [x] Name confirmed by Ces
 - [x] Deployed to production with a real token, verified on the live URL
@@ -57,3 +61,4 @@ Ces, after flying a stranger's city on the live URL from a phone and a laptop.
 - 2026-11-03: added Vercel Web Analytics, at Ces's request, and narrowed the visitor data rule to anything that identifies a visitor
 - 2026-11-19: added music, badge markers, the target lock and a phone Boost button, and reworked the ship, sky, effects and sound mix, at Ces's request
 - 2026-11-19: after a review, changed which years the whole-history flight flies and how it passes the others, marked badges as flown, added a marker back to the city and the front page's example hint, and started histories at the earliest year GitHub lists, at Ces's request
+- 2026-11-19: measured tower heights against a busy day, timed a clear flown without a jump, offered the controls when Autopilot ends, gave phones a Brake button, and added a share card for each username, at Ces's request

@@ -9,7 +9,20 @@
       "permanent": true
     }
   ],
-  "rewrites": [{ "source": "/:login([A-Za-z0-9][A-Za-z0-9-]{0,38})", "destination": "/index.html" }],
+  "rewrites": [
+    {
+      "source": "/:login([A-Za-z0-9][A-Za-z0-9-]{0,38})",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(facebookexternalhit|Facebot|Twitterbot|Slackbot|LinkedInBot|Discordbot|WhatsApp|TelegramBot|Pinterest|redditbot|Embedly|SkypeUriPreview|Mastodon|Bluesky|Iframely|vkShare).*"
+        }
+      ],
+      "destination": "/api/share/:login"
+    },
+    { "source": "/:login([A-Za-z0-9][A-Za-z0-9-]{0,38})", "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/(.*)",

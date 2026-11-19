@@ -529,6 +529,17 @@ input,
   color: var(--ink-2);
   font: 400 12px/1.3 var(--mono);
 }
+/* The clock on a timed clear, in Pilot */
+#run {
+  display: block;
+  margin-top: 2px;
+  color: var(--gold);
+  font: 600 12px/1.3 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+#run[hidden] {
+  display: none;
+}
 .stats {
   display: grid;
   grid-template-columns: repeat(4, auto);
@@ -704,6 +715,39 @@ button:focus-visible {
 #caption {
   top: calc(env(safe-area-inset-top, 0px) + 18%);
   border: 1px solid var(--rule);
+}
+/* The offer of the controls when an Autopilot flight ends. Unlike the toast it takes a click. */
+#offer {
+  position: fixed;
+  z-index: 3;
+  left: 50%;
+  top: calc(env(safe-area-inset-top, 0px) + 30%);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 14px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--scrim);
+  color: var(--ink-2);
+  font: 400 13px/1.35 var(--mono);
+  transform: translateX(-50%);
+}
+#offer[hidden] {
+  display: none;
+}
+#offer button {
+  appearance: none;
+  padding: 8px 14px;
+  border: 1px solid var(--sodium);
+  border-radius: 4px;
+  background: var(--sodium);
+  color: var(--night);
+  font: 700 14px/1 var(--display);
+  cursor: pointer;
 }
 #toast img {
   display: block;
@@ -1089,6 +1133,21 @@ body.piloting #date {
   font-size: clamp(18px, 2vw, 22px);
 }
 
+#brake {
+  appearance: none;
+  position: fixed;
+  z-index: 3;
+  right: calc(var(--gutter-right) + 84px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 154px);
+  width: 60px;
+  height: 60px;
+  border: 2px solid var(--ink-2);
+  border-radius: 50%;
+  background: var(--scrim-soft);
+  color: var(--ink);
+  font: 700 12px/1 var(--display);
+  touch-action: none;
+}
 #fire {
   appearance: none;
   position: fixed;

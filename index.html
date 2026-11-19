@@ -88,6 +88,7 @@
         <div class="now">
           <span id="date"></span>
           <span id="dayCount"></span>
+          <span id="run" hidden></span>
         </div>
         <dl class="stats">
           <div>
@@ -127,6 +128,11 @@
     </footer>
     <button id="fire" type="button" hidden>Fire</button>
     <button id="boost" type="button" hidden>Boost</button>
+    <button id="brake" type="button" hidden>Brake</button>
+    <div id="offer" hidden>
+      <span>That was Autopilot.</span>
+      <button id="offerPilot" type="button">Take the controls</button>
+    </div>
     <div id="tip" hidden></div>
     <div id="toast" role="status" hidden></div>
     <div id="caption" role="status" hidden></div>
@@ -174,8 +180,9 @@
 
       <h3>The city</h3>
       <p>
-        Each tower is one day and each block is a year. Height is the square root of that day's contributions, scaled to
-        the user's busiest day, so ordinary days stay visible beside a huge one. Red lights mark the busiest days.
+        Each tower is one day and each block is a year. Height is the square root of that day's contributions, measured
+        against a busy day for that user. The rare days far above it stand only a little taller, so one huge day doesn't
+        flatten the rest. Red lights mark the busiest days.
       </p>
 
       <h3>Ways to fly</h3>
@@ -184,7 +191,7 @@
         <dd>
           Replays the history as a flight. The city rises as the date passes. The ship flies above most days, so the
           busiest rise past it. A flight through the whole history flies down two years, the busiest and the latest busy
-          one, and passes the others at speed.
+          one, and passes the others at speed. When it ends, you're offered the controls.
         </dd>
         <dt>Pilot</dt>
         <dd>
@@ -225,7 +232,7 @@
           <tr>
             <th scope="row">Brake</th>
             <td>C</td>
-            <td>None</td>
+            <td>Brake button</td>
           </tr>
           <tr>
             <th scope="row">Down, up</th>
@@ -283,7 +290,8 @@
           Lists the milestones in this history. Pick one to jump to it. The ship waits there while you line up the shot,
           and Shift or the Boost button flies off. Aim close to a badge and the targeting computer locks on, with a tone
           and the badge's name, and shots fired while locked curve into it. A badge you find by its gold marker, without
-          the jump, is earned as flown, and the list keeps count of those.
+          the jump, is earned as flown, and the list keeps count of those. Clear a city by flying, with no jump, and
+          it's timed: the clock is under the date, and your fastest clear is kept.
         </dd>
         <dt>Settings</dt>
         <dd>

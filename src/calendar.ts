@@ -2,6 +2,10 @@ import type { Contributions } from '../shared/contract';
 
 const MS_PER_DAY = 864e5;
 const BUSY_WINDOW = 10;
+/** A busy day for a user: this share of their active days have no more contributions than it. */
+const BUSY_DAY = 0.99;
+/** With fewer active days than this the busiest day stands in, because a share of so few says little. */
+const STEADY_DAYS = 50;
 
 export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -36,6 +40,11 @@ export class Calendar {
   readonly days: number;
   readonly total: number;
   readonly peak: number;
+  /**
+   * A busy day's count, which the city's heights are measured against. The few days above it are the rare ones, like
+   * the day a whole project was imported, and measuring against those would leave every other tower a stub.
+   */
+  readonly benchmark: number;
   readonly busiestWindow: number;
   readonly firsts: NonNullable<Contributions['firsts']>;
   private readonly running: Float64Array;
@@ -65,6 +74,8 @@ export class Calendar {
     });
     this.total = this.running[this.days];
     this.peak = Math.max(...this.counts);
+    const active = this.counts.filter((c) => c > 0).sort((a, b) => a - b);
+    this.benchmark = active.length >= STEADY_DAYS ? active[Math.floor((active.length - 1) * BUSY_DAY)] : this.peak;
     this.busiestWindow = Math.max(1, ...this.counts.map((_, i) => this.windowSum(i)));
   }
 
