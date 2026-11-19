@@ -5,22 +5,27 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import type { Contributions } from '../shared/contract';
+import { holdsLock, lockOn } from './aim';
 import { APP_NAME } from './brand';
-import { Badges } from './badges';
+import { BADGE_RADIUS, Badges } from './badges';
 import { Blast } from './blast';
 import { Calendar, describeCount, MONTHS } from './calendar';
 import { COLOUR_ROWS, DEFAULT_COLOURS, readColours, towerPalette, type Colours } from './colours';
+import { Environment } from './environment';
 import { buildFighter, Weapons } from './fighter';
 import { FINALE_SECONDS, Fireworks } from './fireworks';
 import { Hud, type Scope } from './hud';
+import { Flashes } from './lights';
 import { CityMap, DEPTH, PLINTH, TOWER, WIDTH } from './map';
+import { Markers, placeMarker, type Insets, type Placed } from './markers';
 import { findMilestones, type Milestone } from './milestones';
 import { averageFrame, countedFrame, tooSlow } from './quality';
 import { reviewFacts, reviewTitle, reviewYear } from './review';
 import { buildRoute, lengthAtDay, newPose, poseAt, RISE, type Route } from './routes';
 import { FINISH_FRAGMENT, FINISH_VERTEX } from './shaders';
-import { Sound } from './sound';
+import { Sound, stereo } from './sound';
 import { keyTurn } from './steering';
+import { Trails } from './trails';
 import { createWorld, SETTLED_OFFSET } from './world';
 import { COCKPIT_BELOW, nextZoom } from './zoom';
 
@@ -36,7 +41,18 @@ const MAX_LOOK_DOWN = 2;
 const INVERT_KEY = 'contriscape:invert-y';
 const MOUSE_KEY = 'contriscape:mouse-steer';
 const SOUND_KEY = 'contriscape:sound';
+const MUSIC_KEY = 'contriscape:music';
 const COLOUR_KEY = 'contriscape:colours';
+/** Towers closer than this to the ship's line rush past with a whoosh. Under CELL, as `towersNear` needs. */
+const WHOOSH_REACH = 1.9;
+/** A tower that has just whooshed stays quiet this long, so one tower is one whoosh. */
+const WHOOSH_AGAIN = 1;
+/** Pixels between markers, so they don't sit on one another. Markers in view are smaller and need half. */
+const MARKER_ROOM = 44;
+/** Badges out of view that get a marker at the edge, nearest first. */
+const EDGE_MARKERS = 4;
+/** Pixels from the side of the view to a pinned marker's centre: half its artwork, its pointer, and a margin. */
+const PINNED_SIDE = 50;
 const REVIEW_HASH = '#your-year';
 const CAPTION_SECONDS = 4;
 const BADGE_APPROACH = 10;
@@ -50,6 +66,10 @@ const VICTORY_ROLL = 4.5;
 const CRUISE = 17;
 const BRAKE = 6;
 const BOOST = 46;
+/** Fine grain over the finished frame, enough to break up banding in the dark sky. */
+const GRAIN = 0.022;
+/** How far the chase camera drops back on full boost, as a share of its distance. */
+const BOOST_PULL = 0.3;
 /** The largest city a single view frames well. Older years sit behind the opening camera. */
 const FRAMED_DEPTH = 189;
 
@@ -113,20 +133,30 @@ export function startApp(data: Contributions): void {
   camera.position.copy(LANDING);
 
   const world = createWorld(map, renderer, camera, cal);
+  if (reduced) world.calm();
   const { scene, shared, towers } = world;
   shared.uPx.value = pixelRatio;
 
-  const { fighter, paintFighter } = buildFighter();
+  const craft = buildFighter();
+  const fighter = craft.group;
   scene.add(fighter);
   scene.add(new THREE.AmbientLight(0x8fa6c0, 1.1));
   const sun = new THREE.DirectionalLight(0xfff0e0, 1.5);
   sun.position.set(-0.5, 0.8, 0.6);
   scene.add(sun);
-  const weapons = new Weapons(scene, Math.random);
+  const environment = new Environment(renderer, (map) => craft.reflect(map));
+  const weapons = new Weapons(scene, Math.random, shared.uPx);
+  const trails = new Trails(scene);
+  const flashes = new Flashes();
   const badges = new Badges(scene, map, findMilestones(cal), cal.login, shared);
   const blasts = Array.from({ length: BLASTS }, () => new Blast(scene, Math.random));
   const fireworks = new Fireworks(scene, shared.uPx, Math.random);
-  const sound = new Sound(recall(SOUND_KEY, true));
+  const sound = new Sound(recall(SOUND_KEY, true), recall(MUSIC_KEY, true), cal);
+  const markers = new Markers(
+    element('markers'),
+    badges.milestones.map((_, i) => badges.picture(i)),
+    badges.milestones.map((m) => m.name),
+  );
 
   const composer = new EffectComposer(
     renderer,
@@ -136,7 +166,14 @@ export function startApp(data: Contributions): void {
   const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.38, 0.6, 0.74);
   composer.addPass(bloom);
   const finish = new ShaderPass({
-    uniforms: { tDiffuse: { value: null }, uFlash: { value: 0 }, uRed: { value: 0 } },
+    uniforms: {
+      tDiffuse: { value: null },
+      uFlash: { value: 0 },
+      uRed: { value: 0 },
+      uSpeed: { value: 0 },
+      uTime: { value: 0 },
+      uGrain: { value: GRAIN },
+    },
     vertexShader: FINISH_VERTEX,
     fragmentShader: FINISH_FRAGMENT,
   });
@@ -179,6 +216,23 @@ export function startApp(data: Contributions): void {
   let redAlert = 0;
   let hitGlow = 0;
   let victoryRoll = 0;
+  /** Until this time the chase camera looks level, so the fireworks over a cleared city are in view. */
+  let finaleUntil = 0;
+  /** How far into a boost the ship is, from 0 at cruise to 1 at full speed. */
+  let surge = 0;
+  /** The ship's bank this frame, for the vapour off its wingtips. */
+  let bankNow = 0;
+  let speedFx = true;
+  /** Flashes lighting the towers, which a slow GPU goes without. */
+  let lightsOn = true;
+  /** The badge the targeting computer is locked on to, or -1. */
+  let locked = -1;
+  let boostHeld = false;
+  let boostPointer: number | null = null;
+  let wasBoosting = false;
+  let touchedTower = -1;
+  /** When each nearby tower last whooshed past. */
+  const passed = new Map<number, number>();
   let firing = false;
   let contactCooldown = 0;
   let dimGoal = 1;
@@ -255,7 +309,7 @@ export function startApp(data: Contributions): void {
   const aboard = () => (mode === 'pilot' ? ship.live : mode === 'fly' && arrived);
   const standing = (i: number) =>
     i <= play || i > shared.uMax.value ? map.top[i] : PLINTH + (map.top[i] - PLINTH) * 0.04;
-  const chaseDistance = () => (zoom < COCKPIT_BELOW ? 0 : CHASE_DISTANCE * zoom);
+  const chaseDistance = () => (zoom < COCKPIT_BELOW ? 0 : CHASE_DISTANCE * zoom * (1 + BOOST_PULL * surge));
 
   const towerAt = (p: THREE.Vector3, roof = standing): number => {
     const i = map.cellIndex(p.x, p.z);
@@ -347,6 +401,7 @@ export function startApp(data: Contributions): void {
     ship.quat.setFromRotationMatrix(m1);
     fighter.position.copy(pt.p);
     fighter.quaternion.copy(ship.quat).multiply(q2.setFromAxisAngle(ROLL_AXIS, pt.roll + pt.spin));
+    bankNow = pt.roll;
 
     const d = chaseDistance();
     poseAt(route, Math.min(route.len, route.s + 8), ahead);
@@ -452,6 +507,27 @@ export function startApp(data: Contributions): void {
       bump(i, headOn);
     });
   }
+  /** Towers rushing past the ship each whoosh on their own side, louder the faster and closer they go by. */
+  function whooshPast(speed: number): void {
+    if (speed < 8) return;
+    map.towersNear(ship.pos.x, ship.pos.z, WHOOSH_REACH, (i) => {
+      // Walls beside the ship, not roofs it flies over
+      if (standing(i) < ship.pos.y - 0.4) return;
+      const last = passed.get(i);
+      if (last !== undefined && time - last < WHOOSH_AGAIN) return;
+      passed.set(i, time);
+      const dx = map.cx[i] - ship.pos.x;
+      const dz = map.cz[i] - ship.pos.z;
+      const gap = Math.hypot(dx, dz);
+      // The ship's right is (-fwd.z, fwd.x) on the ground
+      const side = (dz * ship.fwd.x - dx * ship.fwd.z) / Math.max(gap, 0.01);
+      const close = 1 - clamp((gap - TOWER / 2 - 0.3) / 1.6, 0, 1);
+      sound.whoosh(side * 0.85, clamp((speed - 8) / 28, 0, 1) * (0.35 + 0.65 * close));
+    });
+    if (passed.size > 64) {
+      for (const [day, at] of passed) if (time - at > WHOOSH_AGAIN) passed.delete(day);
+    }
+  }
   function updatePilot(dt: number): void {
     if (!ship.live) return;
     // WASD and the arrow keys are the same controls
@@ -466,8 +542,10 @@ export function startApp(data: Contributions): void {
     let sx = turning ? keyX : stick.x;
     let sy = climbing ? keyY : stick.y;
     if (invertY) sy = -sy;
-    const boosting = keys.has('ShiftLeft') || keys.has('ShiftRight');
+    const boosting = keys.has('ShiftLeft') || keys.has('ShiftRight') || boostHeld;
     if (boosting) parkedUntil = 0;
+    if (boosting && !wasBoosting && !panelOpen) sound.ignite();
+    wasBoosting = boosting;
     // Holds steady at a badge. Lining up the shot extends the hold, because moving off would overshoot the badge.
     if (aiming && time < parkedUntil && (turning || climbing)) parkedUntil = time + PARKED_SECONDS;
     // An open panel stops the ship, so nothing goes wrong while the mouse is busy with it
@@ -502,11 +580,13 @@ export function startApp(data: Contributions): void {
     ship.pos.z = clamp(ship.pos.z, -300, map.depth + 300);
 
     ship.bank += (-sx * 1.05 - ship.bank) * (1 - Math.exp(-5 * dt));
+    bankNow = ship.bank;
     fighter.position.copy(ship.pos);
     fighter.quaternion.copy(ship.quat).multiply(q2.setFromAxisAngle(ROLL_AXIS, ship.bank + victoryRoll));
 
     const d = chaseDistance();
     v3.copy(ship.pos).addScaledVector(ship.fwd, 9);
+    if (time < finaleUntil) v3.y = Math.max(v3.y, ship.pos.y + 1.5);
     if (d > 0) {
       v2.copy(ship.pos).addScaledVector(ship.fwd, -d);
       v2.y += 0.2 * d + 0.12;
@@ -521,6 +601,114 @@ export function startApp(data: Contributions): void {
   const reticle = element('reticle') as unknown as SVGSVGElement;
   const bracket = element('bracket');
   const lock = element('lock');
+  const badgeLock = element('badgeLock');
+  const sight = new THREE.Vector3();
+  const across = new THREE.Vector3();
+  const targets: (THREE.Vector3 | null)[] = badges.milestones.map(() => null);
+  let insets: Insets = { top: 80, right: 24, bottom: 140, left: 24 };
+  /** The frame markers out of view are pinned to, with room at the sides for their pointers. */
+  let pinned: Insets = insets;
+  /** On a phone in Pilot, the corner the Fire and Boost buttons fill, and the narrower frame that keeps clear of it. */
+  let buttons: { left: number; top: number; frame: Insets } | null = null;
+
+  /** Left or right of the camera, for stereo. */
+  function stereoFor(p: THREE.Vector3): number {
+    across.setFromMatrixColumn(camera.matrixWorld, 0);
+    sight.subVectors(p, camera.position);
+    return stereo(sight.dot(across), sight.length());
+  }
+  /** Whether a tower stands between the ship and a point. */
+  function blockedTo(p: THREE.Vector3): boolean {
+    across.subVectors(p, ship.pos);
+    const span = across.length() - 1.5;
+    across.normalize();
+    for (let t = 1; t < span; t += 0.6) {
+      if (towerAt(sight.copy(ship.pos).addScaledVector(across, t)) >= 0) return true;
+    }
+    return false;
+  }
+  /** The badge to lock on to: standing, near the line of fire and in range, with no tower in the way. Or -1. */
+  function findLock(): number {
+    if (!(mode === 'pilot' && ship.live && !(jump && jump.t < 0.5))) return -1;
+    badges.milestones.forEach((_, i) => {
+      targets[i] = badges.isStanding(i, play) ? badges.position(i) : null;
+    });
+    const held = locked >= 0 ? targets[locked] : null;
+    if (held && holdsLock(ship.pos, ship.fwd, held) && !blockedTo(held)) return locked;
+    const found = lockOn(ship.pos, ship.fwd, targets);
+    return found >= 0 && !blockedTo(badges.position(found)) ? found : -1;
+  }
+  /**
+   * The space the header and deck take, which markers keep out of, with room for a pinned marker's artwork and
+   * distance. Measured when the layout changes.
+   */
+  function measureInsets(): void {
+    const header = Math.max(
+      element('lookup').getBoundingClientRect().bottom,
+      element('m-pilot').getBoundingClientRect().bottom,
+    );
+    const deck = element('date').getBoundingClientRect().top;
+    insets = { top: header + 34, right: 24, bottom: Math.max(80, stage.clientHeight - deck + 40), left: 24 };
+    // A pinned marker's pointer reaches past its artwork, so the sides keep room for it
+    pinned = { ...insets, left: PINNED_SIDE, right: PINNED_SIDE };
+    const fire = element('fire');
+    if (fire.hidden) {
+      buttons = null;
+      return;
+    }
+    // Clear of the artwork across, and of the distance under it, which reaches furthest down
+    const left = fire.getBoundingClientRect().left - MARKER_ROOM / 2;
+    const top = element('boost').getBoundingClientRect().top - MARKER_ROOM;
+    buttons = { left, top, frame: { ...pinned, right: stage.clientWidth - left + PINNED_SIDE } };
+  }
+  /** Where a marker out of view is pinned: at the edge of the view, unless that's on the phone's Fire or Boost button. */
+  function pin(ndcX: number, ndcY: number, behind: boolean, width: number, height: number): Placed {
+    const edge = placeMarker(ndcX, ndcY, behind, width, height, pinned);
+    if (!buttons || edge.x < buttons.left || edge.y < buttons.top) return edge;
+    return placeMarker(ndcX, ndcY, behind, width, height, buttons.frame);
+  }
+  /**
+   * Markers over the badges still standing, in Pilot, pinned to the edge for any out of view. Where markers would
+   * overlap, the nearest badge keeps its marker, and only the few nearest out of view get one, so the edge stays readable.
+   */
+  function updateMarkers(): void {
+    if (!(mode === 'pilot' && ship.live && !(jump && jump.t < 0.5))) {
+      markers.hideAll();
+      return;
+    }
+    const width = stage.clientWidth;
+    const height = stage.clientHeight;
+    const candidates = badges.milestones
+      .map((_, i) => {
+        if (!badges.isStanding(i, play) || i === locked) return null;
+        const at = badges.position(i);
+        const behind = sight.copy(at).applyMatrix4(camera.matrixWorldInverse).z > 0;
+        sight.copy(at).project(camera);
+        const placed = placeMarker(sight.x, sight.y, behind, width, height, insets);
+        return {
+          i,
+          placed: placed.inside ? placed : pin(sight.x, sight.y, behind, width, height),
+          distance: ship.pos.distanceTo(at),
+        };
+      })
+      .filter((c) => c !== null)
+      .sort((a, b) => a.distance - b.distance);
+    const kept: Placed[] = [];
+    let atEdge = 0;
+    const shown = new Set<number>();
+    for (const { i, placed, distance } of candidates) {
+      const room = placed.inside ? MARKER_ROOM / 2 : MARKER_ROOM;
+      if (!placed.inside && atEdge >= EDGE_MARKERS) continue;
+      if (kept.some((other) => Math.hypot(other.x - placed.x, other.y - placed.y) < room)) continue;
+      kept.push(placed);
+      if (!placed.inside) atEdge++;
+      shown.add(i);
+      markers.place(i, placed, distance);
+    }
+    badges.milestones.forEach((_, i) => {
+      if (!shown.has(i)) markers.place(i, null, 0);
+    });
+  }
   function aimedTower(): number {
     const step = 0.6;
     v2.copy(ship.pos);
@@ -535,13 +723,37 @@ export function startApp(data: Contributions): void {
   function updateTargeting(): void {
     const flying = aboard() && !(jump && jump.t < 0.5);
     reticle.toggleAttribute('hidden', !flying);
-    const i = flying ? aimedTower() : -1;
     const width = stage.clientWidth;
     const height = stage.clientHeight;
     if (flying) {
       v2.copy(ship.pos).addScaledVector(ship.fwd, 30).project(camera);
       reticle.style.transform = `translate(${((v2.x + 1) / 2) * width}px,${((1 - v2.y) / 2) * height}px)`;
     }
+
+    const target = findLock();
+    if (target !== locked) {
+      if (target >= 0) {
+        sound.lock();
+        (badgeLock.lastElementChild as HTMLElement).textContent = badges.milestones[target].name;
+      }
+      locked = target;
+    }
+    badgeLock.hidden = locked < 0;
+    reticle.classList.toggle('locked', locked >= 0);
+    if (locked >= 0) {
+      const at = badges.position(locked);
+      // The corners close round the badge as it looks on screen
+      const wide = (BADGE_RADIUS / (at.distanceTo(camera.position) * Math.tan((camera.fov * Math.PI) / 360))) * height;
+      badgeLock.style.setProperty('--size', `${clamp(wide + 18, 44, 220).toFixed(0)}px`);
+      v2.copy(at).project(camera);
+      badgeLock.style.transform = `translate(${((v2.x + 1) / 2) * width}px,${((1 - v2.y) / 2) * height}px)`;
+      // A locked badge is the target, so the tower readout behind it steps aside
+      bracket.hidden = lock.hidden = true;
+      shared.uHover.value = -1;
+      return;
+    }
+
+    const i = flying ? aimedTower() : -1;
     if (i < 0) {
       bracket.hidden = lock.hidden = true;
       if (mode !== 'orbit') shared.uHover.value = -1;
@@ -567,8 +779,8 @@ export function startApp(data: Contributions): void {
   const HINTS: Record<Mode, string> = {
     fly: touch ? 'Pinch to zoom' : 'Scroll to zoom, all the way in for the cockpit',
     pilot: touch
-      ? 'Drag to steer · Pinch to zoom · Shoot gold badges to earn them'
-      : 'WASD or arrows steer · Space fires · Shift boost · C brake · The Guide has the rest',
+      ? 'Drag to steer · Pinch to zoom · Follow the gold markers and shoot the badges'
+      : 'WASD or arrows steer · Space fires · Shift boost · C brake · Gold markers lead to badges',
     orbit: touch ? 'Drag to rotate · Pinch to zoom' : 'Drag to rotate · Scroll to zoom',
   };
   function showHint(m: Mode): void {
@@ -604,11 +816,13 @@ export function startApp(data: Contributions): void {
     );
     showHint(next);
     document.body.classList.toggle('piloting', next === 'pilot');
-    element('fire').hidden = !(touch && next === 'pilot');
+    element('fire').hidden = element('boost').hidden = !(touch && next === 'pilot');
+    measureInsets();
     syncCursor();
     keys.clear();
     stick.set(0, 0);
     firing = false;
+    boostHeld = false;
     if (next === 'fly') {
       startFlight(holdFor);
     } else if (next === 'pilot') {
@@ -659,6 +873,11 @@ export function startApp(data: Contributions): void {
     element('sound').setAttribute('aria-pressed', String(on));
     remember(SOUND_KEY, on);
   }
+  function setMusic(on: boolean): void {
+    sound.setMusic(on);
+    element('music').setAttribute('aria-pressed', String(on));
+    remember(MUSIC_KEY, on);
+  }
   function setMouseSteer(on: boolean): void {
     mouseSteer = on;
     element('mouseSteer').setAttribute('aria-pressed', String(on));
@@ -687,7 +906,8 @@ export function startApp(data: Contributions): void {
   function paintScene(): void {
     const palette = towerPalette(colours.towers);
     world.paintTowers(palette);
-    paintFighter(colours);
+    environment.paint(palette, time);
+    craft.paint(colours);
     hud.setAccent(palette.ramp[3]);
     hud.syncColours(colours);
   }
@@ -739,13 +959,21 @@ export function startApp(data: Contributions): void {
     if (cleared) sound.fanfare();
     else sound.chime();
     if (!reduced) {
-      blasts[nextBlast++ % BLASTS].start(badges.position(badges.milestones.indexOf(badge)));
-      sound.blast();
+      const at = badges.position(badges.milestones.indexOf(badge));
+      blasts[nextBlast++ % BLASTS].start(at);
+      flashes.add({ x: at.x, y: at.y, z: at.z, r: 3.2, g: 1.7, b: 0.6, reach: 26, start: time, life: 1.1 });
+      sound.blast(stereoFor(at));
       shake = 0.4;
       if (cleared) {
-        fireworks.start(camera, towerPalette(colours.towers).ramp[3]);
-        sound.fireworks();
+        const shells = fireworks.start(camera, towerPalette(colours.towers).ramp[3]);
+        sound.fireworks(shells);
+        // Each shell lights the city under it as it bursts
+        for (const { at: burst, centre, colour } of shells) {
+          const [r, g, b] = colour.map((v) => v * 1.4);
+          flashes.add({ x: centre.x, y: centre.y, z: centre.z, r, g, b, reach: 95, start: time + burst, life: 0.9 });
+        }
         victoryRoll = Math.PI * 2;
+        finaleUntil = time + FINALE_SECONDS;
       }
     }
     const total = badges.milestones.length;
@@ -840,11 +1068,15 @@ export function startApp(data: Contributions): void {
     const found = ray.intersectObject(towers, false).find((h) => (h.instanceId ?? Infinity) <= play);
     if (found?.instanceId === undefined) {
       shared.uHover.value = -1;
+      touchedTower = -1;
       hud.hideTip();
       return;
     }
     const i = found.instanceId;
     shared.uHover.value = i;
+    // Pointing along the towers plays them, like running a finger along strings
+    if (i !== touchedTower) sound.touch(i);
+    touchedTower = i;
     hud.showTip(at.x, at.y, cal.formatDate(i), describeCount(counts[i]));
   }
 
@@ -915,6 +1147,10 @@ export function startApp(data: Contributions): void {
       firePointer = null;
       firing = false;
     }
+    if (e.pointerId === boostPointer) {
+      boostPointer = null;
+      boostHeld = false;
+    }
     if (e.pointerId === dragPointer) {
       dragPointer = null;
       // Hands the keys back to the ship. Someone who tabbed to the timeline never gets here, so they keep it.
@@ -945,6 +1181,7 @@ export function startApp(data: Contributions): void {
   window.addEventListener('blur', () => {
     keys.clear();
     firing = false;
+    boostHeld = false;
   });
   document.addEventListener('keydown', (e) => {
     if (e.code === 'Escape') showPanel(null);
@@ -987,6 +1224,10 @@ export function startApp(data: Contributions): void {
     setSound(!sound.enabled);
     (e.currentTarget as HTMLElement).blur();
   });
+  element('music').addEventListener('click', (e) => {
+    setMusic(!sound.musicEnabled);
+    (e.currentTarget as HTMLElement).blur();
+  });
   PANEL_NAMES.forEach((name) => {
     element(name).addEventListener('click', (e) => {
       showPanel(element(PANELS[name]).hidden ? name : null);
@@ -1016,6 +1257,11 @@ export function startApp(data: Contributions): void {
     e.preventDefault();
     firePointer = e.pointerId;
     firing = true;
+  });
+  element('boost').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    boostPointer = e.pointerId;
+    boostHeld = true;
   });
   hud.scrub.addEventListener('pointerdown', (e) => {
     dragPointer = e.pointerId;
@@ -1058,12 +1304,14 @@ export function startApp(data: Contributions): void {
   element('mouseSteer').setAttribute('aria-pressed', String(mouseSteer));
   element('mouseSteer').hidden = touch;
   element('sound').setAttribute('aria-pressed', String(sound.enabled));
+  element('music').setAttribute('aria-pressed', String(sound.musicEnabled));
   hud.renderColours(COLOUR_ROWS, (key, hex) => setColours({ ...colours, [key]: hex }));
   paintScene();
   drawBadges();
   void document.fonts.load('800 64px "Mona Sans"').then(() => {
     badges.repaint();
     drawBadges();
+    markers.repaint(badges.milestones.map((_, i) => badges.picture(i)));
   });
   const credit = document.createElement('a');
   credit.href = 'https://sheetsolved.com';
@@ -1089,6 +1337,7 @@ export function startApp(data: Contributions): void {
     composer.setPixelRatio(pixelRatio);
     composer.setSize(width, height);
     hud.drawTimeline();
+    measureInsets();
   }
 
   let last = performance.now();
@@ -1113,6 +1362,10 @@ export function startApp(data: Contributions): void {
     } else {
       quality = 2;
       bloom.enabled = false;
+      speedFx = false;
+      lightsOn = false;
+      finish.uniforms.uGrain.value = 0;
+      world.simplify();
     }
   }
 
@@ -1151,7 +1404,13 @@ export function startApp(data: Contributions): void {
     fighter.visible = aboard() && chaseDistance() > 0;
     element('canopy').toggleAttribute('hidden', !(aboard() && chaseDistance() === 0));
 
-    if (firing && mode === 'pilot' && ship.live && weapons.fire(ship.pos, ship.fwd, fighter.quaternion)) sound.laser();
+    const homing = locked >= 0 ? badges.position(locked) : null;
+    if (firing && mode === 'pilot' && ship.live && weapons.fire(ship.pos, ship.fwd, fighter.quaternion, homing)) {
+      sound.laser();
+      craft.muzzle();
+      const { x, y, z } = ship.pos;
+      flashes.add({ x, y, z, r: 1.6, g: 0.25, b: 0.15, reach: 6, start: time, life: 0.1 });
+    }
     weapons.update(
       dt,
       (p) => {
@@ -1165,24 +1424,46 @@ export function startApp(data: Contributions): void {
         return day >= 0 ? day : null;
       },
       (day, at) => {
-        sound.impact(at.distanceTo(camera.position));
+        sound.impact(at.distanceTo(camera.position), stereoFor(at), day >= 0);
+        flashes.add({ x: at.x, y: at.y, z: at.z, r: 1.6, g: 0.75, b: 0.3, reach: 7, start: time, life: 0.25 });
         if (day < 0) return;
         shared.uHit.value = day;
         hitGlow = 1;
       },
     );
-    sound.engine(mode === 'pilot' && ship.live ? ship.speed / BOOST : null);
-
     const moving = aboard() && !(mode === 'fly' && paused);
+    const speed = moving ? ship.vel.length() : 0;
+    // Autopilot is watched rather than flown, so its engine sits further back in the mix
+    sound.engine(aboard() ? speed / BOOST : null, mode === 'pilot' ? 1 : 0.5);
+    if (moving && !(jump && jump.t < 0.5)) whooshPast(speed);
+    if (mode === 'fly' && arrived && !paused) sound.cue({ kind: 'history', day: play });
+    else if (mode === 'pilot' && ship.live) sound.cue({ kind: 'flight', day: map.cellIndex(ship.pos.x, ship.pos.z) });
+    else sound.cue({ kind: 'still' });
+    surge +=
+      ((mode === 'pilot' ? clamp((ship.speed - CRUISE) / (BOOST - CRUISE), 0, 1) : 0) - surge) *
+      (1 - Math.exp(-4 * dt));
+    craft.update(time, dt, aboard() ? speed / CRUISE : 0);
+    if (fighter.visible) {
+      craft.wingtips(v1, v2);
+      const turning = clamp(Math.abs(bankNow) * 1.1 - 0.15, 0, 1) * clamp((speed - 8) / 20, 0, 1);
+      trails.update(v1, v2, Math.min(1, turning * 0.8 + clamp((speed - 26) / 20, 0, 1) * 0.3), time, camera.position);
+      trails.visible = true;
+    } else {
+      trails.clear();
+      trails.visible = false;
+    }
     world.dustVelocity.copy(ship.vel).multiplyScalar(moving ? 1 : 0);
     world.dust.visible = moving;
     shared.uWarp.value = warp;
     world.warpLines.visible = warp > 0.01;
-    const fov = baseFov + (moving ? clamp((ship.vel.length() - 18) / 28, 0, 1) * 10 : 0) + warp * 50;
+    const fov = baseFov + (moving ? clamp((speed - 18) / 28, 0, 1) * 10 : 0) + warp * 50;
     if (Math.abs(fov - camera.fov) > 0.02) {
       camera.fov += (fov - camera.fov) * (1 - Math.exp(-8 * dt));
       camera.updateProjectionMatrix();
     }
+    finish.uniforms.uSpeed.value = speedFx && !reduced ? surge * 0.8 + warp * 1.4 : 0;
+    // Held still for reduced motion, where it still breaks up banding without shimmering
+    finish.uniforms.uTime.value = reduced ? 0 : time;
 
     shake = Math.max(0, shake - dt * 2.6);
     if (shake > 0)
@@ -1199,10 +1480,13 @@ export function startApp(data: Contributions): void {
     badges.update(time, play);
     blasts.forEach((blast) => blast.update(dt, camera));
     fireworks.update(dt);
+    shared.uLights.value = lightsOn ? flashes.fill(time, shared.uLightPos.value, shared.uLightCol.value) : 0;
+    environment.flush(time);
     updateCaption();
     world.followCamera(camera);
     camera.updateMatrixWorld();
     updateTargeting();
+    updateMarkers();
     hud.update(play);
     if (pickAt) {
       pick(pickAt);
@@ -1227,6 +1511,8 @@ export function startApp(data: Contributions): void {
     Object.assign(window, {
       __city: {
         camera,
+        // A NaN anywhere in the frame only shows once bloom spreads it, so tests keep bloom on
+        bloom,
         ship,
         controls,
         weapons,
@@ -1256,6 +1542,9 @@ export function startApp(data: Contributions): void {
         },
         get jump() {
           return jump;
+        },
+        get locked() {
+          return locked;
         },
       },
     });

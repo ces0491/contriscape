@@ -17,6 +17,8 @@ Let anyone enter a GitHub username and fly through a 3D city of that person's pu
 - [x] A December flight through the current year, with captions and a closing summary
 - [x] Visitors can change the building and ship colours, choose mouse steering, and read a guide to the controls and badges on the page
 - [x] Sound effects that start only after the visitor's first click, tap or key press, and switch off from Settings or a key, with the choice kept in the visitor's browser
+- [x] Music made from the history, with its own switch in Settings, kept in the visitor's browser
+- [x] In Pilot, markers lead to the badges still standing, a target lock curves shots onto a badge, and phones have a Boost button
 - [x] Unit tests, browser tests under the production CSP, lint and typecheck all pass
 - [x] Name confirmed by Ces
 - [x] Deployed to production with a real token, verified on the live URL
@@ -51,3 +53,4 @@ Ces, after flying a stranger's city on the live URL from a phone and a laptop.
 - 2026-11-02: added the fireworks for a cleared city
 - 2026-11-03: added sound effects, at Ces's request
 - 2026-11-03: added Vercel Web Analytics, at Ces's request, and narrowed the visitor data rule to anything that identifies a visitor
+- 2026-11-19: added music, badge markers, the target lock and a phone Boost button, and reworked the ship, sky, effects and sound mix, at Ces's request

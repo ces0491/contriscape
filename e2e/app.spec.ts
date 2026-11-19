@@ -29,6 +29,8 @@ interface CityDebug {
   play: number;
   jump: { done: boolean } | null;
   firing: boolean;
+  locked: number;
+  bloom: { enabled: boolean };
   stick: { x: number };
   endFlight: () => void;
   visitBadge: (index: number) => void;
@@ -36,7 +38,7 @@ interface CityDebug {
   ship: { live: boolean; speed: number; yaw: number; pitch: number; pos: { x: number; y: number } };
   camera: { matrixWorld: { elements: number[] } };
   weapons: { activeBolts: number };
-  badges: { tokens: { visible: boolean }[]; milestones: { id: string }[]; earned: Set<string> };
+  badges: { tokens: { visible: boolean }[]; milestones: { id: string; name: string }[]; earned: Set<string> };
   blasts: { active: boolean }[];
   fireworks: { active: boolean };
   fighter: { visible: boolean; children: { material: { color: { getHexString(): string } } }[] };
@@ -630,6 +632,138 @@ test('on a phone, sound starts when the finger lifts, not when it lands', async 
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await expect.poll(() => page.evaluate(() => window.__heard.contexts[0]?.state)).toBe('running');
   await context.close();
+});
+
+test('music has its own switch, remembered, and the chords start with the sound', async ({ page }) => {
+  await listenForSound(page);
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#m-orbit');
+  await expect.poll(() => page.evaluate(() => window.__heard.contexts[0]?.state)).toBe('running');
+  // The engine and the unlocking blank are five sources. The first chord adds eight voices and a bass note.
+  await expect.poll(() => page.evaluate(() => window.__heard.started)).toBeGreaterThanOrEqual(14);
+
+  await page.click('#settings');
+  await expect(page.locator('#music')).toHaveAttribute('aria-pressed', 'true');
+  await page.click('#music');
+  await expect(page.locator('#music')).toHaveAttribute('aria-pressed', 'false');
+
+  await page.reload();
+  await cityReady(page);
+  await page.click('#m-orbit');
+  await expect.poll(() => page.evaluate(() => window.__heard.contexts[0]?.state)).toBe('running');
+  await page.waitForTimeout(1500);
+  expect(await page.evaluate(() => window.__heard.started)).toBeLessThan(8);
+  await page.click('#settings');
+  await expect(page.locator('#music')).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('gold markers lead to the badges in Pilot, and step aside in Autopilot', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  const shown = () => page.locator('.marker:not([hidden])').count();
+  await expect.poll(shown).toBe(0);
+  await page.click('#m-pilot');
+  await shipLive(page);
+  await expect.poll(shown).toBeGreaterThan(0);
+  // Every marker stays inside the view
+  for (const box of await page
+    .locator('.marker:not([hidden])')
+    .evaluateAll((all) => all.map((e) => e.getBoundingClientRect().toJSON() as DOMRect))) {
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x).toBeLessThanOrEqual(1440);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeLessThanOrEqual(900);
+  }
+  await page.click('#m-fly');
+  await expect.poll(shown).toBe(0);
+});
+
+test('the targeting computer locks on to a badge ahead and names it', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.evaluate(() => localStorage.removeItem('contriscape:badges:octo-dev'));
+  await page.click('#badges');
+  await page.locator('#badgeList button').first().click();
+  await shipLive(page);
+  await expect.poll(() => page.evaluate(() => window.__city.locked)).toBe(0);
+  const name = await page.evaluate(() => window.__city.badges.milestones[0].name);
+  // The lock is a point the corners and label hang from, so the label is what can be seen
+  const label = page.locator('#badgeLock span');
+  await expect(label).toBeVisible();
+  await expect(label).toHaveText(name);
+  await expect(page.locator('#reticle')).toHaveClass(/locked/);
+
+  // Turned right round, nothing is ahead to lock on to
+  await page.evaluate(() => {
+    window.__city.ship.yaw += Math.PI;
+  });
+  await expect.poll(() => page.evaluate(() => window.__city.locked)).toBe(-1);
+  await expect(label).toBeHidden();
+});
+
+test('on a phone, holding Boost speeds the ship up and letting go slows it', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 664 }, hasTouch: true, isMobile: true });
+  const page = await context.newPage();
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await expect(page.locator('#boost')).toBeHidden();
+  await page.tap('#m-pilot');
+  await shipLive(page);
+  await expect(page.locator('#boost')).toBeVisible();
+  const box = await page.locator('#boost').boundingBox();
+  const at = { x: (box?.x ?? 0) + (box?.width ?? 0) / 2, y: (box?.y ?? 0) + (box?.height ?? 0) / 2, id: 3 };
+  const cdp = await context.newCDPSession(page);
+  const speed = () => page.evaluate(() => window.__city.ship.speed);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [at] });
+  await expect.poll(speed, { timeout: 30_000 }).toBeGreaterThan(30);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await expect.poll(speed, { timeout: 30_000 }).toBeLessThan(25);
+  await context.close();
+});
+
+test('no frame goes black while flying, firing and boosting', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#m-pilot');
+  await shipLive(page);
+  // A slow renderer turns bloom off, and bloom is what spreads one NaN pixel over the whole frame
+  await page.evaluate(() => {
+    window.__city.bloom.enabled = true;
+  });
+  await page.keyboard.down('Space');
+  await page.keyboard.down('ShiftLeft');
+  const dark = await page.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 48;
+        canvas.height = 30;
+        const g = canvas.getContext('2d') as CanvasRenderingContext2D;
+        let frames = 0;
+        let black = 0;
+        // Sampled straight after each render, before the canvas is cleared for the next
+        const sample = () => {
+          window.__city.bloom.enabled = true;
+          g.drawImage(document.getElementById('gl') as HTMLCanvasElement, 0, 0, 48, 30);
+          const { data } = g.getImageData(0, 0, 48, 30);
+          let sum = 0;
+          for (let i = 0; i < data.length; i += 4) sum += data[i] + data[i + 1] + data[i + 2];
+          if (sum / (data.length / 4) < 3) black++;
+          if (++frames < 12) requestAnimationFrame(sample);
+          else resolve(black);
+        };
+        requestAnimationFrame(sample);
+      }),
+  );
+  await page.keyboard.up('ShiftLeft');
+  await page.keyboard.up('Space');
+  expect(dark).toBe(0);
 });
 
 test('an open panel stops the ship, and it flies on when the panel closes', async ({ page }) => {

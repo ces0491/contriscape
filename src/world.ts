@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { formatCount, MONTHS, type Calendar } from './calendar';
 import type { TowerPalette } from './colours';
+import { LIGHT_SLOTS } from './lights';
 import { CELL, DEPTH, PLINTH, ROAD, TOWER, WEEKS, WIDTH, type CityMap } from './map';
 import { RISE } from './routes';
 import * as glsl from './shaders';
@@ -9,7 +10,15 @@ const BEACONS = 12;
 const LANES = 420;
 const DUST = 240;
 const WARP_LINES = 1500;
-const STARS = 1100;
+const STARS = 1600;
+const METEORS = 3;
+/** Points along each shooting star, head first. */
+const METEOR_POINTS = 18;
+const PLANET_RADIUS = 330;
+const RING_INNER = 430;
+const RING_OUTER = 720;
+/** Lamps stand this far in from each kerb, one a cell along. */
+const KERB = 0.7;
 const FACE = '"Mona Sans","Segoe UI",system-ui,sans-serif';
 const MONO = '"JetBrains Mono",Consolas,monospace';
 
@@ -31,6 +40,10 @@ export type Shared = {
   uHitGlow: { value: number };
   uPx: { value: number };
   uWarp: { value: number };
+  /** Flashes lighting the towers and street: position and reach, then colour, and how many are lit. See `lights.ts`. */
+  uLightPos: { value: THREE.Vector4[] };
+  uLightCol: { value: THREE.Vector3[] };
+  uLights: { value: number };
 };
 
 export interface World {
@@ -43,6 +56,10 @@ export interface World {
   /** Sky, stars and planet stay at the horizon wherever the camera goes. */
   followCamera(camera: THREE.Camera): void;
   paintTowers(palette: TowerPalette): void;
+  /** Drops the sky's finer detail, for a slow GPU. */
+  simplify(): void;
+  /** Stops the shooting stars, for a visitor who asks for reduced motion. */
+  calm(): void;
 }
 
 function seededRandom(text: string): () => number {
@@ -116,6 +133,12 @@ function addGround(scene: THREE.Scene, map: CityMap, shared: Shared): void {
     fragmentShader: glsl.SOLID_FRAGMENT,
     uniforms: fogUniforms,
   });
+  const groundUniforms = {
+    ...fogUniforms,
+    uLightPos: shared.uLightPos,
+    uLightCol: shared.uLightCol,
+    uLights: shared.uLights,
+  };
   const slab = new THREE.BoxGeometry(1, 1, 1);
   map.cal.years.forEach((y) => {
     const mesh = new THREE.Mesh(slab, plinth);
@@ -130,12 +153,170 @@ function addGround(scene: THREE.Scene, map: CityMap, shared: Shared): void {
       depthWrite: false,
       vertexShader: glsl.GROUND_VERTEX,
       fragmentShader: glsl.GROUND_FRAGMENT,
-      uniforms: fogUniforms,
+      uniforms: groundUniforms,
     }),
   );
   ground.rotation.x = -Math.PI / 2;
   ground.renderOrder = 1;
   scene.add(ground);
+}
+
+/** Two rows of lamps along every street between the year blocks, and along the outer edges of the first and last. */
+function addLamps(scene: THREE.Scene, map: CityMap, shared: Shared): void {
+  const { years } = map.cal;
+  // The street north of each block, and the one south of the oldest
+  const streets = [...years.map((y) => map.blockZ(y) - ROAD / 2), map.depth + ROAD / 2];
+  const along = Math.ceil(WIDTH / CELL) + 1;
+  const positions = new Float32Array(streets.length * along * 2 * 3);
+  let n = 0;
+  streets.forEach((z) => {
+    for (let k = 0; k < along; k++) {
+      for (const side of [-1, 1]) {
+        positions.set([k * CELL, 0.12, z + side * (ROAD / 2 - KERB)], n * 3);
+        n++;
+      }
+    }
+  });
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const lamps = new THREE.Points(
+    geometry,
+    new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: { uPx: shared.uPx },
+      vertexShader: glsl.LAMP_VERTEX,
+      fragmentShader: glsl.LAMP_FRAGMENT,
+    }),
+  );
+  lamps.frustumCulled = false;
+  lamps.renderOrder = 2;
+  scene.add(lamps);
+}
+
+/** Stars across the sky: mostly faint and small, a few bright, in blue-white, white, yellow and orange. */
+function addStars(shared: Shared, random: () => number): THREE.Points {
+  const positions = new Float32Array(STARS * 3);
+  const sizes = new Float32Array(STARS);
+  const phases = new Float32Array(STARS);
+  const tints = new Float32Array(STARS * 3);
+  const palette: [number, number, number][] = [
+    [0.75, 0.85, 1],
+    [0.95, 0.96, 1],
+    [1, 0.93, 0.78],
+    [1, 0.78, 0.6],
+  ];
+  for (let i = 0; i < STARS; i++) {
+    const a = random() * Math.PI * 2;
+    const h = 0.03 + random() * 0.97;
+    const r = Math.sqrt(1 - h * h);
+    positions.set([Math.cos(a) * r * 2500, h * 2500, Math.sin(a) * r * 2500], i * 3);
+    // Most stars are faint: brightness falls away steeply
+    const bright = Math.pow(random(), 6);
+    sizes[i] = 1.1 + bright * 2.6;
+    phases[i] = random();
+    const tint = palette[Math.floor(random() * palette.length)];
+    const level = 0.32 + bright * 0.9;
+    tints.set(
+      tint.map((v) => v * level),
+      i * 3,
+    );
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+  geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+  geometry.setAttribute('aTint', new THREE.BufferAttribute(tints, 3));
+  const stars = new THREE.Points(
+    geometry,
+    new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: { uTime: shared.uTime, uPx: shared.uPx },
+      vertexShader: glsl.STAR_VERTEX,
+      fragmentShader: glsl.STAR_FRAGMENT,
+    }),
+  );
+  stars.frustumCulled = false;
+  stars.renderOrder = -9;
+  return stars;
+}
+
+/** A few shooting stars, each crossing its own patch of sky every so often. */
+function addMeteors(shared: Shared, random: () => number): THREE.Points {
+  const count = METEORS * METEOR_POINTS;
+  const starts = new Float32Array(count * 3);
+  const ends = new Float32Array(count * 3);
+  const lags = new Float32Array(count);
+  const periods = new Float32Array(count);
+  const phases = new Float32Array(count);
+  for (let m = 0; m < METEORS; m++) {
+    const heading = random() * Math.PI * 2;
+    const height = 0.35 + random() * 0.45;
+    const start = new THREE.Vector3(Math.cos(heading), height, Math.sin(heading)).normalize();
+    const across = new THREE.Vector3(-Math.sin(heading), 0, Math.cos(heading));
+    const end = start
+      .clone()
+      .addScaledVector(across, (random() < 0.5 ? -1 : 1) * (0.18 + random() * 0.12))
+      .add(new THREE.Vector3(0, -0.12 - random() * 0.1, 0))
+      .normalize();
+    const period = 11 + random() * 14;
+    const phase = random() * period;
+    for (let k = 0; k < METEOR_POINTS; k++) {
+      const i = m * METEOR_POINTS + k;
+      start.toArray(starts, i * 3);
+      end.toArray(ends, i * 3);
+      lags[i] = k / (METEOR_POINTS - 1);
+      periods[i] = period;
+      phases[i] = phase;
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(starts, 3));
+  geometry.setAttribute('aEnd', new THREE.BufferAttribute(ends, 3));
+  geometry.setAttribute('aLag', new THREE.BufferAttribute(lags, 1));
+  geometry.setAttribute('aPeriod', new THREE.BufferAttribute(periods, 1));
+  geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+  const meteors = new THREE.Points(
+    geometry,
+    new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: { uTime: shared.uTime, uPx: shared.uPx },
+      vertexShader: glsl.METEOR_VERTEX,
+      fragmentShader: glsl.METEOR_FRAGMENT,
+    }),
+  );
+  meteors.frustumCulled = false;
+  meteors.renderOrder = -8.9;
+  return meteors;
+}
+
+/** The gas giant over the city, with its rings tilted across it. */
+function addPlanet(): THREE.Mesh {
+  const planet = new THREE.Mesh(
+    new THREE.SphereGeometry(PLANET_RADIUS, 64, 40),
+    new THREE.ShaderMaterial({ vertexShader: glsl.PLANET_VERTEX, fragmentShader: glsl.PLANET_FRAGMENT }),
+  );
+  planet.renderOrder = -9.5;
+  const rings = new THREE.Mesh(
+    new THREE.RingGeometry(RING_INNER, RING_OUTER, 160, 1),
+    new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      uniforms: { uInner: { value: RING_INNER }, uOuter: { value: RING_OUTER }, uPlanet: { value: PLANET_RADIUS } },
+      vertexShader: glsl.RING_VERTEX,
+      fragmentShader: glsl.RING_FRAGMENT,
+    }),
+  );
+  rings.rotation.set(-1.32, 0.22, 0.38);
+  rings.renderOrder = -9.4;
+  planet.add(rings);
+  return planet;
 }
 
 function addBeacons(scene: THREE.Scene, map: CityMap, shared: Shared): void {
@@ -321,55 +502,38 @@ export function createWorld(map: CityMap, renderer: THREE.WebGLRenderer, camera:
     uHitGlow: { value: 0 },
     uPx: { value: 1 },
     uWarp: { value: 0 },
+    uLightPos: { value: Array.from({ length: LIGHT_SLOTS }, () => new THREE.Vector4()) },
+    uLightCol: { value: Array.from({ length: LIGHT_SLOTS }, () => new THREE.Vector3()) },
+    uLights: { value: 0 },
   };
 
   const towers = addTowers(scene, map, shared);
   addGround(scene, map, shared);
+  addLamps(scene, map, shared);
 
+  const glow = new THREE.Color();
+  const detail = { value: 1 };
   const sky = new THREE.Mesh(
-    new THREE.SphereGeometry(3000, 32, 16),
+    new THREE.SphereGeometry(3000, 48, 24),
     new THREE.ShaderMaterial({
       side: THREE.BackSide,
       depthWrite: false,
       vertexShader: glsl.SKY_VERTEX,
       fragmentShader: glsl.SKY_FRAGMENT,
-      uniforms: { uFog: shared.uFog },
+      uniforms: { uFog: shared.uFog, uGlow: { value: glow }, uDetail: detail },
     }),
   );
   sky.renderOrder = -10;
   scene.add(sky);
 
   const planetAt = new THREE.Vector3(0.2, 0.29, -1).normalize().multiplyScalar(1700);
-  const planet = new THREE.Mesh(
-    new THREE.SphereGeometry(330, 64, 40),
-    new THREE.ShaderMaterial({ vertexShader: glsl.PLANET_VERTEX, fragmentShader: glsl.PLANET_FRAGMENT }),
-  );
-  planet.renderOrder = -9.5;
+  const planet = addPlanet();
   scene.add(planet);
 
-  const starPositions = new Float32Array(STARS * 3);
-  for (let i = 0; i < STARS; i++) {
-    const a = random() * Math.PI * 2;
-    const h = 0.04 + random() * 0.96;
-    const r = Math.sqrt(1 - h * h);
-    starPositions.set([Math.cos(a) * r * 2500, h * 2500, Math.sin(a) * r * 2500], i * 3);
-  }
-  const starGeometry = new THREE.BufferGeometry();
-  starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
-  const stars = new THREE.Points(
-    starGeometry,
-    new THREE.PointsMaterial({
-      color: 0xcfe0ff,
-      size: 1.5,
-      sizeAttenuation: false,
-      transparent: true,
-      opacity: 0.62,
-      depthWrite: false,
-    }),
-  );
-  stars.frustumCulled = false;
-  stars.renderOrder = -9;
+  const stars = addStars(shared, random);
   scene.add(stars);
+  const meteors = addMeteors(shared, random);
+  scene.add(meteors);
 
   addBeacons(scene, map, shared);
   addTraffic(scene, map, shared, random);
@@ -422,11 +586,19 @@ export function createWorld(map: CityMap, renderer: THREE.WebGLRenderer, camera:
     followCamera(view) {
       sky.position.copy(view.position);
       stars.position.copy(view.position);
+      meteors.position.copy(view.position);
       planet.position.copy(view.position).add(planetAt);
     },
     paintTowers({ ramp, window }) {
       ramp.forEach((stop, i) => shared.uRamp.value[i].fromArray(stop));
       shared.uWindow.value.fromArray(window);
+      glow.fromArray(ramp[2]);
+    },
+    simplify() {
+      detail.value = 0;
+    },
+    calm() {
+      meteors.visible = false;
     },
   };
 }

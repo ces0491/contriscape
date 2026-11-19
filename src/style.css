@@ -13,6 +13,7 @@
   --g4: #39d353;
   --g4-dim: rgba(57, 211, 83, 0.3);
   --sodium: #ffb454;
+  --gold: #ffd24a;
   --canopy: #05070c;
   --display: 'Mona Sans', 'Segoe UI', system-ui, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
@@ -147,6 +148,146 @@ input,
   display: block;
   font: 400 11px/1.3 var(--mono);
   color: var(--ink-2);
+}
+#reticle.locked * {
+  stroke: var(--gold);
+}
+#reticle.locked .dot {
+  fill: var(--gold);
+}
+
+/* Locked on to a badge: gold corners that close in and turn slowly, with the badge's name beside them */
+#badgeLock {
+  --size: 60px;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+#badgeLock::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--size) / -2);
+  top: calc(var(--size) / -2);
+  width: var(--size);
+  height: var(--size);
+  background:
+    linear-gradient(var(--gold), var(--gold)) 0 0/14px 2px,
+    linear-gradient(var(--gold), var(--gold)) 0 0/2px 14px,
+    linear-gradient(var(--gold), var(--gold)) 100% 0/14px 2px,
+    linear-gradient(var(--gold), var(--gold)) 100% 0/2px 14px,
+    linear-gradient(var(--gold), var(--gold)) 0 100%/14px 2px,
+    linear-gradient(var(--gold), var(--gold)) 0 100%/2px 14px,
+    linear-gradient(var(--gold), var(--gold)) 100% 100%/14px 2px,
+    linear-gradient(var(--gold), var(--gold)) 100% 100%/2px 14px;
+  background-repeat: no-repeat;
+  animation:
+    lock-on 0.25s ease-out,
+    lock-turn 4s linear 0.25s infinite;
+}
+/* Under the corners, clear of the reticle, which sits on or beside the badge while it's locked */
+#badgeLock b,
+#badgeLock span {
+  position: absolute;
+  left: 0;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+#badgeLock b {
+  top: calc(var(--size) / 2 + 6px);
+  color: var(--gold);
+  font: 700 10px/1.3 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+#badgeLock span {
+  top: calc(var(--size) / 2 + 20px);
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--scrim-soft);
+  color: var(--ink);
+  font: 600 12px/1.3 var(--display);
+}
+@keyframes lock-on {
+  from {
+    transform: scale(1.8) rotate(-45deg);
+    opacity: 0;
+  }
+}
+@keyframes lock-turn {
+  to {
+    transform: rotate(90deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #badgeLock::before {
+    animation: none;
+  }
+}
+
+/* Gold markers over the badges still standing. One out of view is pinned to the edge with its artwork and a pointer. */
+#markers {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+}
+.marker {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+}
+.marker i {
+  position: absolute;
+  left: -6px;
+  top: -36px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--gold);
+  transform: rotate(45deg);
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
+}
+.marker img {
+  display: none;
+}
+.marker span {
+  position: absolute;
+  left: -20px;
+  top: -22px;
+  width: 40px;
+  color: var(--gold);
+  font: 600 11px/1 var(--mono);
+  text-align: center;
+  text-shadow:
+    0 0 3px var(--night),
+    0 0 3px var(--night);
+}
+.marker.edge img {
+  display: block;
+  position: absolute;
+  left: -16px;
+  top: -16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 2px var(--gold),
+    0 0 10px rgba(255, 210, 74, 0.45);
+}
+.marker.edge i {
+  top: -6px;
+  border-width: 2px 2px 0 0;
+  box-shadow: none;
+  transform: rotate(var(--turn)) translateX(25px) rotate(45deg);
+}
+.marker.edge span {
+  top: 20px;
 }
 
 .hud {
@@ -923,6 +1064,22 @@ body.piloting #date {
   background: var(--scrim-soft);
   color: var(--sodium);
   font: 700 13px/1 var(--display);
+  touch-action: none;
+}
+/* Above Fire, for the same thumb */
+#boost {
+  appearance: none;
+  position: fixed;
+  z-index: 3;
+  right: calc(var(--gutter-right) + 6px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 236px);
+  width: 60px;
+  height: 60px;
+  border: 2px solid var(--ink-2);
+  border-radius: 50%;
+  background: var(--scrim-soft);
+  color: var(--ink);
+  font: 700 12px/1 var(--display);
   touch-action: none;
 }
 

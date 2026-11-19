@@ -11,7 +11,7 @@ The name is short for contribution landscape: GitHub's calendar counts commits, 
 | Mode      | What it does                                                                                 |
 | --------- | -------------------------------------------------------------------------------------------- |
 | Autopilot | Replays the history as a flight. The city rises as the date passes. Click Pilot to take over |
-| Pilot     | You fly. Aim at a tower to read its date and count                                           |
+| Pilot     | You fly. Gold markers lead to the badges, and aiming at a tower reads its date and count     |
 | Orbit     | Rotate and zoom around the finished city, and hover over a tower to read it                  |
 
 Autopilot keeps to a steady height through each year, set by that year's towers. It sits above about two thirds of the days, so the busiest ones rise past the ship.
@@ -31,17 +31,19 @@ Scroll zooms in all three. In Autopilot and Pilot it runs from far behind the sh
 
 A tap of a steering key nudges the nose and holding it turns harder. Mouse steering is off by default, so the mouse stays free for the buttons, and the ship stops while a panel is open.
 
-On a phone, drag to steer, pinch to zoom and use the Fire button.
+On a phone, drag to steer, pinch to zoom, and use the Fire and Boost buttons.
 
-All years opens the list of years, which keeps the screen the same size however long the history is. Settings holds sound, mouse steering, Invert Y and the colours. N switches sound on and off in Autopilot and Orbit as well as Pilot. The Guide button on the page covers the controls, the buttons and where the badges come from. Esc closes any panel.
+All years opens the list of years, which keeps the screen the same size however long the history is. Settings holds sound, music, mouse steering, Invert Y and the colours. N switches sound on and off in Autopilot and Orbit as well as Pilot. The Guide button on the page covers the controls, the buttons and where the badges come from. Esc closes any panel.
 
 A city lives at `/<username>`, so the address is the share link. The site root shows `torvalds`.
 
 ### Badges
 
-Illustrated medallions float over the days a user hit a milestone: joining GitHub, a first pull request, a thousandth contribution, a longest streak, a busiest day. Open the Badges list to see them and fly to one. The ship waits in front of it while you line up the shot, and a hit blows the badge up and earns it. These are this site's own badges, dated from GitHub's API. GitHub has no API for its profile achievements, so they aren't shown. Earned badges are stored only in the visitor's browser and don't change anything on GitHub. Reset, at the top of the list, brings back the ones earned on that city after a second press.
+Illustrated medallions float over the days a user hit a milestone: joining GitHub, a first pull request, a thousandth contribution, a longest streak, a busiest day. In Pilot, gold markers show the badges still standing, with their distance. Up to four of the nearest out of view are pinned to the edge of the screen with their artwork, pointing the way. Or open the Badges list and pick one to jump there, and the ship waits in front of it while you line up the shot.
 
-Shooting a city's last badge clears it: fireworks go up across the view, the ship does a victory roll, and the Badges button turns gold. The Guide leaves this out so it stays a surprise. With reduced motion on, a message marks the moment and the show is skipped.
+Aim close to a badge with no tower in the way and the targeting computer locks on, with a tone and its name. Shots fired while locked curve into it, which helps on a phone. A hit blows the badge up and earns it. These are this site's own badges, dated from GitHub's API. GitHub has no API for its profile achievements, so they aren't shown. Earned badges are stored only in the visitor's browser and don't change anything on GitHub. Reset, at the top of the list, brings back the ones earned on that city after a second press.
+
+Shooting a city's last badge clears it: rockets climb and burst across the view, lighting the towers under them, the ship does a victory roll, and the Badges button turns gold. The Guide leaves this out so it stays a surprise. With reduced motion on, a message marks the moment and the show is skipped.
 
 ### Colours
 
@@ -49,7 +51,11 @@ Settings changes the buildings, the ship and the ship's trim, from swatches or a
 
 ### Sound
 
-Lasers, hits, bumps, exploding badges, hyperspace jumps and the fireworks have sound effects, and in Pilot the engine hums louder and higher with speed. An earned badge chimes, and a cleared city gets a short fanfare. The sounds are made in the browser with the Web Audio API, so there are no audio files. Sound is on by default and starts at the first click, tap or key press, because browsers block audio until then. An iPhone in silent mode mutes it, as iOS does for web audio. N or Settings switches it off, and the choice stays in the visitor's browser.
+Lasers, hits, bumps, exploding badges, hyperspace jumps, boosts, the target lock and the fireworks have sound effects. The engine hums louder and higher with speed, quieter in Autopilot than in Pilot, and towers rushing past close to the ship whoosh on their own side. Effects sit left or right of the camera and ring in a reverb. An earned badge chimes, and a cleared city gets a short fanfare.
+
+Music plays under the effects: slow chords, with a melody made from the history. In Autopilot each note is the busiest day just passed, higher for a busier day, so a quiet stretch goes silent and a busy one climbs. In Pilot the towers the ship crosses play, and in Orbit pointing at a tower plays it. The melody keeps to one pentatonic scale, over chords voiced to fit it.
+
+The sounds and music are made in the browser with the Web Audio API, so there are no audio files. Both are on by default and start at the first click, tap or key press, because browsers block audio until then. An iPhone in silent mode mutes them, as iOS does for web audio. N or Settings switches all sound off, Settings switches the music off on its own, and the choices stay in the visitor's browser.
 
 ### Your year on GitHub
 
@@ -57,7 +63,7 @@ During December a button offers a flight through the current year, with captions
 
 ## Data and privacy
 
-The page shows what a user's public GitHub profile already shows. Private contributions appear as anonymous counts only if that user has turned them on in their profile settings. Responses are cached on the CDN for six hours, and the site has no database, accounts or cookies. [Vercel Web Analytics](https://vercel.com/docs/analytics/privacy-policy) counts page views without cookies, recording the page, the referrer, a rough location, and the device and browser, with nothing that identifies a visitor. Only production builds load it. Earned badges and settings, including whether sound is on, stay in the visitor's own browser. Fonts load from Google Fonts.
+The page shows what a user's public GitHub profile already shows. Private contributions appear as anonymous counts only if that user has turned them on in their profile settings. Responses are cached on the CDN for six hours, and the site has no database, accounts or cookies. [Vercel Web Analytics](https://vercel.com/docs/analytics/privacy-policy) counts page views without cookies, recording the page, the referrer, a rough location, and the device and browser, with nothing that identifies a visitor. Only production builds load it. Earned badges and settings, including whether sound and music are on, stay in the visitor's own browser. Fonts load from Google Fonts.
 
 Tower height is the square root of the day's contributions, scaled to that user's busiest day, so typical days stay visible beside a huge one.
 
@@ -73,12 +79,12 @@ npm run dev
 
 `GITHUB_TOKEN` is a [personal access token (classic)](https://github.com/settings/tokens) with no scopes ticked. GitHub's GraphQL API needs a token even for public data, so it lives on the server. `npm run dev` runs the API inside the Vite dev server, with no Vercel login needed.
 
-| Command            | Does                                                              |
-| ------------------ | ----------------------------------------------------------------- |
-| `npm test`         | API, route, ride, badge, year, zoom, colour, show and sound tests |
-| `npm run test:e2e` | Browser tests with a stubbed API, under the production CSP        |
-| `npm run lint`     | ESLint                                                            |
-| `npm run build`    | Typecheck, then build to `dist`                                   |
+| Command            | Does                                                                             |
+| ------------------ | -------------------------------------------------------------------------------- |
+| `npm test`         | API, route, ride, badge, year, zoom, colour, show, sound, music and aiming tests |
+| `npm run test:e2e` | Browser tests with a stubbed API, under the production CSP                       |
+| `npm run lint`     | ESLint                                                                           |
+| `npm run build`    | Typecheck, then build to `dist`                                                  |
 
 `npx playwright install chromium` fetches the browser for the end-to-end tests.
 
@@ -87,10 +93,10 @@ npm run dev
 - `api/contributions/[login].ts` is a Vercel Function that validates the login and sets cache headers. `api/_lib/github.ts` talks to GitHub.
 - `shared/contract.ts` holds the API's schema, used on both sides.
 - `src/main.ts` loads a city. A browser without WebGL 2 gets the Guide as the page instead, and the API isn't called.
-- `src/calendar.ts`, `src/map.ts` and `src/routes.ts` hold the data, the city grid and the flight paths. `src/milestones.ts` and `src/review.ts` work out the badges and the year story, and `src/colours.ts`, `src/zoom.ts`, `src/steering.ts` and `src/quality.ts` hold the colour palettes, the zoom steps, the key response and the frame average that lowers quality on a slow GPU. None of them need WebGL, which is what makes them testable.
-- `src/world.ts`, `src/fighter.ts`, `src/badges.ts`, `src/blast.ts`, `src/fireworks.ts` and `src/app.ts` are the three.js scene, the ship, the floating badges, their explosions, the show for a cleared city and the flight modes.
+- `src/calendar.ts`, `src/map.ts` and `src/routes.ts` hold the data, the city grid and the flight paths. `src/milestones.ts` and `src/review.ts` work out the badges and the year story, and `src/colours.ts`, `src/zoom.ts`, `src/steering.ts` and `src/quality.ts` hold the colour palettes, the zoom steps, the key response and the frame average that lowers quality on a slow GPU. `src/aim.ts` picks the badge to lock on to and curves a bolt towards it, `src/lights.ts` chooses which flashes light the towers each frame, and `src/markers.ts` places the badge markers. None of them need WebGL, which is what makes them testable.
+- `src/world.ts`, `src/fighter.ts`, `src/badges.ts`, `src/blast.ts`, `src/fireworks.ts` and `src/app.ts` are the three.js scene, the ship and its guns, the floating badges, their explosions, the show for a cleared city and the flight modes. `src/environment.ts` renders what the ship's metal and glass reflect, and `src/trails.ts` draws the vapour off its wingtips.
 - `src/badge-art.ts` draws the badge artwork at runtime, and `src/hud.ts` is everything on screen that isn't the 3D scene.
-- `src/sound.ts` makes the sound effects with the Web Audio API, and builds nothing until the visitor's first click, tap or key press.
+- `src/sound.ts` makes the sound effects and mixes them with the music from `src/music.ts`, all with the Web Audio API, and builds nothing until the visitor's first click, tap or key press.
 
 ## GitHub's limits
 

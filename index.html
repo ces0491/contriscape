@@ -50,6 +50,8 @@
     </svg>
     <div id="bracket" hidden></div>
     <div id="lock" hidden><b></b><span></span></div>
+    <div id="markers" aria-hidden="true"></div>
+    <div id="badgeLock" hidden><b>Locked</b><span></span></div>
 
     <header class="hud top">
       <div class="brand">
@@ -124,6 +126,7 @@
       <p class="note" id="note"></p>
     </footer>
     <button id="fire" type="button" hidden>Fire</button>
+    <button id="boost" type="button" hidden>Boost</button>
     <div id="tip" hidden></div>
     <div id="toast" role="status" hidden></div>
     <div id="caption" role="status" hidden></div>
@@ -152,6 +155,7 @@
       <p>Saved in this browser, for every city you visit.</p>
       <div class="toggles">
         <button id="sound" type="button" aria-pressed="true">Sound</button>
+        <button id="music" type="button" aria-pressed="true">Music</button>
         <button id="mouseSteer" type="button" aria-pressed="false">Mouse steering</button>
         <button id="invert" type="button" aria-pressed="false">Invert Y</button>
       </div>
@@ -180,7 +184,8 @@
         <dt>Pilot</dt>
         <dd>
           You fly. Aim at a tower to read its date and count. A tap of a steering key nudges the nose and holding it
-          turns harder. The ship stops while a panel is open.
+          turns harder. Gold markers show the badges still standing, with arrows at the edge of the screen for those out
+          of view. The ship stops while a panel is open.
         </dd>
         <dt>Orbit</dt>
         <dd>Rotate and zoom around the finished city. Point at a tower to read it.</dd>
@@ -209,7 +214,7 @@
           <tr>
             <th scope="row">Boost</th>
             <td>Shift</td>
-            <td>None</td>
+            <td>Boost button</td>
           </tr>
           <tr>
             <th scope="row">Brake</th>
@@ -242,6 +247,11 @@
             <td>Settings</td>
           </tr>
           <tr>
+            <th scope="row">Music</th>
+            <td>Settings</td>
+            <td>Settings</td>
+          </tr>
+          <tr>
             <th scope="row">Close a panel</th>
             <td>Esc</td>
             <td>Close</td>
@@ -265,14 +275,16 @@
         <dt>Badges</dt>
         <dd>
           Lists the milestones in this history. Pick one to fly to it. The ship waits there while you line up the shot,
-          and Shift flies off.
+          and Shift or the Boost button flies off. Aim close to a badge and the targeting computer locks on, with a tone
+          and the badge's name, and shots fired while locked curve into it.
         </dd>
         <dt>Settings</dt>
         <dd>
-          Sound, mouse steering, Invert Y, and the colours of the buildings and ship. Sound starts at your first click,
-          tap or key press, because browsers hold it back until then, and an iPhone in silent mode keeps it quiet. With
-          mouse steering on, the ship turns towards the cursor. It's off by default, so the mouse stays free for the
-          buttons.
+          Sound, music, mouse steering, Invert Y, and the colours of the buildings and ship. Sound starts at your first
+          click, tap or key press, because browsers hold it back until then, and an iPhone in silent mode keeps it
+          quiet. The music plays the history: in Autopilot each note is the busiest day just passed, higher for a busier
+          day, and in Pilot the towers you fly over play. With mouse steering on, the ship turns towards the cursor.
+          It's off by default, so the mouse stays free for the buttons.
         </dd>
         <dt>Your year on GitHub</dt>
         <dd>A December flight through the current year, with captions and a summary.</dd>

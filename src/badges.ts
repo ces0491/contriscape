@@ -6,7 +6,7 @@ import { BADGE_GLOW_FRAGMENT, BADGE_GLOW_VERTEX } from './shaders';
 import type { Shared } from './world';
 
 const HIT_RADIUS = 1.8;
-const RADIUS = 0.85;
+export const BADGE_RADIUS = 0.85;
 const THICKNESS = 0.12;
 const HOVER = 2.1;
 const STACK = 2.1;
@@ -45,9 +45,9 @@ export class Badges {
     this.earned = readEarned(this.key);
 
     const stacked = new Map<number, number>();
-    const edge = new THREE.CylinderGeometry(RADIUS, RADIUS, THICKNESS, 40);
+    const edge = new THREE.CylinderGeometry(BADGE_RADIUS, BADGE_RADIUS, THICKNESS, 40);
     edge.rotateX(Math.PI / 2);
-    const face = new THREE.CircleGeometry(RADIUS, 40);
+    const face = new THREE.CircleGeometry(BADGE_RADIUS, 40);
     const rim = new THREE.MeshBasicMaterial({ color: RIM });
     milestones.forEach(({ id, day }) => {
       const level = stacked.get(day) ?? 0;
@@ -103,6 +103,11 @@ export class Badges {
     return this.earned.has(this.milestones[index].id);
   }
 
+  /** Whether a badge is up to be shot: its day has come and it hasn't been blown up. */
+  isStanding(index: number, play: number): boolean {
+    return this.milestones[index].day <= play && !this.isEarned(index);
+  }
+
   /** Whether this city is cleared. The ids in `earned` can outlast a milestone, so it can't just be counted. */
   get allEarned(): boolean {
     return this.milestones.every(({ id }) => this.earned.has(id));
@@ -151,9 +156,9 @@ export class Badges {
   }
 
   update(time: number, play: number): void {
-    this.milestones.forEach((badge, i) => {
+    this.milestones.forEach((_, i) => {
       // An earned badge has been blown up, until a reset brings it back
-      const standing = badge.day <= play && !this.earned.has(badge.id);
+      const standing = this.isStanding(i, play);
       const token = this.tokens[i];
       token.visible = standing;
       token.rotation.y = time * 1.1 + i;
