@@ -5,6 +5,7 @@ import { LIGHT_SLOTS } from './lights';
 import { CELL, DEPTH, PLINTH, ROAD, TOWER, WEEKS, WIDTH, type CityMap } from './map';
 import { RISE } from './routes';
 import * as glsl from './shaders';
+import { dress, LOOKS, type Look, type Skin } from './skins';
 
 const BEACONS = 12;
 const LANES = 420;
@@ -56,10 +57,28 @@ export interface World {
   /** Sky, stars and planet stay at the horizon wherever the camera goes. */
   followCamera(camera: THREE.Camera): void;
   paintTowers(palette: TowerPalette): void;
-  /** Drops the sky's finer detail, for a slow GPU. */
+  /** Redraws the city in another look. */
+  setSkin(skin: Skin): void;
+  /** Drops the sky's finer detail and the towers' shadows, for a slow GPU. */
   simplify(): void;
   /** Stops the shooting stars, for a visitor who asks for reduced motion. */
   calm(): void;
+}
+
+/** The parts of the scene that change with the look, gathered as the scene is built. */
+interface Skinned {
+  /** Shaders that carry a second look. */
+  shaders: THREE.ShaderMaterial[];
+  /** Small lights, added to the view by night and drawn over it by day. */
+  lights: THREE.ShaderMaterial[];
+  /** What only the night scene has: the planet, the shooting stars, the street lamps and the wet street's reflection. */
+  night: THREE.Object3D[];
+  /** What any dark sky has: the stars. */
+  dark: THREE.Object3D[];
+  /** The ground, which the night sees through to the reflection and the other scenes don't. */
+  ground: THREE.ShaderMaterial | null;
+  /** The towers' shadows, which only a sun throws. */
+  shadows: THREE.InstancedMesh<THREE.BufferGeometry, THREE.ShaderMaterial> | null;
 }
 
 function seededRandom(text: string): () => number {
@@ -87,7 +106,7 @@ function lineGeometry(count: number, point: () => number[]): THREE.BufferGeometr
   return geometry;
 }
 
-function addTowers(scene: THREE.Scene, map: CityMap, shared: Shared): THREE.InstancedMesh {
+function addTowers(scene: THREE.Scene, map: CityMap, shared: Shared, skinned: Skinned): THREE.InstancedMesh {
   const { cal, cx, cz } = map;
   const { days, counts } = cal;
   const box = new THREE.BoxGeometry(1, 1, 1);
@@ -123,10 +142,43 @@ function addTowers(scene: THREE.Scene, map: CityMap, shared: Shared): THREE.Inst
   reflection.instanceMatrix = towers.instanceMatrix;
   reflection.frustumCulled = false;
   scene.add(reflection);
+  skinned.shaders.push(towers.material as THREE.ShaderMaterial);
+  skinned.night.push(reflection);
+
+  // The shadows are the towers again, pressed flat along the sun's rays and painted as shaded ground. They are drawn
+  // after the ground and the slabs, and a hair nearer than the slab they lie on.
+  const shadows = new THREE.InstancedMesh(
+    box,
+    new THREE.ShaderMaterial({
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -4,
+      uniforms: {
+        uPlay: shared.uPlay,
+        uRise: shared.uRise,
+        uMax: shared.uMax,
+        uFog: shared.uFog,
+        uFogD: shared.uFogD,
+        uCity: { value: new THREE.Vector2(WIDTH, map.depth) },
+        uShade: { value: 0 },
+      },
+      vertexShader: glsl.SHADOW_VERTEX,
+      fragmentShader: glsl.SHADOW_FRAGMENT,
+    }),
+    days,
+  );
+  shadows.instanceMatrix = towers.instanceMatrix;
+  shadows.frustumCulled = false;
+  shadows.renderOrder = 1.5;
+  shadows.visible = false;
+  scene.add(shadows);
+  skinned.shadows = shadows;
+  skinned.shaders.push(shadows.material);
   return towers;
 }
 
-function addGround(scene: THREE.Scene, map: CityMap, shared: Shared): void {
+function addGround(scene: THREE.Scene, map: CityMap, shared: Shared, skinned: Skinned): void {
   const fogUniforms = { uFog: shared.uFog, uFogD: shared.uFogD };
   const plinth = new THREE.ShaderMaterial({
     vertexShader: glsl.SOLID_VERTEX,
@@ -135,6 +187,8 @@ function addGround(scene: THREE.Scene, map: CityMap, shared: Shared): void {
   });
   const groundUniforms = {
     ...fogUniforms,
+    uCity: { value: new THREE.Vector2(WIDTH, map.depth) },
+    uRamp: shared.uRamp,
     uLightPos: shared.uLightPos,
     uLightCol: shared.uLightCol,
     uLights: shared.uLights,
@@ -159,10 +213,12 @@ function addGround(scene: THREE.Scene, map: CityMap, shared: Shared): void {
   ground.rotation.x = -Math.PI / 2;
   ground.renderOrder = 1;
   scene.add(ground);
+  skinned.shaders.push(plinth, ground.material);
+  skinned.ground = ground.material;
 }
 
 /** Two rows of lamps along every street between the year blocks, and along the outer edges of the first and last. */
-function addLamps(scene: THREE.Scene, map: CityMap, shared: Shared): void {
+function addLamps(scene: THREE.Scene, map: CityMap, shared: Shared, skinned: Skinned): void {
   const { years } = map.cal;
   // The street north of each block, and the one south of the oldest
   const streets = [...years.map((y) => map.blockZ(y) - ROAD / 2), map.depth + ROAD / 2];
@@ -193,6 +249,7 @@ function addLamps(scene: THREE.Scene, map: CityMap, shared: Shared): void {
   lamps.frustumCulled = false;
   lamps.renderOrder = 2;
   scene.add(lamps);
+  skinned.night.push(lamps);
 }
 
 /** Stars across the sky: mostly faint and small, a few bright, in blue-white, white, yellow and orange. */
@@ -319,7 +376,7 @@ function addPlanet(): THREE.Mesh {
   return planet;
 }
 
-function addBeacons(scene: THREE.Scene, map: CityMap, shared: Shared): void {
+function addBeacons(scene: THREE.Scene, map: CityMap, shared: Shared, skinned: Skinned): void {
   const { counts } = map.cal;
   const busiest = counts
     .map((c, i) => [c, i] as const)
@@ -352,9 +409,10 @@ function addBeacons(scene: THREE.Scene, map: CityMap, shared: Shared): void {
   beacons.frustumCulled = false;
   beacons.renderOrder = 3;
   scene.add(beacons);
+  skinned.lights.push(beacons.material);
 }
 
-function addTraffic(scene: THREE.Scene, map: CityMap, shared: Shared, random: () => number): void {
+function addTraffic(scene: THREE.Scene, map: CityMap, shared: Shared, random: () => number, skinned: Skinned): void {
   const { years } = map.cal;
   const from = new Float32Array(LANES * 3);
   const to = new Float32Array(LANES * 3);
@@ -405,11 +463,16 @@ function addTraffic(scene: THREE.Scene, map: CityMap, shared: Shared, random: ()
   traffic.frustumCulled = false;
   traffic.renderOrder = 3;
   scene.add(traffic);
+  skinned.lights.push(traffic.material);
 }
 
-function addLettering(scene: THREE.Scene, map: CityMap, renderer: THREE.WebGLRenderer): void {
+/** Paints the months, years and name on the ground, and returns a way to repaint them for another look. */
+function addLettering(scene: THREE.Scene, map: CityMap, renderer: THREE.WebGLRenderer): (look: Look) => void {
   const { cal } = map;
   const painters: (() => void)[] = [];
+  let { ink, paths } = LOOKS.night as Look;
+  // Some looks write a name the way a path is written, lower case with a slash after it
+  const written = (text: string) => (paths ? `${text.toLowerCase()}/` : text);
   const flatLabel = (
     w: number,
     h: number,
@@ -446,19 +509,19 @@ function addLettering(scene: THREE.Scene, map: CityMap, renderer: THREE.WebGLRen
     flatLabel(WIDTH, 1.8, 22, WIDTH / 2, map.blockZ(y) + DEPTH + 1.3, (g, w, h) => {
       g.font = `600 ${h * 0.5}px ${MONO}`;
       g.textBaseline = 'middle';
-      g.fillStyle = 'rgba(150,205,175,.52)';
+      g.fillStyle = ink.months;
       MONTHS.forEach((name, month) => {
         const day = cal.dayOf(y, month);
-        if (day < cal.days) g.fillText(name.toUpperCase(), (cal.cellOf(day).week / WEEKS) * w, h / 2);
+        if (day < cal.days) g.fillText(written(name.toUpperCase()), (cal.cellOf(day).week / WEEKS) * w, h / 2);
       });
     });
     flatLabel(26, 15, 22, -16, map.blockZ(y) + DEPTH / 2, (g, w, h) => {
       g.textAlign = 'right';
       g.textBaseline = 'alphabetic';
-      g.fillStyle = 'rgba(205,235,218,.5)';
+      g.fillStyle = ink.year;
       g.font = `800 ${h * 0.62}px ${FACE}`;
-      g.fillText(String(y), w - 4, h * 0.62);
-      g.fillStyle = 'rgba(150,205,175,.48)';
+      g.fillText(written(String(y)), w - 4, h * 0.62, w - 8);
+      g.fillStyle = ink.total;
       g.font = `400 ${h * 0.16}px ${MONO}`;
       g.fillText(formatCount(cal.yearTotal(y)), w - 6, h * 0.86);
     });
@@ -466,10 +529,10 @@ function addLettering(scene: THREE.Scene, map: CityMap, renderer: THREE.WebGLRen
   flatLabel(108, 21, 13, WIDTH / 2, map.depth + 20, (g, w, h) => {
     g.textAlign = 'center';
     g.textBaseline = 'alphabetic';
-    g.fillStyle = 'rgba(225,242,232,.55)';
+    g.fillStyle = ink.name;
     g.font = `800 ${h * 0.56}px ${FACE}`;
-    g.fillText(cal.login, w / 2, h * 0.6, w * 0.96);
-    g.fillStyle = 'rgba(150,205,175,.7)';
+    g.fillText(written(cal.login), w / 2, h * 0.6, w * 0.96);
+    g.fillStyle = ink.span;
     g.font = `400 ${h * 0.13}px ${MONO}`;
     g.fillText(`${cal.firstYear}–${cal.lastYear}  ·  ${formatCount(cal.total)} contributions`, w / 2, h * 0.84);
   });
@@ -481,6 +544,11 @@ function addLettering(scene: THREE.Scene, map: CityMap, renderer: THREE.WebGLRen
   ])
     .then(() => painters.forEach((paint) => paint()))
     .catch(() => {});
+
+  return (look) => {
+    ({ ink, paths } = look);
+    painters.forEach((paint) => paint());
+  };
 }
 
 export function createWorld(map: CityMap, renderer: THREE.WebGLRenderer, camera: THREE.Camera, cal: Calendar): World {
@@ -507,9 +575,12 @@ export function createWorld(map: CityMap, renderer: THREE.WebGLRenderer, camera:
     uLights: { value: 0 },
   };
 
-  const towers = addTowers(scene, map, shared);
-  addGround(scene, map, shared);
-  addLamps(scene, map, shared);
+  const skinned: Skinned = { shaders: [], lights: [], night: [], dark: [], ground: null, shadows: null };
+  /** Set on a slow GPU, and kept through a change of look. */
+  let simplified = false;
+  const towers = addTowers(scene, map, shared, skinned);
+  addGround(scene, map, shared, skinned);
+  addLamps(scene, map, shared, skinned);
 
   const glow = new THREE.Color();
   const detail = { value: 1 };
@@ -520,11 +591,12 @@ export function createWorld(map: CityMap, renderer: THREE.WebGLRenderer, camera:
       depthWrite: false,
       vertexShader: glsl.SKY_VERTEX,
       fragmentShader: glsl.SKY_FRAGMENT,
-      uniforms: { uFog: shared.uFog, uGlow: { value: glow }, uDetail: detail },
+      uniforms: { uFog: shared.uFog, uGlow: { value: glow }, uDetail: detail, uTime: shared.uTime },
     }),
   );
   sky.renderOrder = -10;
   scene.add(sky);
+  skinned.shaders.push(sky.material);
 
   const planetAt = new THREE.Vector3(0.2, 0.29, -1).normalize().multiplyScalar(1700);
   const planet = addPlanet();
@@ -534,9 +606,13 @@ export function createWorld(map: CityMap, renderer: THREE.WebGLRenderer, camera:
   scene.add(stars);
   const meteors = addMeteors(shared, random);
   scene.add(meteors);
+  skinned.night.push(planet, meteors);
+  skinned.dark.push(stars);
+  /** Set for a visitor who asks for reduced motion, and kept through a change of look. */
+  let calmed = false;
 
-  addBeacons(scene, map, shared);
-  addTraffic(scene, map, shared, random);
+  addBeacons(scene, map, shared, skinned);
+  addTraffic(scene, map, shared, random, skinned);
 
   const dustVelocity = new THREE.Vector3();
   const dust = new THREE.LineSegments(
@@ -552,6 +628,7 @@ export function createWorld(map: CityMap, renderer: THREE.WebGLRenderer, camera:
   );
   dust.frustumCulled = false;
   scene.add(dust);
+  skinned.lights.push(dust.material);
 
   const warpLines = new THREE.LineSegments(
     lineGeometry(WARP_LINES, () => {
@@ -573,8 +650,9 @@ export function createWorld(map: CityMap, renderer: THREE.WebGLRenderer, camera:
   warpLines.renderOrder = 5;
   warpLines.visible = false;
   scene.add(warpLines);
+  skinned.lights.push(warpLines.material);
 
-  addLettering(scene, map, renderer);
+  const letter = addLettering(scene, map, renderer);
 
   return {
     scene,
@@ -594,10 +672,31 @@ export function createWorld(map: CityMap, renderer: THREE.WebGLRenderer, camera:
       shared.uWindow.value.fromArray(window);
       glow.fromArray(ramp[2]);
     },
+    setSkin(skin) {
+      const look = LOOKS[skin];
+      for (const material of skinned.shaders) dress(material, skin);
+      for (const material of skinned.lights) dress(material, skin, true);
+      const night = look.scene === 'night';
+      for (const part of skinned.night) part.visible = night && !(part === meteors && calmed);
+      for (const part of skinned.dark) part.visible = look.dark;
+      // A see-through ground is drawn among the lights, in the order the night was tuned with. Any other ground is
+      // solid, and drawn with the solid things, or it would paint over every light drawn before it.
+      if (skinned.ground) skinned.ground.transparent = night;
+      if (skinned.shadows) {
+        skinned.shadows.visible = look.shade > 0 && !simplified;
+        skinned.shadows.material.uniforms.uShade.value = look.shade;
+      }
+      shared.uFog.value.fromArray(look.fog);
+      shared.uFogD.value = look.fogDensity;
+      letter(look);
+    },
     simplify() {
+      simplified = true;
       detail.value = 0;
+      if (skinned.shadows) skinned.shadows.visible = false;
     },
     calm() {
+      calmed = true;
       meteors.visible = false;
     },
   };

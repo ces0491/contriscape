@@ -61,6 +61,27 @@ Aim close to a badge with no tower in the way and the targeting computer locks o
 
 Shooting a city's last badge clears it: rockets climb and burst across the view, lighting the towers under them, the ship does a victory roll, and the Badges button turns gold. The Guide leaves this out so it stays a surprise. With reduced motion on, a message marks the moment and the show is skipped.
 
+### Looks
+
+Settings has six looks. A look changes how the city is drawn at once, applies to every city, and stays in the visitor's browser. Flying, badges, colours and sound are the same in all of them, and a shared link's card is drawn in the night look.
+
+| Look     | What it is                                                                                                                                                                                 |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Night    | The default: lit windows, roofs with parapets, painted streets, a wet street's reflection and a ringed planet overhead                                                                     |
+| Blocks   | The same city by day. Each tower is a stack of blocks in the buildings' colour, pale for a quiet day and full colour for a busy one, on sand under a square sun and clouds made of squares |
+| Poster   | Flat colour on pale paper with heavy black lettering, after the site for GitHub Universe '26. Seven colours, one to a tower, so the Buildings colour doesn't apply                         |
+| Vector   | Glowing outlines on black, as an old vector display drew things, with the hidden lines taken out                                                                                           |
+| Handheld | The day city on a handheld's screen: big pixels in four shades of olive green, with shapes outlined so a pale ship shows against a pale sky                                                |
+| Arcade   | The night city on an arcade cabinet's tube: big pixels, few colours, and dark gaps between the scan lines                                                                                  |
+
+Where there is a sun the towers throw shadows across the streets, the busiest days carry a blinking red block where the night has a red light, and the fireworks for a cleared city fall as confetti. The shadows are dropped at the lowest quality step.
+
+Poster takes its palette and its way of writing a name, as in `2026/`, from that site, and nothing else. No logo, mascot or artwork of GitHub's is used.
+
+### Ships
+
+Settings has five ships: Interceptor, the swept delta the site started with, then Dart, Rocket, Saucer and Brick, which is built of boxes. They differ in shape and in nothing else. Each has the same guns, speed and size against the towers, and takes the ship and trim colours. The choice stays in the visitor's browser.
+
 ### Colours
 
 Settings changes the buildings, the ship and the ship's trim, from swatches or a free colour picker. The choice applies to every city and stays in the visitor's browser. A building colour keeps its hue, and each step of its ramp is set to the default green's brightness, which holds glare close to the default's and keeps dark picks visible. The timeline and the green controls follow the buildings.
@@ -95,13 +116,13 @@ npm run dev
 
 `GITHUB_TOKEN` is a [personal access token (classic)](https://github.com/settings/tokens) with no scopes ticked. GitHub's GraphQL API needs a token even for public data, so it lives on the server. `npm run dev` runs the API inside the Vite dev server, with no Vercel login needed.
 
-| Command            | Does                                                                                                               |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| `npm test`         | API, route, ride, badge, year, zoom, colour, show, sound, music, aiming, collision, sight, clock and Explore tests |
-| `npm run test:e2e` | Browser tests with a stubbed API, under the production CSP                                                         |
-| `npm run lint`     | ESLint                                                                                                             |
-| `npm run build`    | Typecheck, then build to `dist`                                                                                    |
-| `npm run explore`  | Rewrites `public/explore.json` from GitHub's search. Needs `GITHUB_TOKEN`, from the environment or `.env.local`    |
+| Command            | Does                                                                                                                           |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `npm test`         | API, route, ride, badge, year, zoom, colour, look, ship, show, sound, music, aiming, collision, sight, clock and Explore tests |
+| `npm run test:e2e` | Browser tests with a stubbed API, under the production CSP                                                                     |
+| `npm run lint`     | ESLint                                                                                                                         |
+| `npm run build`    | Typecheck, then build to `dist`                                                                                                |
+| `npm run explore`  | Rewrites `public/explore.json` from GitHub's search. Needs `GITHUB_TOKEN`, from the environment or `.env.local`                |
 
 `npx playwright install chromium` fetches the browser for the end-to-end tests.
 
@@ -114,6 +135,8 @@ npm run dev
 - `src/main.ts` loads a city. A browser without WebGL 2 gets the Guide as the page instead, and the API isn't called.
 - `src/calendar.ts`, `src/map.ts` and `src/routes.ts` hold the data, the city grid and the flight paths. `src/milestones.ts` and `src/review.ts` work out the badges and the year story, `src/run.ts` keeps the clock on a timed clear, and `src/colours.ts`, `src/zoom.ts`, `src/steering.ts` and `src/quality.ts` hold the colour palettes, the zoom steps, the key response and the frame average that lowers quality on a slow GPU. `src/aim.ts` picks the badge to lock on to and curves a bolt towards it, `src/lights.ts` chooses which flashes light the towers each frame, and `src/markers.ts` places the markers and chooses which to show. `src/collision.ts` pushes the ship back out of a tower it has hit, and `src/sight.ts` holds the lines of sight: the tower being aimed at, whether one hides a badge, how far back the chase camera can sit, and the height to come at a badge from. None of them need WebGL, which is what makes them testable.
 - `src/world.ts`, `src/fighter.ts`, `src/badges.ts`, `src/blast.ts`, `src/fireworks.ts` and `src/app.ts` are the three.js scene, the ship and its guns, the floating badges, their explosions, the show for a cleared city and the flight modes. `src/environment.ts` renders what the ship's metal and glass reflect, and `src/trails.ts` draws the vapour off its wingtips.
+- `src/skins.ts` holds the looks. A look is a scene, which is how the city itself is drawn, plus what is done to the finished frame, so Handheld is the Blocks scene on an old screen and Arcade is the night on one. `dress` compiles a shader for a look: each version sits under a name such as `BLOCKS`, `VECTOR` or `DAY` in `src/shaders.ts`, so every look is its own program and none pays for another.
+- The five ships are designs in `src/fighter.ts`. A design places its own parts and says where its engines, wingtips and guns are, and the flames, lights and barrels are fitted the same way on all of them.
 - `src/badge-art.ts` draws the badge artwork at runtime, and `src/hud.ts` is everything on screen that isn't the 3D scene.
 - `src/sound.ts` makes the sound effects and mixes them with the music from `src/music.ts`, all with the Web Audio API, and builds nothing until the visitor's first click, tap or key press.
 

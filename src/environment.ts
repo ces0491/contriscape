@@ -1,21 +1,25 @@
 import * as THREE from 'three';
 import type { TowerPalette } from './colours';
 import { ENV_FRAGMENT, ENV_VERTEX } from './shaders';
+import { dress, type Skin } from './skins';
 
 /** A colour picker fires on every move, and each repaint renders a cube map, so repaints wait this long between them. */
 const REPAINT_SECONDS = 0.25;
 
 /**
  * What the ship's metal and glass reflect, rendered once into a prefiltered cube map: the night sky, the lit city around
- * the horizon in the buildings' colour, and the street. It's redrawn when the buildings change colour.
+ * the horizon in the buildings' colour, and the street. It's redrawn when the buildings change colour, and when the
+ * look changes, since by day the ship reflects a day.
  */
 export class Environment {
   private readonly generator: THREE.PMREMGenerator;
   private readonly scene = new THREE.Scene();
   private readonly glow = new THREE.Color();
   private readonly window = new THREE.Color();
+  private readonly material: THREE.ShaderMaterial;
   private target: THREE.WebGLRenderTarget | null = null;
   private pending: TowerPalette | null = null;
+  private painted: TowerPalette | null = null;
   private paintedAt = -Infinity;
 
   constructor(
@@ -23,17 +27,23 @@ export class Environment {
     private readonly onChange: (map: THREE.Texture) => void,
   ) {
     this.generator = new THREE.PMREMGenerator(renderer);
-    const sphere = new THREE.Mesh(
-      new THREE.SphereGeometry(10, 48, 24),
-      new THREE.ShaderMaterial({
-        side: THREE.BackSide,
-        depthWrite: false,
-        vertexShader: ENV_VERTEX,
-        fragmentShader: ENV_FRAGMENT,
-        uniforms: { uGlow: { value: this.glow }, uWindow: { value: this.window } },
-      }),
-    );
-    this.scene.add(sphere);
+    this.material = new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      depthWrite: false,
+      vertexShader: ENV_VERTEX,
+      fragmentShader: ENV_FRAGMENT,
+      uniforms: { uGlow: { value: this.glow }, uWindow: { value: this.window } },
+    });
+    this.scene.add(new THREE.Mesh(new THREE.SphereGeometry(10, 48, 24), this.material));
+  }
+
+  /** Switches what there is to reflect, and repaints at once if anything has been painted. */
+  setSkin(skin: Skin, now: number): void {
+    dress(this.material, skin);
+    if (!this.painted) return;
+    this.pending ??= this.painted;
+    this.paintedAt = -Infinity;
+    this.flush(now);
   }
 
   /** Asks for a repaint in this palette. The first one happens straight away, so the ship never shows unlit. */
@@ -46,6 +56,7 @@ export class Environment {
   flush(now: number): void {
     if (!this.pending || now - this.paintedAt < REPAINT_SECONDS) return;
     const { ramp, window } = this.pending;
+    this.painted = this.pending;
     this.pending = null;
     this.paintedAt = now;
     this.glow.fromArray(ramp[2]);

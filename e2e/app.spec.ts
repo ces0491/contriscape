@@ -336,14 +336,21 @@ test('Explore lists other cities, and one picked there opens saying whose it is'
   await expect(page).toHaveURL(/\/ada-l$/);
   await cityReady(page);
 
-  const arrival = page.locator('#arrival');
-  await expect(arrival).toBeVisible();
-  await expect(page.locator('#arrivalFrom')).toHaveText('Most-starred repos');
-  await expect(page.locator('#arrivalName')).toHaveText('Ada L');
-  await expect(page.locator('#arrivalBio')).toHaveText('Statistician. Writes R.');
-
-  await page.click('#arrivalMore');
-  await expect(arrival).toBeHidden();
+  // The card goes after twelve seconds, which a slow machine can spend between two steps of a test. So it is read and
+  // its button pressed in one step, straight after the city is up.
+  const card = await page.evaluate(() => {
+    const text = (id: string) => document.getElementById(id)?.textContent;
+    const read = {
+      shown: !(document.getElementById('arrival') as HTMLElement).hidden,
+      from: text('arrivalFrom'),
+      name: text('arrivalName'),
+      bio: text('arrivalBio'),
+    };
+    (document.getElementById('arrivalMore') as HTMLElement).click();
+    return read;
+  });
+  expect(card).toEqual({ shown: true, from: 'Most-starred repos', name: 'Ada L', bio: 'Statistician. Writes R.' });
+  await expect(page.locator('#arrival')).toBeHidden();
   await expect(page.locator('#about')).toBeVisible();
   await expect(page.locator('#others')).toBeHidden();
   await expect(page.locator('#aboutFacts')).toHaveText('1,486 followers. Repos mostly in R and C.');
@@ -1053,6 +1060,176 @@ test('on a phone, holding Boost speeds the ship up and letting go slows it', asy
   await expect.poll(speed, { timeout: 30_000 }).toBeGreaterThan(30);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await expect.poll(speed, { timeout: 30_000 }).toBeLessThan(25);
+  await context.close();
+});
+
+/**
+ * How bright each of the next few frames is, from 0 for black to 255 for white. Bloom is held on, because it is what
+ * spreads one bad pixel over a whole frame, and a slow renderer would have turned it off.
+ */
+function frameLevels(page: Page, count: number): Promise<number[]> {
+  return page.evaluate(
+    (frames) =>
+      new Promise<number[]>((resolve) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 48;
+        canvas.height = 30;
+        const g = canvas.getContext('2d') as CanvasRenderingContext2D;
+        const levels: number[] = [];
+        // Sampled straight after each render, before the canvas is cleared for the next
+        const sample = () => {
+          window.__city.bloom.enabled = true;
+          g.drawImage(document.getElementById('gl') as HTMLCanvasElement, 0, 0, 48, 30);
+          const { data } = g.getImageData(0, 0, 48, 30);
+          let sum = 0;
+          for (let i = 0; i < data.length; i += 4) sum += data[i] + data[i + 1] + data[i + 2];
+          levels.push(sum / ((data.length / 4) * 3));
+          if (levels.length < frames) requestAnimationFrame(sample);
+          else resolve(levels);
+        };
+        requestAnimationFrame(sample);
+      }),
+    count,
+  );
+}
+
+test('Blocks turns the night to day from Settings, in every frame, and is remembered', async ({ page }) => {
+  const faults = watchForFaults(page);
+  const shaders: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error' && /shader|program/i.test(m.text())) shaders.push(m.text());
+  });
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  // Orbit takes in the sky and the ground, which is where night and day differ most
+  await page.click('#m-orbit');
+  await expect(page.locator('body')).toHaveAttribute('data-skin', 'night');
+  const night = Math.max(...(await frameLevels(page, 3)));
+  expect(night).toBeLessThan(100);
+
+  await page.click('#settings');
+  await expect(page.locator('#skin-night')).toHaveAttribute('aria-pressed', 'true');
+  await page.click('#skin-blocks');
+  await expect(page.locator('#skin-blocks')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#skin-night')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('body')).toHaveAttribute('data-skin', 'blocks');
+  await page.locator('#settingsPanel .panel-close').click();
+  expect(Math.min(...(await frameLevels(page, 3)))).toBeGreaterThan(night + 60);
+
+  // Flying, firing and boosting by day. One pixel gone wrong would turn a whole frame black.
+  await page.click('#m-pilot');
+  await shipLive(page);
+  await page.keyboard.down('Space');
+  await page.keyboard.down('ShiftLeft');
+  const flying = await frameLevels(page, 10);
+  await page.keyboard.up('ShiftLeft');
+  await page.keyboard.up('Space');
+  expect(Math.min(...flying)).toBeGreaterThan(25);
+
+  await page.reload();
+  await cityReady(page);
+  await expect(page.locator('body')).toHaveAttribute('data-skin', 'blocks');
+  await page.click('#m-orbit');
+  expect(Math.min(...(await frameLevels(page, 3)))).toBeGreaterThan(night + 60);
+
+  await page.click('#settings');
+  await page.click('#skin-night');
+  await expect(page.locator('body')).toHaveAttribute('data-skin', 'night');
+  await expect.poll(async () => Math.max(...(await frameLevels(page, 2)))).toBeLessThan(100);
+  expect(shaders).toEqual([]);
+  expect(faults).toEqual([]);
+});
+
+test('every look draws the city, with no shader left broken', async ({ page }) => {
+  const faults = watchForFaults(page);
+  const shaders: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error' && /shader|program/i.test(m.text())) shaders.push(m.text());
+  });
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#m-orbit');
+  await page.click('#settings');
+  const looks = page.locator('#looks button');
+  await expect(looks).toHaveText(['Night', 'Blocks', 'Poster', 'Vector', 'Handheld', 'Arcade']);
+
+  const levels: Record<string, number> = {};
+  for (const look of ['blocks', 'poster', 'vector', 'handheld', 'arcade', 'night']) {
+    await page.click(`#skin-${look}`);
+    await expect(page.locator('body')).toHaveAttribute('data-skin', look);
+    await expect(page.locator(`#skin-${look}`)).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#looks button[aria-pressed="true"]')).toHaveCount(1);
+    // A shader that failed to compile draws nothing, and a pixel gone wrong turns the frame black
+    levels[look] = Math.min(...(await frameLevels(page, 2)));
+    expect(levels[look], look).toBeGreaterThan(2);
+  }
+  // The looks with a sun are bright, and the dark ones are not
+  for (const bright of ['blocks', 'poster', 'handheld']) {
+    for (const dark of ['night', 'vector', 'arcade'])
+      expect(levels[bright], `${bright} ${dark}`).toBeGreaterThan(levels[dark] + 40);
+  }
+  expect(shaders).toEqual([]);
+  expect(faults).toEqual([]);
+});
+
+test('the ship can be swapped for another design, in the same colours, and the choice is remembered', async ({
+  page,
+}) => {
+  const faults = watchForFaults(page);
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  const parts = () => page.evaluate(() => window.__city.fighter.children.length);
+  const hull = () => page.evaluate(() => window.__city.fighter.children[0].material.color.getHexString());
+  const interceptor = await parts();
+
+  await page.click('#settings');
+  await expect(page.locator('#ships button')).toHaveText(['Interceptor', 'Dart', 'Rocket', 'Saucer', 'Brick']);
+  await expect(page.locator('#ship-interceptor')).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Red ship', exact: true }).click();
+
+  const counts = new Set([interceptor]);
+  for (const ship of ['dart', 'rocket', 'saucer', 'brick']) {
+    await page.click(`#ship-${ship}`);
+    await expect(page.locator(`#ship-${ship}`)).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#ships button[aria-pressed="true"]')).toHaveCount(1);
+    // The fuselage is still first, and still in the colour chosen for the last ship
+    expect(await hull(), ship).toBe('c8463c');
+    counts.add(await parts());
+  }
+  // Five designs are not five names for one model
+  expect(counts.size).toBeGreaterThan(3);
+
+  await page.reload();
+  await cityReady(page);
+  await page.click('#settings');
+  await expect(page.locator('#ship-brick')).toHaveAttribute('aria-pressed', 'true');
+  expect(await hull()).toBe('c8463c');
+  // It flies and fires like any other
+  await page.locator('#settingsPanel .panel-close').click();
+  await page.click('#m-pilot');
+  await shipLive(page);
+  await page.keyboard.down('Space');
+  await expect.poll(() => page.evaluate(() => window.__city.weapons.activeBolts)).toBeGreaterThan(0);
+  await page.keyboard.up('Space');
+  expect(faults).toEqual([]);
+});
+
+test('at a middling width the header keeps to one row, so the hint sits under it', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 900, height: 700 } });
+  const page = await context.newPage();
+  await stubApi(page, { body: busy('a-really-long-github-username-of-39-cha') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  // The hint hides itself nine seconds after the city loads, so it is measured first
+  const hint = await page.locator('#hint').boundingBox();
+  const modes = await page.locator('.modes').boundingBox();
+  const find = await page.locator('.find').boundingBox();
+  expect(Math.abs((modes?.y ?? 0) - (find?.y ?? 99))).toBeLessThan(12);
+  expect(hint?.y).toBeGreaterThanOrEqual((modes?.y ?? 0) + (modes?.height ?? 0) - 1);
+  expect((modes?.x ?? 0) + (modes?.width ?? 0)).toBeLessThanOrEqual(900);
   await context.close();
 });
 

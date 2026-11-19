@@ -27,6 +27,9 @@ Let anyone enter a GitHub username and fly through a 3D city of that person's pu
 - [x] A shared link previews with a card of that user's skyline, and falls back to the site's own picture when GitHub can't be read
 - [x] Explore lists busy cities by field and by repo, from a file made ahead of time, and Random city picks one
 - [x] A city says whose it is, from the bio, languages and repos on their GitHub profile, and still loads when GitHub can't give those
+- [x] Six looks, chosen in Settings and kept in the visitor's browser: Night, Blocks, Poster, Vector, Handheld and Arcade
+- [x] Five ships to choose from, the same in flight and different in shape
+- [x] Where a look has a sun, the towers throw shadows
 - [x] Unit tests, browser tests under the production CSP, lint and typecheck all pass
 - [x] Name confirmed by Ces
 - [x] Deployed to production with a real token, verified on the live URL
@@ -65,3 +68,4 @@ Ces, after flying a stranger's city on the live URL from a phone and a laptop.
 - 2026-11-19: after a review, changed which years the whole-history flight flies and how it passes the others, marked badges as flown, added a marker back to the city and the front page's example hint, and started histories at the earliest year GitHub lists, at Ces's request
 - 2026-11-19: measured tower heights against a busy day, timed a clear flown without a jump, offered the controls when Autopilot ends, gave phones a Brake button, and added a share card for each username, at Ces's request
 - 2026-11-19: added Explore, Random city and the account of whose city it is, at Ces's request
+- 2026-11-19: added five looks and four ships, tower shadows by day, and painted streets and roofs by night, at Ces's request

@@ -33,6 +33,9 @@ const STROBE_SECONDS = 0.06;
 const WINGTIP = new THREE.Vector3(0.5, -0.03, 0.38);
 const NOZZLE_Z = 0.585;
 const ENGINE_X = 0.13;
+/** The radius of a nav light or a strobe, and of a gun barrel at its thicker end. */
+const NAV_RADIUS = 0.018;
+const BARREL_RADIUS = 0.014;
 
 /** A flat outline, extruded thin with softened edges, centred on and laid in the ship's horizontal plane. */
 function plate(outline: [number, number][], thickness: number): THREE.ExtrudeGeometry {
@@ -95,45 +98,44 @@ function glowPoints(
   );
 }
 
-export interface Fighter {
-  /** The ship, facing -Z. Its first child is the fuselage, in the hull colour. */
-  group: THREE.Group;
-  paint(colours: Colours): void;
-  /** What the metal and glass reflect. */
-  reflect(map: THREE.Texture): void;
-  /** The exhaust and lights for this frame. Throttle is 0 standing still, 1 at cruise, and up to 2.7 on full boost. */
-  update(time: number, dt: number, throttle: number): void;
-  /** Lights both muzzles for a moment. */
-  muzzle(): void;
-  /** Writes where the wingtips are in the scene into `left` and `right`. */
-  wingtips(left: THREE.Vector3, right: THREE.Vector3): void;
+/** The ships a visitor can fly, in the order Settings lists them. The first is the default. */
+export const SHIPS = ['interceptor', 'dart', 'rocket', 'saucer', 'brick'] as const;
+export type Ship = (typeof SHIPS)[number];
+export const DEFAULT_SHIP: Ship = SHIPS[0];
+export const SHIP_LABELS: Record<Ship, string> = {
+  interceptor: 'Interceptor',
+  dart: 'Dart',
+  rocket: 'Rocket',
+  saucer: 'Saucer',
+  brick: 'Brick',
+};
+
+/** A saved choice, or the default for anything that isn't one. */
+export function readShip(saved: string | null): Ship {
+  return SHIPS.find((ship) => ship === saved) ?? DEFAULT_SHIP;
 }
 
-/** A swept delta interceptor with twin engines, nose towards -Z, about 0.83 wide once scaled. */
-export function buildFighter(): Fighter {
-  const hull = new THREE.MeshStandardMaterial({ metalness: 0.55, roughness: 0.34, envMapIntensity: 1.15 });
-  const trim = new THREE.MeshStandardMaterial({ metalness: 0.3, roughness: 0.4, emissiveIntensity: 0.22 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x1b2027, metalness: 0.7, roughness: 0.42 });
-  const glass = new THREE.MeshStandardMaterial({
-    color: 0x0b1724,
-    metalness: 0.95,
-    roughness: 0.06,
-    envMapIntensity: 2.2,
-    emissive: 0x0b2a3a,
-    emissiveIntensity: 0.6,
-  });
-  const nozzle = new THREE.MeshBasicMaterial({ color: NOZZLE_COLOUR });
-  const lit = [hull, trim, dark, glass];
+/** The parts of a ship by what they are made of, which is what a colour choice or a reflection is applied to. */
+type Finish = 'hull' | 'trim' | 'dark' | 'glass';
 
-  const group = new THREE.Group();
-  const add = (geometry: THREE.BufferGeometry, material: THREE.Material, x = 0, y = 0, z = 0, rz = 0) => {
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(x, y, z);
-    mesh.rotation.z = rz;
-    group.add(mesh);
-    return mesh;
-  };
+/** What a design is built with. `add` places one part, turned by `rz` about the ship's length. */
+interface Kit {
+  add(geometry: THREE.BufferGeometry, finish: Finish, x?: number, y?: number, z?: number, rz?: number): void;
+}
 
+/** What a design leaves to be fitted the same way on every ship: its engines, lights and guns. */
+interface Fittings {
+  /** Each nozzle: where it is, and its radius. The flame, the glow and the lit disc are sized from the radius. */
+  engines: [x: number, y: number, z: number, radius: number][];
+  /** The right wingtip, where a nav light sits and a vapour trail starts. The left mirrors it. */
+  wingtip: THREE.Vector3;
+  strobes: [x: number, y: number, z: number][];
+  /** How far along the ship the gun barrels are centred. The bolts leave from the same place whatever the ship. */
+  gunZ: number;
+}
+
+/** A swept delta with twin engines and canted fins, about 0.83 wide once scaled. */
+function interceptor({ add }: Kit): Fittings {
   // Fuselage first, so the hull colour is easy to find
   add(
     body(
@@ -155,11 +157,11 @@ export function buildFighter(): Fighter {
       1.12,
       0.62,
     ),
-    hull,
+    'hull',
   );
   const canopy = new THREE.SphereGeometry(1, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2);
   canopy.scale(0.072, 0.07, 0.24);
-  add(canopy, glass, 0, 0.05, -0.3);
+  add(canopy, 'glass', 0, 0.05, -0.3);
 
   [-1, 1].forEach((side) => {
     const w = side;
@@ -174,7 +176,7 @@ export function buildFighter(): Fighter {
         ],
         0.022,
       ),
-      hull,
+      'hull',
       0,
       0,
       0,
@@ -190,7 +192,7 @@ export function buildFighter(): Fighter {
         ],
         0.028,
       ),
-      trim,
+      'trim',
       0,
       0.001,
       0,
@@ -207,7 +209,7 @@ export function buildFighter(): Fighter {
         ],
         0.016,
       ),
-      hull,
+      'hull',
     );
     const fin = plate(
       [
@@ -220,7 +222,7 @@ export function buildFighter(): Fighter {
     );
     fin.rotateZ(side > 0 ? Math.PI / 2 - 0.3 : Math.PI / 2 + 0.3);
     fin.translate(side * ENGINE_X, 0.03, 0);
-    add(fin, trim);
+    add(fin, 'trim');
 
     const nacelle = body(
       [
@@ -235,78 +237,459 @@ export function buildFighter(): Fighter {
       1,
       1,
     );
-    add(nacelle, dark, side * ENGINE_X, -0.01);
-    const ring = new THREE.TorusGeometry(0.056, 0.01, 6, 20);
-    add(ring, dark, side * ENGINE_X, -0.01, NOZZLE_Z);
-    add(new THREE.CircleGeometry(0.05, 20), nozzle, side * ENGINE_X, -0.01, NOZZLE_Z - 0.005);
-
-    const barrel = new THREE.CylinderGeometry(0.011, 0.014, 0.36, 8);
-    barrel.rotateX(Math.PI / 2);
-    add(barrel, dark, (side * GUN.x) / SCALE, -0.012, 0.05);
+    add(nacelle, 'dark', side * ENGINE_X, -0.01);
+    add(new THREE.TorusGeometry(0.056, 0.01, 6, 20), 'dark', side * ENGINE_X, -0.01, NOZZLE_Z);
   });
 
-  // The exhaust, one cone per engine, sharing one set of uniforms
-  const flameUniforms = { uThrottle: { value: 1 }, uTime: { value: 0 }, uSeed: { value: 0 } };
-  const cone = new THREE.ConeGeometry(0.046, 1, 14, 1, true);
-  cone.rotateX(Math.PI / 2);
-  cone.translate(0, 0, 0.5);
-  [-1, 1].forEach((side) => {
-    const flame = new THREE.Mesh(
-      cone,
-      new THREE.ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-        blending: THREE.AdditiveBlending,
-        uniforms: { ...flameUniforms, uSeed: { value: side * 7.3 } },
-        vertexShader: glsl.FLAME_VERTEX,
-        fragmentShader: glsl.FLAME_FRAGMENT,
-      }),
+  return {
+    engines: [
+      [-ENGINE_X, -0.01, NOZZLE_Z, 0.05],
+      [ENGINE_X, -0.01, NOZZLE_Z, 0.05],
+    ],
+    wingtip: WINGTIP.clone(),
+    strobes: [
+      [-0.2, 0.262, 0.46],
+      [0.2, 0.262, 0.46],
+    ],
+    gunZ: 0.05,
+  };
+}
+
+/** A needle with one engine, small canards by the nose, cropped wings and a single tall fin. */
+function dart({ add }: Kit): Fittings {
+  add(
+    body(
+      [
+        [0, -0.86],
+        [0.02, -0.78],
+        [0.045, -0.6],
+        [0.07, -0.38],
+        [0.09, -0.1],
+        [0.1, 0.15],
+        [0.1, 0.4],
+        [0.085, 0.52],
+        [0.064, 0.58],
+        [0, 0.585],
+      ],
+      18,
+      1,
+      0.8,
+    ),
+    'hull',
+  );
+  const canopy = new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2);
+  canopy.scale(0.055, 0.062, 0.2);
+  add(canopy, 'glass', 0, 0.045, -0.36);
+
+  [-1, 1].forEach((w) => {
+    add(
+      plate(
+        [
+          [0.07 * w, -0.04],
+          [0.44 * w, 0.3],
+          [0.44 * w, 0.4],
+          [0.07 * w, 0.46],
+        ],
+        0.02,
+      ),
+      'hull',
+      0,
+      0,
+      0,
+      w * -0.04,
     );
-    flame.position.set(side * ENGINE_X, -0.01, NOZZLE_Z + 0.004);
-    flame.renderOrder = 4;
-    group.add(flame);
+    add(
+      plate(
+        [
+          [0.33 * w, 0.2],
+          [0.44 * w, 0.3],
+          [0.44 * w, 0.4],
+          [0.33 * w, 0.42],
+        ],
+        0.026,
+      ),
+      'trim',
+      0,
+      0.001,
+      0,
+      w * -0.04,
+    );
+    add(
+      plate(
+        [
+          [0.04 * w, -0.54],
+          [0.2 * w, -0.4],
+          [0.2 * w, -0.36],
+          [0.04 * w, -0.34],
+        ],
+        0.014,
+      ),
+      'trim',
+    );
+  });
+  const fin = plate(
+    [
+      [0, 0.1],
+      [0.27, 0.46],
+      [0.27, 0.54],
+      [0, 0.52],
+    ],
+    0.016,
+  );
+  fin.rotateZ(Math.PI / 2);
+  fin.translate(0, 0.05, 0);
+  add(fin, 'trim');
+  add(new THREE.TorusGeometry(0.064, 0.011, 6, 20), 'dark', 0, 0, 0.58);
+
+  return {
+    engines: [[0, 0, 0.585, 0.058]],
+    wingtip: new THREE.Vector3(0.44, -0.02, 0.36),
+    strobes: [[0, 0.325, 0.5]],
+    gunZ: 0.2,
+  };
+}
+
+/** A rocket off a tin toy: a fat round body with a painted nose and a band, a porthole, one big engine and three fins. */
+function rocket({ add }: Kit): Fittings {
+  add(
+    body(
+      [
+        [0, -0.8],
+        [0.05, -0.72],
+        [0.11, -0.56],
+        [0.155, -0.36],
+        [0.175, -0.12],
+        [0.175, 0.14],
+        [0.16, 0.32],
+        [0.13, 0.46],
+        [0.1, 0.54],
+        [0, 0.55],
+      ],
+      24,
+      1,
+      1,
+    ),
+    'hull',
+  );
+  // The nose cone is a skin over the tip of the body, in the trim colour
+  add(
+    body(
+      [
+        [0, -0.812],
+        [0.054, -0.726],
+        [0.116, -0.562],
+        [0.118, -0.54],
+        [0, -0.54],
+      ],
+      24,
+      1,
+      1,
+    ),
+    'trim',
+  );
+  add(new THREE.TorusGeometry(0.176, 0.013, 6, 28), 'trim', 0, 0, 0.12);
+  const porthole = new THREE.SphereGeometry(1, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+  porthole.scale(0.06, 0.045, 0.09);
+  add(porthole, 'glass', 0, 0.148, -0.3);
+  add(new THREE.TorusGeometry(0.1, 0.014, 6, 20), 'dark', 0, 0, 0.545);
+
+  const outline: [number, number][] = [
+    [0.14, 0.06],
+    [0.5, 0.44],
+    [0.5, 0.56],
+    [0.14, 0.5],
+  ];
+  [-1, 1].forEach((w) => {
+    add(
+      plate(
+        outline.map(([x, z]) => [x * w, z]),
+        0.022,
+      ),
+      'hull',
+    );
+    add(
+      plate(
+        [
+          [0.4 * w, 0.334],
+          [0.5 * w, 0.44],
+          [0.5 * w, 0.56],
+          [0.4 * w, 0.543],
+        ],
+        0.028,
+      ),
+      'trim',
+      0,
+      0.001,
+    );
+  });
+  const dorsal = plate(
+    outline.map(([x, z]) => [x * 0.72, z]),
+    0.022,
+  );
+  dorsal.rotateZ(Math.PI / 2);
+  add(dorsal, 'trim');
+
+  return {
+    engines: [[0, 0, 0.555, 0.088]],
+    wingtip: new THREE.Vector3(0.5, 0, 0.5),
+    strobes: [[0, 0.375, 0.5]],
+    gunZ: 0.36,
+  };
+}
+
+/** A flying saucer: a disc with a glass dome, a band of trim round its top and two small engines at the back. */
+function saucer({ add }: Kit): Fittings {
+  add(
+    new THREE.LatheGeometry(
+      [
+        [0, -0.075],
+        [0.2, -0.07],
+        [0.4, -0.032],
+        [0.5, 0],
+        [0.4, 0.036],
+        [0.22, 0.062],
+        [0, 0.07],
+      ].map(([r, y]) => new THREE.Vector2(r, y)),
+      40,
+    ),
+    'hull',
+  );
+  const dome = new THREE.SphereGeometry(1, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+  dome.scale(0.17, 0.15, 0.17);
+  add(dome, 'glass', 0, 0.055, 0);
+  const band = new THREE.TorusGeometry(0.4, 0.014, 6, 40);
+  band.rotateX(Math.PI / 2);
+  add(band, 'trim', 0, 0.038, 0);
+  const collar = new THREE.TorusGeometry(0.18, 0.014, 6, 28);
+  collar.rotateX(Math.PI / 2);
+  add(collar, 'trim', 0, 0.066, 0);
+  add(
+    new THREE.LatheGeometry(
+      [
+        [0, -0.12],
+        [0.1, -0.115],
+        [0.17, -0.07],
+      ].map(([r, y]) => new THREE.Vector2(r, y)),
+      24,
+    ),
+    'dark',
+  );
+  [-1, 1].forEach((side) => {
+    const pod = new THREE.CylinderGeometry(0.04, 0.034, 0.16, 12);
+    pod.rotateX(Math.PI / 2);
+    add(pod, 'dark', side * 0.15, 0, 0.42);
   });
 
+  return {
+    engines: [
+      [-0.15, 0, 0.5, 0.034],
+      [0.15, 0, 0.5, 0.034],
+    ],
+    wingtip: new THREE.Vector3(0.5, 0, 0),
+    strobes: [[0, 0.215, 0]],
+    gunZ: -0.06,
+  };
+}
+
+/** A ship built of boxes, for anyone who likes their city in blocks. */
+function brick({ add }: Kit): Fittings {
+  const box = (w: number, h: number, d: number) => new THREE.BoxGeometry(w, h, d);
+  add(box(0.2, 0.14, 1.06), 'hull', 0, 0, -0.1);
+  add(box(0.12, 0.1, 0.18), 'trim', 0, -0.005, -0.72);
+  add(box(0.13, 0.08, 0.24), 'glass', 0, 0.105, -0.3);
+  add(box(0.05, 0.22, 0.26), 'trim', 0, 0.17, 0.28);
+  [-1, 1].forEach((side) => {
+    add(box(0.34, 0.05, 0.36), 'hull', side * 0.27, -0.01, 0.2);
+    add(box(0.08, 0.075, 0.42), 'trim', side * 0.46, -0.01, 0.2);
+    add(box(0.13, 0.13, 0.32), 'dark', side * 0.145, -0.005, 0.44);
+    add(box(0.06, 0.04, 0.2), 'hull', side * 0.16, 0, -0.5);
+  });
+
+  return {
+    engines: [
+      [-0.145, -0.005, 0.605, 0.052],
+      [0.145, -0.005, 0.605, 0.052],
+    ],
+    wingtip: new THREE.Vector3(0.5, -0.01, 0.38),
+    strobes: [[0, 0.29, 0.38]],
+    gunZ: 0.12,
+  };
+}
+
+const DESIGNS: Record<Ship, (kit: Kit) => Fittings> = { interceptor, dart, rocket, saucer, brick };
+
+/** The radius the flame's cone is modelled at. Each engine's flame is scaled from it. */
+const FLAME_RADIUS = 0.046;
+/** The nozzle the engine glow was tuned on. A wider engine glows wider. */
+const TUNED_NOZZLE = 0.05;
+const BARREL_LENGTH = 0.36;
+
+/**
+ * How far a design reaches to either side, in the model's own units: its parts, its nav lights and its gun barrels.
+ * The flight paths are tested to clear the towers by a fixed margin, so every ship has to fit inside it.
+ */
+export function halfSpan(ship: Ship): number {
+  const box = new THREE.Box3();
+  const part = new THREE.Box3();
+  const turn = new THREE.Matrix4();
+  const fittings = DESIGNS[ship]({
+    add(geometry, _finish, x = 0, y = 0, z = 0, rz = 0) {
+      geometry.computeBoundingBox();
+      part.copy(geometry.boundingBox as THREE.Box3).applyMatrix4(turn.makeRotationZ(rz).setPosition(x, y, z));
+      box.union(part);
+      geometry.dispose();
+    },
+  });
+  return Math.max(box.max.x, -box.min.x, fittings.wingtip.x + NAV_RADIUS, GUN.x / SCALE + BARREL_RADIUS);
+}
+
+export interface Fighter {
+  /** The ship, facing -Z. Its first child is the fuselage, in the hull colour. */
+  group: THREE.Group;
+  /** Swaps the ship for another design, where it is, in the same colours. */
+  setModel(ship: Ship): void;
+  paint(colours: Colours): void;
+  /** What the metal and glass reflect. */
+  reflect(map: THREE.Texture): void;
+  /** The exhaust and lights for this frame. Throttle is 0 standing still, 1 at cruise, and up to 2.7 on full boost. */
+  update(time: number, dt: number, throttle: number): void;
+  /** Lights both muzzles for a moment. */
+  muzzle(): void;
+  /** Writes where the wingtips are in the scene into `left` and `right`. */
+  wingtips(left: THREE.Vector3, right: THREE.Vector3): void;
+}
+
+/** A ship of the given design, nose towards -Z. The designs share their materials, so colours carry from one to the next. */
+export function buildFighter(ship: Ship = DEFAULT_SHIP): Fighter {
+  const finishes: Record<Finish, THREE.MeshStandardMaterial> = {
+    hull: new THREE.MeshStandardMaterial({ metalness: 0.55, roughness: 0.34, envMapIntensity: 1.15 }),
+    trim: new THREE.MeshStandardMaterial({ metalness: 0.3, roughness: 0.4, emissiveIntensity: 0.22 }),
+    dark: new THREE.MeshStandardMaterial({ color: 0x1b2027, metalness: 0.7, roughness: 0.42 }),
+    glass: new THREE.MeshStandardMaterial({
+      color: 0x0b1724,
+      metalness: 0.95,
+      roughness: 0.06,
+      envMapIntensity: 2.2,
+      emissive: 0x0b2a3a,
+      emissiveIntensity: 0.6,
+    }),
+  };
+  const nozzle = new THREE.MeshBasicMaterial({ color: NOZZLE_COLOUR });
+  const lights = {
+    port: new THREE.MeshBasicMaterial({ color: PORT }),
+    starboard: new THREE.MeshBasicMaterial({ color: STARBOARD }),
+    strobe: new THREE.MeshBasicMaterial({ color: STROBE }),
+  };
   const blue = glowTexture([
     [0, 'rgba(255,255,255,1)'],
     [0.3, 'rgba(120,205,255,.75)'],
     [1, 'rgba(30,110,255,0)'],
   ]);
-  const glow = glowPoints([-ENGINE_X, -0.01, NOZZLE_Z + 0.03, ENGINE_X, -0.01, NOZZLE_Z + 0.03], blue, 0.26);
-  group.add(glow);
-
-  const navLight = (colour: THREE.Color, x: number, y: number, z: number) => {
-    const light = add(new THREE.SphereGeometry(0.018, 8, 6), new THREE.MeshBasicMaterial({ color: colour }), x, y, z);
-    return light;
-  };
-  navLight(PORT, -WINGTIP.x, WINGTIP.y, WINGTIP.z);
-  navLight(STARBOARD, WINGTIP.x, WINGTIP.y, WINGTIP.z);
-  const strobes = [navLight(STROBE, -0.2, 0.262, 0.46), navLight(STROBE, 0.2, 0.262, 0.46)];
-
   const red = glowTexture([
     [0, 'rgba(255,240,230,1)'],
     [0.25, 'rgba(255,90,60,.8)'],
     [1, 'rgba(255,30,10,0)'],
   ]);
-  const muzzles = glowPoints([-GUN.x / SCALE, -0.012, -0.14, GUN.x / SCALE, -0.012, -0.14], red, 0.7);
-  muzzles.material.color.copy(MUZZLE_COLOUR);
-  muzzles.visible = false;
-  group.add(muzzles);
-  let muzzleLeft = 0;
+  // The exhaust, one cone per engine, sharing one set of uniforms
+  const flameUniforms = { uThrottle: { value: 1 }, uTime: { value: 0 }, uSeed: { value: 0 } };
 
+  const group = new THREE.Group();
   group.scale.setScalar(SCALE);
   group.visible = false;
 
+  /** What changes from one design to the next and is read each frame. */
+  let glow: THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>;
+  let muzzles: THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>;
+  let strobes: THREE.Mesh[] = [];
+  let wingtip = WINGTIP;
+  /** How much wider than the tuned nozzle this design's engines are. */
+  let breadth = 1;
+  let muzzleLeft = 0;
+
+  const place = (geometry: THREE.BufferGeometry, material: THREE.Material, x = 0, y = 0, z = 0, rz = 0) => {
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    mesh.rotation.z = rz;
+    group.add(mesh);
+    return mesh;
+  };
+
+  function assemble(next: Ship): void {
+    // The glow textures and the materials are kept. Everything shaped for the old design goes.
+    for (const child of [...group.children]) {
+      group.remove(child);
+      const { geometry, material } = child as THREE.Mesh;
+      geometry.dispose();
+      if (material instanceof THREE.ShaderMaterial || material instanceof THREE.PointsMaterial) material.dispose();
+    }
+
+    const fittings = DESIGNS[next]({
+      add: (geometry, finish, x, y, z, rz) => void place(geometry, finishes[finish], x, y, z, rz),
+    });
+    wingtip = fittings.wingtip;
+    breadth =
+      fittings.engines.reduce((sum, [, , , radius]) => sum + radius, 0) / fittings.engines.length / TUNED_NOZZLE;
+
+    const glowAt: number[] = [];
+    fittings.engines.forEach(([x, y, z, radius], n) => {
+      place(new THREE.CircleGeometry(radius, 20), nozzle, x, y, z - 0.005);
+      const cone = new THREE.ConeGeometry(FLAME_RADIUS, 1, 14, 1, true);
+      cone.rotateX(Math.PI / 2);
+      cone.translate(0, 0, 0.5);
+      const flame = place(
+        cone,
+        new THREE.ShaderMaterial({
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+          uniforms: { ...flameUniforms, uSeed: { value: (n * 2 - 1) * 7.3 } },
+          vertexShader: glsl.FLAME_VERTEX,
+          fragmentShader: glsl.FLAME_FRAGMENT,
+        }),
+        x,
+        y,
+        z + 0.004,
+      );
+      // Wider for a wider nozzle, and a little longer
+      flame.scale.set(radius / TUNED_NOZZLE, radius / TUNED_NOZZLE, Math.sqrt(radius / TUNED_NOZZLE));
+      flame.renderOrder = 4;
+      glowAt.push(x, y, z + 0.03);
+    });
+    glow = glowPoints(glowAt, blue, 0.26);
+    group.add(glow);
+
+    const lamp = () => new THREE.SphereGeometry(NAV_RADIUS, 8, 6);
+    place(lamp(), lights.port, -wingtip.x, wingtip.y, wingtip.z);
+    place(lamp(), lights.starboard, wingtip.x, wingtip.y, wingtip.z);
+    strobes = fittings.strobes.map(([x, y, z]) => place(lamp(), lights.strobe, x, y, z));
+
+    const gunX = GUN.x / SCALE;
+    [-1, 1].forEach((side) => {
+      const barrel = new THREE.CylinderGeometry(0.011, BARREL_RADIUS, BARREL_LENGTH, 8);
+      barrel.rotateX(Math.PI / 2);
+      place(barrel, finishes.dark, side * gunX, -0.012, fittings.gunZ);
+    });
+    const tip = fittings.gunZ - BARREL_LENGTH / 2 - 0.01;
+    muzzles = glowPoints([-gunX, -0.012, tip, gunX, -0.012, tip], red, 0.7);
+    muzzles.material.color.copy(MUZZLE_COLOUR);
+    muzzles.visible = false;
+    group.add(muzzles);
+  }
+  assemble(ship);
+
   return {
     group,
+    setModel(next) {
+      assemble(next);
+    },
     paint(colours) {
-      hull.color.set(colours.hull);
-      trim.color.set(colours.trim);
-      trim.emissive.set(colours.trim);
+      finishes.hull.color.set(colours.hull);
+      finishes.trim.color.set(colours.trim);
+      finishes.trim.emissive.set(colours.trim);
     },
     reflect(map) {
-      lit.forEach((material) => {
+      Object.values(finishes).forEach((material) => {
         material.envMap = map;
         material.needsUpdate = true;
       });
@@ -314,7 +697,7 @@ export function buildFighter(): Fighter {
     update(time, dt, throttle) {
       flameUniforms.uThrottle.value = throttle;
       flameUniforms.uTime.value = time;
-      glow.material.size = 0.14 + 0.05 * Math.min(throttle, 2.7);
+      glow.material.size = (0.14 + 0.05 * Math.min(throttle, 2.7)) * breadth;
       const flashing = time % STROBE_EVERY < STROBE_SECONDS;
       strobes.forEach((strobe) => {
         strobe.visible = flashing;
@@ -328,8 +711,8 @@ export function buildFighter(): Fighter {
     },
     wingtips(left, right) {
       group.updateMatrixWorld();
-      left.set(-WINGTIP.x, WINGTIP.y, WINGTIP.z).applyMatrix4(group.matrixWorld);
-      right.copy(WINGTIP).applyMatrix4(group.matrixWorld);
+      left.set(-wingtip.x, wingtip.y, wingtip.z).applyMatrix4(group.matrixWorld);
+      right.copy(wingtip).applyMatrix4(group.matrixWorld);
     },
   };
 }

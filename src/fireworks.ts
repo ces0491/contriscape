@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Rgb } from './colours';
 import { FIREWORK_FRAGMENT, FIREWORK_VERTEX } from './shaders';
+import { dress, type Skin } from './skins';
 
 export const SHELLS = 9;
 const SPARKS = 150;
@@ -98,6 +99,11 @@ export class Fireworks {
 
   get active(): boolean {
     return this.age.value < FINALE_SECONDS;
+  }
+
+  /** By day the sparks are squares of solid colour, because light added to a bright sky is lost in it. */
+  setSkin(skin: Skin): void {
+    dress(this.points.material, skin, true);
   }
 
   /**

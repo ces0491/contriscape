@@ -374,9 +374,10 @@ input,
 /* The username box and the button for a visitor with no username in mind */
 .find {
   display: flex;
-  flex: 0 1 392px;
+  flex: 1 1 240px;
   gap: 8px;
   min-width: 0;
+  max-width: 392px;
 }
 #explore {
   appearance: none;
@@ -1115,6 +1116,28 @@ button:focus-visible {
 #colourReset {
   margin-top: 14px;
 }
+.looks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.looks button {
+  appearance: none;
+  padding: 7px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-2);
+  font: 600 12px/1 var(--mono);
+  cursor: pointer;
+}
+.looks button:hover {
+  color: var(--ink);
+}
+.looks button[aria-pressed='true'] {
+  border-color: var(--sodium);
+  color: var(--ink);
+}
 #guidePanel {
   top: 50%;
   right: auto;
@@ -1423,6 +1446,12 @@ body.piloting #date {
     font-size: 16px;
   }
 }
+/* On one row the hint sits just under the header, so nothing may wrap below it. The name and the box give way instead. */
+@media (min-width: 861px) {
+  .top {
+    flex-wrap: nowrap;
+  }
+}
 @media (max-width: 860px) {
   :root {
     --header: 104px;
@@ -1445,6 +1474,7 @@ body.piloting #date {
   .find {
     order: 3;
     flex: 1 1 100%;
+    max-width: none;
   }
   .brand h1 {
     max-width: 150px;

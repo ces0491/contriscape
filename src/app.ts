@@ -14,7 +14,7 @@ import { pushOut } from './collision';
 import { COLOUR_ROWS, DEFAULT_COLOURS, readColours, towerPalette, type Colours } from './colours';
 import { Environment } from './environment';
 import { takeArrival, type Explorer } from './explorer';
-import { buildFighter, Weapons } from './fighter';
+import { buildFighter, readShip, SHIP_LABELS, SHIPS, Weapons, type Ship } from './fighter';
 import { FINALE_SECONDS, Fireworks } from './fireworks';
 import { Hud, type Scope } from './hud';
 import { Flashes } from './lights';
@@ -26,6 +26,7 @@ import { reviewFacts, reviewTitle, reviewYear } from './review';
 import { buildRoute, lengthAtDay, newPose, poseAt, RISE, type Route } from './routes';
 import { formatClock, Run } from './run';
 import { FINISH_FRAGMENT, FINISH_VERTEX } from './shaders';
+import { definesFor, LOOKS, pixelSize, readSkin, SKINS, type Skin } from './skins';
 import { approachHeight, blockedBetween, clearReach, towerAlong } from './sight';
 import { Sound, stereo } from './sound';
 import { keyTurn } from './steering';
@@ -50,6 +51,8 @@ const MOUSE_KEY = 'contriscape:mouse-steer';
 const SOUND_KEY = 'contriscape:sound';
 const MUSIC_KEY = 'contriscape:music';
 const COLOUR_KEY = 'contriscape:colours';
+const SKIN_KEY = 'contriscape:skin';
+const SHIP_KEY = 'contriscape:ship';
 /** Towers closer than this to the ship's line rush past with a whoosh. Under CELL, as `towersNear` needs. */
 const WHOOSH_REACH = 1.9;
 /** A tower that has just whooshed stays quiet this long, so one tower is one whoosh. */
@@ -106,6 +109,15 @@ const PANELS = {
 };
 type Panel = keyof typeof PANELS;
 const PANEL_NAMES = Object.keys(PANELS) as Panel[];
+
+/** A saved choice as it was stored, or `null` with nothing saved or storage blocked. */
+function recallText(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
 
 function recall(key: string, fallback = false): boolean {
   try {
@@ -166,7 +178,8 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
   const { scene, shared, towers } = world;
   shared.uPx.value = pixelRatio;
 
-  const craft = buildFighter();
+  let shipModel = readShip(recallText(SHIP_KEY));
+  const craft = buildFighter(shipModel);
   const fighter = craft.group;
   scene.add(fighter);
   scene.add(new THREE.AmbientLight(0x8fa6c0, 1.1));
@@ -207,6 +220,7 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
       uSpeed: { value: 0 },
       uTime: { value: 0 },
       uGrain: { value: GRAIN },
+      uGrid: { value: new THREE.Vector2(1, 1) },
     },
     vertexShader: FINISH_VERTEX,
     fragmentShader: FINISH_FRAGMENT,
@@ -271,6 +285,8 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
   let brakePointer: number | null = null;
   let offerTimer = 0;
   let arrivalTimer = 0;
+  /** The card for a city picked from Explore is up, and its seconds haven't started counting. */
+  let arrivalWaiting = false;
   let wasBoosting = false;
   let touchedTower = -1;
   /** When each nearby tower last whooshed past. */
@@ -490,9 +506,19 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
   /** A city picked from Explore opens by saying whose it is, until the visitor does something else. */
   function greet(from: string): void {
     hud.showArrival(from, data.name ?? data.login, data.profile?.bio ?? null);
+    arrivalWaiting = true;
+  }
+  /**
+   * The card's seconds count from the end of the jump that opens a flight, called each frame until then. Nobody reads
+   * through the flash, and on a slow machine the wait and the jump can outlast the card.
+   */
+  function timeArrival(): void {
+    if (!arrivalWaiting || jump || (mode === 'fly' && !arrived)) return;
+    arrivalWaiting = false;
     arrivalTimer = window.setTimeout(withdrawArrival, ARRIVAL_SECONDS * 1000);
   }
   function withdrawArrival(): void {
+    arrivalWaiting = false;
     clearTimeout(arrivalTimer);
     hud.hideArrival();
   }
@@ -937,6 +963,54 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     }
   }
 
+  /* ---------- ship ---------- */
+  function showShip(): void {
+    SHIPS.forEach((name) => element(`ship-${name}`).setAttribute('aria-pressed', String(name === shipModel)));
+  }
+  function setShip(next: Ship): void {
+    shipModel = next;
+    craft.setModel(next);
+    showShip();
+    try {
+      localStorage.setItem(SHIP_KEY, next);
+    } catch {
+      // Private windows can refuse storage. The choice still holds for this visit.
+    }
+  }
+
+  /* ---------- look ---------- */
+  let skin: Skin = readSkin(recallText(SKIN_KEY));
+  function dressScene(): void {
+    const { bloom: glow } = LOOKS[skin];
+    world.setSkin(skin);
+    environment.setSkin(skin, time);
+    fireworks.setSkin(skin);
+    bloom.strength = glow.strength;
+    bloom.radius = glow.radius;
+    bloom.threshold = glow.threshold;
+    // The pass over the finished frame imitates an old screen in some looks
+    finish.material.defines = definesFor(skin);
+    finish.material.needsUpdate = true;
+    sizeScreen();
+    // The page's own styles can follow the look
+    document.body.dataset.skin = skin;
+    SKINS.forEach((name) => element(`skin-${name}`).setAttribute('aria-pressed', String(name === skin)));
+  }
+  /** Sets the size of an old screen's big pixels, which are square whatever shape the view is. */
+  function sizeScreen(): void {
+    const side = pixelSize(skin, stage.clientHeight);
+    finish.uniforms.uGrid.value.set(side / Math.max(1, stage.clientWidth), side / Math.max(1, stage.clientHeight));
+  }
+  function setSkin(next: Skin): void {
+    skin = next;
+    dressScene();
+    try {
+      localStorage.setItem(SKIN_KEY, next);
+    } catch {
+      // Private windows can refuse storage. The choice still holds for this visit.
+    }
+  }
+
   /* ---------- badges ---------- */
   function standDownReset(): void {
     const button = element('badgeReset');
@@ -1287,6 +1361,29 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
   });
   element('badgeReset').addEventListener('click', pressReset);
   element('colourReset').addEventListener('click', () => setColours(DEFAULT_COLOURS));
+  SKINS.forEach((name) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.id = `skin-${name}`;
+    button.textContent = LOOKS[name].label;
+    button.addEventListener('click', () => {
+      setSkin(name);
+      button.blur();
+    });
+    element('looks').append(button);
+  });
+  SHIPS.forEach((name) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.id = `ship-${name}`;
+    button.textContent = SHIP_LABELS[name];
+    button.addEventListener('click', () => {
+      setShip(name);
+      button.blur();
+    });
+    element('ships').append(button);
+  });
+  showShip();
   element('summaryClose').addEventListener('click', () => {
     element('summary').hidden = true;
   });
@@ -1363,6 +1460,8 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
   element('sound').setAttribute('aria-pressed', String(sound.enabled));
   element('music').setAttribute('aria-pressed', String(sound.musicEnabled));
   hud.renderColours(COLOUR_ROWS, (key, hex) => setColours({ ...colours, [key]: hex }));
+  // Dressed first, so the ship's reflections are painted once, in the right look
+  dressScene();
   paintScene();
   drawBadges();
   void document.fonts.load('800 64px "Mona Sans"').then(() => {
@@ -1393,6 +1492,7 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     renderer.setSize(width, height, false);
     composer.setPixelRatio(pixelRatio);
     composer.setSize(width, height);
+    sizeScreen();
     hud.drawTimeline();
     measureInsets();
   }
@@ -1435,6 +1535,7 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     const dt = Math.min(0.05, ms / 1000);
     time += dt;
     shared.uTime.value = time;
+    timeArrival();
     shared.uDim.value += (dimGoal - shared.uDim.value) * (1 - Math.exp(-5 * dt));
     zoom += (zoomGoal - zoom) * (1 - Math.exp(-7 * dt));
     contactCooldown -= dt;
