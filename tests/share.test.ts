@@ -193,6 +193,26 @@ describe('a year in a request', () => {
     expect(requestedLogin(url('?year=2026'), true)).toBe('octo-dev');
     expect(requestedLogin(url('?year=2026&x=1'), true)).toBeNull();
   });
+
+  it("is read from whatever shape the year's rewrite hands over", () => {
+    const at = (address: string) => new URL(`https://example.test${address}`);
+    // At the function's own path, at the login's, or at the address that was asked for
+    for (const address of [
+      '/api/share/[login]?login=octo-dev&year=2025',
+      '/api/share/octo-dev?login=octo-dev&year=2025',
+      '/octo-dev/2025?login=octo-dev&year=2025',
+      '/octo-dev/2025?login=octo-dev',
+    ]) {
+      expect(requestedLogin(at(address), true), address).toBe('octo-dev');
+      expect(requestedYear(at(address), now), address).toBe(2025);
+    }
+    // A path and a parameter that name two people are refused
+    expect(requestedLogin(at('/octo-dev/2025?login=someone-else'), true)).toBeNull();
+    expect(requestedLogin(at('/octo-dev/2025?login=octo-dev'))).toBeNull();
+    // A username made of four digits is a username, not a year
+    expect(requestedYear(at('/api/card/2025'), now)).toBeNull();
+    expect(requestedLogin(at('/api/card/2025'))).toBe('2025');
+  });
 });
 
 describe('GET /api/card/:login', () => {
@@ -341,6 +361,9 @@ describe('GET /api/share/:login', () => {
     expect(description.length).toBeGreaterThanOrEqual(100);
     expect(share(request('[login]?login=octo-dev&year=2025')).status).toBe(200);
     expect(share(request('octo-dev?year=1999')).status).toBe(400);
+    // The rewrite can hand the function the address that was asked for, with the login added
+    const asked = await share(new Request('https://example.test/octo-dev/2025?login=octo-dev&year=2025')).text();
+    expect(asked).toContain('<meta property="og:url" content="https://example.test/octo-dev/2025" />');
   });
 
   it('refuses anything that is not a GitHub login, so nothing else can be written into the page', async () => {
@@ -383,7 +406,8 @@ describe('the rule that sends link previews to their page', () => {
 
   it("sends a year's previews to its page on the same terms, and everyone else to the city", () => {
     const [, , yearPreviews, yearEveryone] = config.rewrites;
-    expect(yearPreviews.destination).toBe('/api/share/:login?year=:year');
+    // The year reaches the function as the login does, added to the query by the rewrite, and it is in the path too
+    expect(yearPreviews.destination).toBe('/api/share/:login');
     expect(yearPreviews.has).toEqual(previews.has);
     expect(yearEveryone).toEqual({ source: yearPreviews.source, destination: '/index.html' });
     expect(yearPreviews.source).toBe(`${previews.source}/:year(\\d{4})`);
