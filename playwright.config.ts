@@ -4,8 +4,9 @@ const PORT = 4173;
 
 export default defineConfig({
   testDir: 'e2e',
-  // CI has no GPU, so frames crawl under software rendering
-  timeout: 180_000,
+  // CI has no GPU, so frames crawl under software rendering, and its runners differ in speed. A test that takes 41
+  // seconds on a laptop took 2.9 minutes on two CI runs.
+  timeout: 300_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,
   workers: 1,

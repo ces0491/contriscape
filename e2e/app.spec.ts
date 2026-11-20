@@ -1245,33 +1245,44 @@ test('each ship has a cockpit of its own, and the gunsight is seen through glass
   await page.mouse.wheel(0, -3000);
   await expect(page.locator('#canopy')).toBeVisible();
 
-  const frames = new Set<string>();
-  for (const ship of ['interceptor', 'dart', 'rocket', 'saucer', 'brick']) {
-    await page.click('#settings');
-    await page.click(`#ship-${ship}`);
-    await page.locator('#settingsPanel .panel-close').click();
-    await expect(page.locator('#canopy')).toHaveAttribute('data-ship', ship);
-    // The frame steps aside while the ship is held up beside Settings, and is back once the panel has closed
-    await expect(page.locator('#canopy')).toBeVisible();
-    const seen = await page.evaluate(() => {
-      const canopy = document.getElementById('canopy')!;
+  const ships = ['interceptor', 'dart', 'rocket', 'saucer', 'brick'];
+  await page.click('#settings');
+  // All five are picked and read in one step, because each step of a test waits on frames, and frames crawl under
+  // software rendering. A cockpit is in place as soon as its ship is picked, before the next frame hides it.
+  const seen = await page.evaluate((ships) => {
+    const canopy = document.getElementById('canopy')!;
+    // The middle of the cockpit's own box, where the gunsight sits, and a corner of it, which is frame in any design
+    const middle = new DOMPoint(800, 450);
+    const corner = new DOMPoint(8, 8);
+    return ships.map((ship) => {
+      document.getElementById(`ship-${ship}`)!.click();
       const frame = canopy.querySelector<SVGGeometryElement>('.frame')!;
       const strut = canopy.querySelector<SVGGeometryElement>('.strut');
-      // The middle of the cockpit's own box, where the gunsight sits
-      const middle = new DOMPoint(800, 450);
       return {
+        ship: canopy.dataset.ship,
         frame: frame.getAttribute('d') ?? '',
+        // A frame that isn't being drawn covers no point at all, so the corner shows the next reading means something
+        drawn: frame.isPointInFill(corner),
         covered: frame.isPointInFill(middle) || (strut?.isPointInStroke(middle) ?? false),
         needles: canopy.querySelectorAll('[data-live="speed"]').length,
         lamps: canopy.querySelectorAll('.lamp').length,
       };
     });
-    expect(seen.covered, ship).toBe(false);
-    expect(seen.needles, ship).toBe(1);
-    expect(seen.lamps, ship).toBe(2);
-    frames.add(seen.frame);
+  }, ships);
+  expect(seen.map((cockpit) => cockpit.ship)).toEqual(ships);
+  for (const { ship, drawn, covered, needles, lamps } of seen) {
+    expect(drawn, ship).toBe(true);
+    expect(covered, ship).toBe(false);
+    expect(needles, ship).toBe(1);
+    expect(lamps, ship).toBe(2);
   }
-  expect(frames.size).toBe(5);
+  expect(new Set(seen.map((cockpit) => cockpit.frame)).size).toBe(5);
+
+  // The frame steps aside while the ship is held up beside Settings, and is back once the panel has closed
+  await expect(page.locator('#canopy')).toBeHidden();
+  await page.locator('#settingsPanel .panel-close').click();
+  await expect(page.locator('#canopy')).toBeVisible();
+  await expect(page.locator('#canopy')).toHaveAttribute('data-ship', 'brick');
   expect(faults).toEqual([]);
 });
 
