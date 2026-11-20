@@ -246,6 +246,20 @@ describe('GET /api/share/:login', () => {
     expect(html).toContain('Not affiliated with GitHub');
   });
 
+  it('describes the city in at least the 100 characters LinkedIn asks of a preview, even for a one-letter login', async () => {
+    const html = await share(request('a')).text();
+    const description = /<meta property="og:description" content="([^"]*)"/.exec(html)?.[1] ?? '';
+    expect(description).toContain("a's GitHub contributions");
+    expect(description.length).toBeGreaterThanOrEqual(100);
+    expect(html).toContain(`<meta name="twitter:description" content="${description}" />`);
+  });
+
+  it("gives the front page's own preview a description as long", () => {
+    const page = readFileSync('index.html', 'utf8');
+    const description = /property="og:description"\s+content="([^"]*)"/.exec(page)?.[1] ?? '';
+    expect(description.length).toBeGreaterThanOrEqual(100);
+  });
+
   it('is never cached, so a person asking for the same address cannot be handed it', () => {
     expect(share(request('octo-dev')).headers.get('cache-control')).toBe('no-store');
   });

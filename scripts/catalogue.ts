@@ -19,11 +19,8 @@ const PAGES = 3;
 const CHECKED_AT_ONCE = 5;
 /** Stars a repo needs for the most-starred search. It only keeps the search small: the top few hundred are far above it. */
 const STARRED_FROM = 20000;
-/** How far back a repo can have been made and still count as new. */
-const NEW_DAYS = 30;
 /** GitHub caps a bio at this length. Repo descriptions run longer, so they are cut to match. */
 const ABOUT_LIMIT = 160;
-const MS_PER_DAY = 864e5;
 
 /** A field, and the words a bio has to contain for its account to be listed under it. */
 export interface Field {
@@ -162,16 +159,21 @@ async function gather(ask: Ask, find: (after: string | null) => Promise<Found>):
   return kept.slice(0, PER_GROUP);
 }
 
-/** Accounts whose bio says the field's words, most followed first. */
+/**
+ * Accounts whose bio says the field's words, most followed first. GitHub's search also matches other forms of a word,
+ * so "Gamer. Developer." came back for "game developer". The list's heading says the bio has the words, so a bio
+ * without them is left out.
+ */
 function byBio(ask: Ask, field: Field): Promise<Person[]> {
   const q = `"${field.says}" in:bio type:user followers:>=${FOLLOWERS} sort:followers`;
+  const words = field.says.toLowerCase();
   return gather(ask, async (after) => {
     const { search } = usersSchema.parse(await ask(USERS_QUERY, { q, n: SEARCHED, after }));
-    const people = search.nodes.flatMap((node) =>
-      node?.__typename === 'User' && node.login
-        ? [{ login: node.login, name: tidy(node.name) || null, about: tidy(node.bio) }]
-        : [],
-    );
+    const people = search.nodes.flatMap((node) => {
+      if (node?.__typename !== 'User' || !node.login) return [];
+      const about = tidy(node.bio);
+      return about.toLowerCase().includes(words) ? [{ login: node.login, name: tidy(node.name) || null, about }] : [];
+    });
     return { people, next: search.pageInfo.hasNextPage ? search.pageInfo.endCursor : null };
   });
 }
@@ -198,12 +200,13 @@ function byRepo(ask: Ask, q: string): Promise<Person[]> {
 
 const day = (date: Date): string => date.toISOString().slice(0, 10);
 
-const written = (date: Date): string =>
-  date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
-
 /**
- * The cities Explore offers: busy accounts by field, then the people behind the most-starred repos and the newest
- * popular ones. A group nobody qualifies for is left out.
+ * The cities Explore offers: busy accounts by field, then the people who own the most-starred repos. A group nobody
+ * qualifies for is left out.
+ *
+ * There is no list of new repos by stars, the nearest thing to trending that GitHub's API gives. What such a search
+ * finds can't be known ahead of a run, and one listed a console emulator and a recompiled console game. It is also out
+ * of date a month after it is made.
  */
 export async function buildCatalogue(
   ask: Ask,
@@ -225,18 +228,13 @@ export async function buildCatalogue(
   }
 
   add(
-    { id: 'most-starred', title: 'Most-starred repos', blurb: 'The people who own the most-starred repos on GitHub.' },
-    await byRepo(ask, `stars:>${STARRED_FROM} sort:stars`),
-  );
-
-  const since = new Date(now.getTime() - NEW_DAYS * MS_PER_DAY);
-  add(
     {
-      id: 'new',
-      title: 'New and popular',
-      blurb: `The people behind the most-starred repos made since ${written(since)}.`,
+      id: 'most-starred',
+      title: 'Most-starred repos',
+      blurb:
+        "The people who own GitHub's most-starred repos. Repos an organisation owns are left out, because an organisation has no city.",
     },
-    await byRepo(ask, `created:>${day(since)} sort:stars`),
+    await byRepo(ask, `stars:>${STARRED_FROM} sort:stars`),
   );
 
   return { generated: day(now), groups };

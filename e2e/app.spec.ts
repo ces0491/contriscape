@@ -86,7 +86,7 @@ const CATALOGUE = {
     {
       id: 'most-starred',
       title: 'Most-starred repos',
-      blurb: 'The people who own the most-starred repos on GitHub.',
+      blurb: "The people who own GitHub's most-starred repos.",
       people: [{ login: 'ada-l', name: 'Ada L', about: 'An engine', repo: { name: 'engine', stars: 250000 } }],
     },
   ],
@@ -316,6 +316,16 @@ for (const [name, status, error, message] of [
     await expect(page.locator('.deck')).toBeHidden();
   });
 }
+
+test("explains the firewall's limit, which answers with no reason of the API's", async ({ page }) => {
+  await page.route('**/api/contributions/*', (route) =>
+    route.fulfill({ status: 429, contentType: 'text/plain', body: 'Too Many Requests' }),
+  );
+  await page.goto('/someone');
+  await expect(page.locator('#status')).toContainText('Try again in a minute');
+  await expect(page.locator('#loginInput')).toBeVisible();
+  await expect(page.locator('.deck')).toBeHidden();
+});
 
 test('Explore lists other cities, and one picked there opens saying whose it is', async ({ page }) => {
   const faults = watchForFaults(page);

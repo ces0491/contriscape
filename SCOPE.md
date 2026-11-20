@@ -69,3 +69,4 @@ Ces, after flying a stranger's city on the live URL from a phone and a laptop.
 - 2026-11-19: measured tower heights against a busy day, timed a clear flown without a jump, offered the controls when Autopilot ends, gave phones a Brake button, and added a share card for each username, at Ces's request
 - 2026-11-19: added Explore, Random city and the account of whose city it is, at Ces's request
 - 2026-11-19: added five looks and four ships, tower shadows by day, and painted streets and roofs by night, at Ces's request
+- 2026-11-20: took the list of new repos out of Explore, kept each field's list to bios that have its words, and gave a visitor over the firewall's limit a message of their own, after Ces asked for the open items to be closed

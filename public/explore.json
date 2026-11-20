@@ -1,5 +1,5 @@
 {
-  "generated": "2026-11-19",
+  "generated": "2026-11-20",
   "groups": [
     {
       "id": "data-science",
@@ -514,11 +514,6 @@
         },
         { "login": "insidegui", "name": "Guilherme Rambo", "about": "Mac and iOS developer, security researcher." },
         {
-          "login": "TaroYamada08",
-          "name": "Taro Yamada",
-          "about": "Full Stack Engineer | Security Researcher | Reverse Engineering | Ethical Hacking 🔝⭐⭐⭐⭐⭐"
-        },
-        {
           "login": "can1357",
           "name": "Can Bölük",
           "about": "Security researcher and reverse engineer. Interested in Windows kernel development, low-level programming, static program analysis and cryptography."
@@ -549,6 +544,11 @@
           "login": "firmianay",
           "name": "一蓑烟雨",
           "about": "Security researcher & CTF Player & member of @XDSEC, @xdlinux, @LCTF, @Vu1nT0tal"
+        },
+        {
+          "login": "R-s0n",
+          "name": "rs0n",
+          "about": "☑ CISSP | OSWE | CSSLP | C𝔸𝕀SP ☑ AppSec Engineer ☑ Security Researcher ☑ Full-stack Developer"
         }
       ]
     },
@@ -577,11 +577,6 @@
           "name": "Silent",
           "about": "Game developer, modder, reverse engineer, legacy code specialist. I port games for a living and patch them as a hobby."
         },
-        {
-          "login": "TimOliver",
-          "name": "Tim Oliver",
-          "about": "Gamer. Developer. Geek. iOS Software Engineer at @Third-Intelligence. Lover of writing OSS code and singer of bad karaoke. 日本語もオッケ〜"
-        },
         { "login": "verekia", "name": "Verekia", "about": "Web Game Developer, prev. @yelp" },
         { "login": "Earthcomputer", "name": "Joseph Burton", "about": "Game developer and Minecraft modder" },
         {
@@ -608,6 +603,11 @@
           "login": "bjorn",
           "name": "Thorbjørn Lindeijer",
           "about": "Professional game developer and maintainer of the Tiled map editor."
+        },
+        {
+          "login": "wighawag",
+          "name": "Ronan Sandford",
+          "about": "Game developer building Infinite Games (permission-less and persistent)"
         }
       ]
     },
@@ -783,153 +783,79 @@
     {
       "id": "most-starred",
       "title": "Most-starred repos",
-      "blurb": "The people who own the most-starred repos on GitHub.",
+      "blurb": "The people who own GitHub's most-starred repos. Repos an organisation owns are left out, because an organisation has no city.",
       "people": [
         {
           "login": "sindresorhus",
           "name": "Sindre Sorhus",
           "about": "😎 Awesome lists about all kinds of interesting topics [NOTE: Pull requests are temporarily disabled until I have a chance to catch up with the existing ones]",
-          "repo": { "name": "awesome", "stars": 539389 }
+          "repo": { "name": "awesome", "stars": 539590 }
         },
         {
           "login": "morluto",
           "name": "morluto",
           "about": "Reverse engineer anything with agents, from app behavior down to native binaries.",
-          "repo": { "name": "rea", "stars": 469618 }
+          "repo": { "name": "rea", "stars": 470271 }
         },
         {
           "login": "nilbuild",
           "name": "Kamran Ahmed",
           "about": "Interactive roadmaps, guides and other educational content to help developers grow in their careers.",
-          "repo": { "name": "developer-roadmap", "stars": 372381 }
+          "repo": { "name": "developer-roadmap", "stars": 372397 }
         },
         {
           "login": "vinta",
           "name": "Vinta Chen",
           "about": "The definitive list that answers \"I want to do X in Python, which tool should I use?\"",
-          "repo": { "name": "awesome-python", "stars": 335833 }
+          "repo": { "name": "awesome-python", "stars": 335917 }
         },
         {
           "login": "mattpocock",
           "name": "Matt Pocock",
           "about": "Skills for Real Engineers. Straight from my .agents directory.",
-          "repo": { "name": "skills", "stars": 327987 }
+          "repo": { "name": "skills", "stars": 328263 }
         },
         {
           "login": "obra",
           "name": "Jesse Vincent",
           "about": "An agentic skills framework & software development methodology that works.",
-          "repo": { "name": "superpowers", "stars": 321865 }
+          "repo": { "name": "superpowers", "stars": 322216 }
         },
         {
           "login": "affaan-m",
           "name": "Affaan Mustafa",
           "about": "The agent harness performance optimization system. Skills, instincts, memory, security, and research-first development for Claude Code, Codex, Opencode,…",
-          "repo": { "name": "ECC", "stars": 307101 }
+          "repo": { "name": "ECC", "stars": 307364 }
         },
         {
           "login": "torvalds",
           "name": "Linus Torvalds",
           "about": "Linux kernel source tree",
-          "repo": { "name": "linux", "stars": 256070 }
+          "repo": { "name": "linux", "stars": 256143 }
         },
         {
           "login": "trekhleb",
           "name": "Oleksii Trekhleb",
           "about": "📝 Algorithms and data structures implemented in JavaScript with explanations and links to further readings",
-          "repo": { "name": "javascript-algorithms", "stars": 196751 }
-        },
-        {
-          "login": "avelino",
-          "name": "Avelino",
-          "about": "A curated list of awesome Go frameworks, libraries and software",
-          "repo": { "name": "awesome-go", "stars": 194786 }
+          "repo": { "name": "javascript-algorithms", "stars": 196755 }
         },
         {
           "login": "DietrichGebert",
           "name": null,
           "about": "Makes your AI agent think like the laziest senior dev in the room. The best code is the code you never wrote.",
-          "repo": { "name": "ponytail", "stars": 194708 }
+          "repo": { "name": "ponytail", "stars": 194974 }
+        },
+        {
+          "login": "avelino",
+          "name": "Avelino",
+          "about": "A curated list of awesome Go frameworks, libraries and software",
+          "repo": { "name": "awesome-go", "stars": 194864 }
         },
         {
           "login": "CyC2018",
           "name": null,
           "about": ":books: 技术面试必备基础知识、Leetcode、计算机操作系统、计算机网络、系统设计",
-          "repo": { "name": "CS-Notes", "stars": 186549 }
-        }
-      ]
-    },
-    {
-      "id": "new",
-      "title": "New and popular",
-      "blurb": "The people behind the most-starred repos made since 20 Oct 2026.",
-      "people": [
-        {
-          "login": "ccch1mneyyy",
-          "name": "Chimney",
-          "about": "dsh-go — DeepSeek Harness 装进口袋：手机本机运行，也能遥控你的电脑。",
-          "repo": { "name": "dsh-Go", "stars": 28095 }
-        },
-        {
-          "login": "heydamir",
-          "name": "Damir Sokolovsky",
-          "about": "A Claude skill that turns vibecoded, AI-looking UI into a designed interface",
-          "repo": { "name": "unslop", "stars": 18584 }
-        },
-        {
-          "login": "anefzaoui",
-          "name": "Ahmed Nefzaoui",
-          "about": "misterdownloadmanager: The ultimate open-source, clean-room download manager written from scratch in pure Rust for Windows, Mac, and Linux",
-          "repo": { "name": "misterdownloadmanager", "stars": 13644 }
-        },
-        {
-          "login": "libracoder",
-          "name": "Precious Okwu",
-          "about": "A small, fast container runtime for macOS, Windows and Linux with free Ngrok alternative",
-          "repo": { "name": "kiri", "stars": 11157 }
-        },
-        {
-          "login": "JuneYaooo",
-          "name": null,
-          "about": "Reverse-engineer any video, shot by shot: filmed, AI-generated or coded, and how to remake it. Breakdowns in the open VIDEO.md format. 逆向一切视频，逐个镜头看是拍的、AI…",
-          "repo": { "name": "rea-video", "stars": 10973 }
-        },
-        {
-          "login": "zortos293",
-          "name": "Zortos",
-          "about": "VERY experimental Nintendo Switch 2 emulator",
-          "repo": { "name": "Lichii", "stars": 9814 }
-        },
-        {
-          "login": "l0ng-ai",
-          "name": null,
-          "about": "The IDE you know, rebuilt in Rust. IntelliJ IDEA–style keymap, tool windows and search-everywhere in a fast native app: editor, code insight, debugger, Git,…",
-          "repo": { "name": "openidea", "stars": 9495 }
-        },
-        {
-          "login": "wangzan101",
-          "name": "WangZan",
-          "about": "An on-device AI agent for Android that operates apps and the web to get things done for you.",
-          "repo": { "name": "Mika", "stars": 9163 }
-        },
-        { "login": "unclebob", "name": "Robert C. Martin", "about": "", "repo": { "name": "ub-mode", "stars": 8222 } },
-        {
-          "login": "valentderah",
-          "name": "Valiantsin Dzerakh",
-          "about": "Static recompilation of The Legend of Zelda: Tears of the Kingdom to native Windows and Linux x86-64, with a Vulkan renderer. Game files not included.",
-          "repo": { "name": "totk-pc-recomp", "stars": 7734 }
-        },
-        {
-          "login": "anhao",
-          "name": "Alone88",
-          "about": "中文版 AI 姿势参考图库 · 1439 组 / 2878 张图片 / 完整汉化 · 零依赖静态画廊",
-          "repo": { "name": "ai-pose-gallery-zh", "stars": 7341 }
-        },
-        {
-          "login": "Lee-xeo",
-          "name": "Shihao Li",
-          "about": "Cage：为 Claude 特化的轻量化虚拟机，彻底杜绝网络泄露。多平台适配，支持多账号管理、远程部署、移动端操控。",
-          "repo": { "name": "Claude-Cage", "stars": 6851 }
+          "repo": { "name": "CS-Notes", "stars": 186548 }
         }
       ]
     }

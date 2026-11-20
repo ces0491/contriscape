@@ -23,6 +23,8 @@ interface Account {
   /** Contributions in the last year. */
   year: number;
   organisation?: boolean;
+  /** Found by any search, as GitHub finds a bio holding another form of the words. */
+  loose?: boolean;
 }
 interface Repo {
   owner: string;
@@ -35,7 +37,6 @@ interface World {
   /** In the order a search by followers would give them. */
   accounts?: Account[];
   starred?: Repo[];
-  made?: Repo[];
   /** Search results a request, to make a search run to several. */
   perRequest?: number;
 }
@@ -59,7 +60,7 @@ function github(world: World) {
       asked.searches.push(q);
       const says = /"([^"]+)" in:bio/.exec(q)?.[1] ?? '';
       const found = accounts
-        .filter((a) => (a.bio ?? '').toLowerCase().includes(says))
+        .filter((a) => a.loose || (a.bio ?? '').toLowerCase().includes(says))
         .map((a) =>
           a.organisation
             ? { __typename: 'Organization' }
@@ -69,7 +70,7 @@ function github(world: World) {
     }
     if (query.includes('type:REPOSITORY')) {
       asked.searches.push(q);
-      const repos = (q.startsWith('created:') ? world.made : world.starred) ?? [];
+      const repos = world.starred ?? [];
       const found = repos.map((r) => ({
         name: r.name,
         description: r.description ?? null,
@@ -172,16 +173,31 @@ describe('buildCatalogue', () => {
     ]);
   });
 
-  it('counts a repo as new for thirty days, and says since when', async () => {
+  it('leaves out a bio the search matched on another form of the words', async () => {
     const { ask, asked } = github({
-      accounts: [{ login: 'newcomer', year: 700 }],
-      made: [{ owner: 'newcomer', name: 'spark', stars: 9000 }],
+      accounts: [
+        { login: 'gamer', bio: 'Gamer. Developer. Geek.', year: 900, loose: true },
+        // The words are there once the bio is on one line
+        { login: 'maker', bio: 'Indie  Game\r\n developer', year: 900, loose: true },
+      ],
+    });
+    const catalogue = await buildCatalogue(ask, NOW, [{ id: 'games', title: 'Games', says: 'game developer' }]);
+
+    expect(logins(catalogue, 'games')).toEqual(['maker']);
+    // Left out before its year is read, so it costs nothing more
+    expect(asked.checked).toEqual(['maker']);
+  });
+
+  it('searches for repos by stars alone, with no list of new ones', async () => {
+    const { ask, asked } = github({
+      accounts: [{ login: 'maker', year: 900 }],
+      starred: [{ owner: 'maker', name: 'kernel', stars: 250000 }],
     });
     const catalogue = await buildCatalogue(ask, NOW, []);
 
-    expect(asked.searches).toContain('created:>2026-10-20 sort:stars');
-    expect(catalogue.groups[0]).toMatchObject({ id: 'new', people: [{ login: 'newcomer', repo: { name: 'spark' } }] });
-    expect(catalogue.groups[0].blurb).toContain('20 Oct 2026');
+    expect(asked.searches).toEqual(['stars:>20000 sort:stars']);
+    expect(catalogue.groups.map((g) => g.id)).toEqual(['most-starred']);
+    expect(catalogue.groups[0].blurb).toContain('organisation');
   });
 
   it('never writes into a query a login GitHub could not have issued', async () => {
@@ -232,9 +248,23 @@ describe('the catalogue the site ships', () => {
     }
   });
 
-  it('names a repo for everyone in the lists picked by repo, and for nobody else', () => {
+  it('lists under a field only people whose bio has the words its heading quotes', () => {
     for (const group of shipped.groups) {
-      const byRepo = group.id === 'most-starred' || group.id === 'new';
+      const words = /“(.+?)”/.exec(group.blurb)?.[1].toLowerCase();
+      if (words === undefined) continue;
+      for (const person of group.people) {
+        expect(person.about.toLowerCase(), `${group.id} ${person.login}`).toContain(words);
+      }
+    }
+  });
+
+  it('has no list of new repos', () => {
+    expect(shipped.groups.map((g) => g.id)).not.toContain('new');
+  });
+
+  it('names a repo for everyone in the list picked by repo, and for nobody else', () => {
+    for (const group of shipped.groups) {
+      const byRepo = group.id === 'most-starred';
       for (const person of group.people) expect(person.repo !== undefined, `${group.id} ${person.login}`).toBe(byRepo);
     }
   });

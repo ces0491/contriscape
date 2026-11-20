@@ -9,12 +9,16 @@ const MESSAGE_SECONDS = 5;
 
 const element = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
-const MESSAGES: Record<ApiError | 'network', (login: string) => string> = {
+/** Why a city didn't load: the API's own reasons, and two the page works out for itself. */
+type Failure = ApiError | 'network' | 'throttled';
+
+const MESSAGES: Record<Failure, (login: string) => string> = {
   'invalid-login': (login) => `“${login}” isn't a valid GitHub username.`,
   'not-found': (login) => `No GitHub user called “${login}”. Organisations don't have contribution calendars.`,
   'rate-limited': () => "GitHub's hourly limit has been reached. Try again in a few minutes.",
   unavailable: () => "GitHub didn't answer in time. Try again in a moment.",
   network: () => "Couldn't reach the server. Check your connection and try again.",
+  throttled: () => 'Too many cities asked for at once from this connection. Try again in a minute.',
 };
 
 let statusTimer = 0;
@@ -30,7 +34,7 @@ function showStatus(message: string): void {
   status.hidden = false;
 }
 
-async function load(login: string): Promise<Contributions | ApiError | 'network'> {
+async function load(login: string): Promise<Contributions | Failure> {
   let response: Response;
   try {
     response = await fetch(`/api/contributions/${login.toLowerCase()}`);
@@ -40,7 +44,9 @@ async function load(login: string): Promise<Contributions | ApiError | 'network'
   const body: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     const error = (body as { error?: ApiError } | null)?.error;
-    return error && error in MESSAGES ? error : 'unavailable';
+    if (error && error in MESSAGES) return error;
+    // The firewall's limit answers before the function runs, with a 429 and none of the API's reasons in it
+    return response.status === 429 ? 'throttled' : 'unavailable';
   }
   const parsed = contributionsSchema.safeParse(body);
   return parsed.success ? parsed.data : 'unavailable';

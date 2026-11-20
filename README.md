@@ -43,11 +43,11 @@ A link pasted into Slack, LinkedIn and the like previews with a card of that use
 
 ### Explore
 
-Explore, beside the username box, lists other cities to fly, for a visitor with no username in mind. Most of the lists are fields, such as statistics, security or games. A field's list holds up to twelve people whose GitHub bio names it, most followed first, each with 200 followers or more. Two more lists come from repos, as they stood when the lists were made: the people who own the most-starred repos on GitHub, and the people behind the most-starred repos made in the thirty days before. An organisation has no contribution calendar, so a repo counts only if a person owns it. To be listed, an account also needs at least 365 contributions in the year before, so its city has something in it. Random city picks one of them, and never the city already on screen.
+Explore, beside the username box, lists other cities to fly, for a visitor with no username in mind. Most of the lists are fields, such as statistics, security or games. A field's list holds up to twelve people whose GitHub bio has the field's words, such as "game developer", most followed first, each with 200 followers or more. One more list comes from repos, as they stood when the lists were made: the people who own the most-starred repos on GitHub. An organisation has no contribution calendar, so a repo counts only if a person owns it. To be listed, an account also needs at least 365 contributions in the year before, so its city has something in it. Random city picks one of them, and never the city already on screen.
 
 A city picked there opens with its owner's name and bio. The panel's other half, This city, says more about any city's owner: the bio, the follower count, the languages most of their repos are in, and the repos they pinned, or their most-starred if they pinned none, each linked to GitHub.
 
-The lists are a file, `public/explore.json`, which `npm run explore` writes from GitHub's search, so opening the panel costs GitHub nothing. They are a snapshot, and the panel gives its date. GitHub's API has no list of trending repos, so the list of new repos is the nearest it gives. Explore also works when a username isn't found, where there is no city to show.
+The lists are a file, `public/explore.json`, which `npm run explore` writes from GitHub's search, so opening the panel costs GitHub nothing. They are a snapshot, and the panel gives its date. There is no list of trending repos. GitHub's API has none, and the nearest search, new repos by stars, turns up whatever is popular that month, which nobody can check before it is on the page. Explore also works when a username isn't found, where there is no city to show.
 
 ### Badges
 
@@ -148,7 +148,7 @@ GitHub allows a token 5,000 GraphQL points an hour. A username not in the cache 
 
 1. Create a Vercel project from this repo. The framework preset is Vite.
 2. Add `GITHUB_TOKEN` to the project's environment variables, then redeploy, because new variables only reach new deployments.
-3. Add a Vercel Firewall rate-limit rule on `/api/contributions` and `/api/card`, keyed on IP, since both read GitHub. The Hobby plan allows one rule.
+3. Add a Vercel Firewall rate-limit rule on `/api/contributions/` and `/api/card/`, keyed on IP, since both read GitHub. The rule here counts 30 requests a minute for an address. The Hobby plan allows one rule. The firewall answers a request over the limit with a 429, and the page tells that visitor to try again in a minute.
 4. Add the custom domain and create the DNS record Vercel gives you. The generated `contriscape.vercel.app` alias goes on serving the whole site after that, so `vercel.json` redirects it to the custom domain. Change that rule if the domain changes.
 5. Turn on Web Analytics in the project's Analytics tab. Its routes arrive with the next deployment, so deploy again afterwards.
 

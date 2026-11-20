@@ -18,7 +18,9 @@ export function GET(request: Request): Response {
   const page = `${url.origin}/${login}`;
   const card = `${url.origin}/api/card/${login.toLowerCase()}`;
   const title = `${login} · contriscape`;
-  const description = `Fly a starfighter through a city built from ${login}'s GitHub contributions, one tower per day.`;
+  // LinkedIn's Post Inspector warns about a description under 100 characters, which the first sentence is for a
+  // short username
+  const description = `Fly a starfighter through a city built from ${login}'s GitHub contributions, one tower per day. It runs in the browser, with nothing to install.`;
   const html = `<!doctype html>
 <html lang="en">
   <head>
