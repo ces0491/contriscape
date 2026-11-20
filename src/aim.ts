@@ -17,16 +17,17 @@ export const lockCone = (distance: number): number => Math.max(LOCK_CONE, Math.a
 
 /**
  * The target closest to the line of fire, among those inside the lock cone and in range, or -1. A null target is one
- * that can't be locked on to, such as a badge already blown up.
+ * that can't be locked on to, such as a badge already blown up. `reach` stretches the range, for a ship that locks on
+ * from further away.
  */
-export function lockOn(from: Vector3, forward: Vector3, targets: readonly (Vector3 | null)[]): number {
+export function lockOn(from: Vector3, forward: Vector3, targets: readonly (Vector3 | null)[], reach = 1): number {
   let best = -1;
   let bestAngle = Infinity;
   targets.forEach((target, i) => {
     if (!target) return;
     towards.subVectors(target, from);
     const distance = towards.length();
-    if (distance > LOCK_RANGE || distance < 1e-6) return;
+    if (distance > LOCK_RANGE * reach || distance < 1e-6) return;
     const angle = forward.angleTo(towards);
     if (angle <= lockCone(distance) && angle < bestAngle) {
       best = i;
@@ -37,10 +38,10 @@ export function lockOn(from: Vector3, forward: Vector3, targets: readonly (Vecto
 }
 
 /** Whether a lock already held on a target still holds, inside the looser cone and range that keep it steady. */
-export function holdsLock(from: Vector3, forward: Vector3, target: Vector3): boolean {
+export function holdsLock(from: Vector3, forward: Vector3, target: Vector3, reach = 1): boolean {
   towards.subVectors(target, from);
   const distance = towards.length();
-  if (distance > LOCK_RANGE * HOLD || distance < 1e-6) return false;
+  if (distance > LOCK_RANGE * HOLD * reach || distance < 1e-6) return false;
   return forward.angleTo(towards) <= lockCone(distance) * HOLD;
 }
 

@@ -33,6 +33,8 @@ import { keyTurn } from './steering';
 import { Trails } from './trails';
 import { createWorld, SETTLED_OFFSET } from './world';
 import { COCKPIT_BELOW, nextZoom } from './zoom';
+import { fitCockpit } from './cockpits';
+import { POWERS, speedKept } from './powers';
 
 type Mode = 'fly' | 'pilot' | 'orbit';
 
@@ -53,6 +55,13 @@ const MUSIC_KEY = 'contriscape:music';
 const COLOUR_KEY = 'contriscape:colours';
 const SKIN_KEY = 'contriscape:skin';
 const SHIP_KEY = 'contriscape:ship';
+/**
+ * A ship picked in Settings is held this close to the camera and drawn this much smaller. It looks the size it would
+ * at 3.2 units, and is nearer than a tower can be to a camera the ship's own hull keeps off the walls, so nothing in
+ * the city can stand in front of it.
+ */
+const SHOWROOM_DISTANCE = 0.6;
+const SHOWROOM_SCALE = SHOWROOM_DISTANCE / 3.2;
 /** Towers closer than this to the ship's line rush past with a whoosh. Under CELL, as `towersNear` needs. */
 const WHOOSH_REACH = 1.9;
 /** A tower that has just whooshed stays quiet this long, so one tower is one whoosh. */
@@ -179,6 +188,8 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
   shared.uPx.value = pixelRatio;
 
   let shipModel = readShip(recallText(SHIP_KEY));
+  let power = POWERS[shipModel];
+  let readCockpit = fitCockpit(element('canopy'), shipModel);
   const craft = buildFighter(shipModel);
   const fighter = craft.group;
   scene.add(fighter);
@@ -544,7 +555,7 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
   function bump(day: number, headOn: boolean): void {
     if (contactCooldown > 0) return;
     contactCooldown = 0.35;
-    ship.speed *= headOn ? 0.45 : 0.8;
+    ship.speed *= speedKept(power, headOn);
     sound.bump(headOn);
     if (!reduced) shake = headOn ? 1 : 0.45;
     redAlert = headOn ? 1 : 0.5;
@@ -598,9 +609,10 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
       sx = 0;
       sy = 0;
     }
-    ship.yaw -= sx * 2 * dt;
-    ship.pitch = clamp(ship.pitch - sy * 1.5 * dt, -1.3, 1.3);
-    const wanted = holding ? 0 : boosting ? BOOST : keys.has('KeyC') || brakeHeld ? BRAKE : CRUISE;
+    ship.yaw -= sx * 2 * power.turn * dt;
+    ship.pitch = clamp(ship.pitch - sy * 1.5 * power.turn * dt, -1.3, 1.3);
+    const braked = power.hover ? 0 : BRAKE;
+    const wanted = holding ? 0 : boosting ? BOOST * power.boost : keys.has('KeyC') || brakeHeld ? braked : CRUISE;
     ship.speed += (wanted - ship.speed) * (1 - Math.exp(-2.4 * dt));
     sinceJump += ship.speed * dt;
 
@@ -671,8 +683,8 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
       targets[i] = badges.isStanding(i, play) ? badges.position(i) : null;
     });
     const held = locked >= 0 ? targets[locked] : null;
-    if (held && holdsLock(ship.pos, ship.fwd, held) && !blockedTo(held)) return locked;
-    const found = lockOn(ship.pos, ship.fwd, targets);
+    if (held && holdsLock(ship.pos, ship.fwd, held, power.lock) && !blockedTo(held)) return locked;
+    const found = lockOn(ship.pos, ship.fwd, targets, power.lock);
     return found >= 0 && !blockedTo(badges.position(found)) ? found : -1;
   }
   /**
@@ -933,6 +945,7 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
       element(name).setAttribute('aria-expanded', String(name === open));
     });
     panelOpen = open !== null;
+    if (open !== 'settings') showroom = false;
     standDownReset();
     if (open !== null) withdrawArrival();
     if (open === 'explore') explorer.open();
@@ -964,18 +977,49 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
   }
 
   /* ---------- ship ---------- */
+  /**
+   * Whether a ship picked in Settings is being held up to the camera. Orbit has no ship in it, and the cockpit has the
+   * pilot inside it, so without this a choice of model or colour changes nothing a visitor can see.
+   */
+  let showroom = false;
   function showShip(): void {
     SHIPS.forEach((name) => element(`ship-${name}`).setAttribute('aria-pressed', String(name === shipModel)));
+    element('shipPower').textContent = `${power.name}. ${power.blurb}`;
   }
   function setShip(next: Ship): void {
     shipModel = next;
+    power = POWERS[next];
     craft.setModel(next);
+    readCockpit = fitCockpit(element('canopy'), next);
+    showroom = true;
     showShip();
     try {
       localStorage.setItem(SHIP_KEY, next);
     } catch {
       // Private windows can refuse storage. The choice still holds for this visit.
     }
+  }
+  /** Holds the ship up in the part of the view Settings leaves free, turning slowly, until the panel closes. */
+  function presentShip(): void {
+    const view = stage.getBoundingClientRect();
+    const panel = element(PANELS.settings).getBoundingClientRect();
+    // Beside the panel where there is room for it, and above the panel on a narrow screen
+    const beside = panel.left - view.left > view.width * 0.35;
+    const x = beside ? (panel.left - view.left) / 2 : view.width / 2;
+    const y = beside ? view.height / 2 : Math.max(view.height * 0.16, (panel.top - view.top) / 2);
+    // Worked out in the camera's own space and turned by where it points now. Its world matrix is last frame's until
+    // the frame is drawn, and in Autopilot the camera moves further in a frame than a point unprojected with it is deep.
+    v1.set((x / view.width) * 2 - 1, 1 - (y / view.height) * 2, 0.5)
+      .applyMatrix4(camera.projectionMatrixInverse)
+      .normalize()
+      .applyQuaternion(camera.quaternion);
+    fighter.position.copy(camera.position).addScaledVector(v1, SHOWROOM_DISTANCE);
+    fighter.scale.setScalar(SHOWROOM_SCALE);
+    // Tipped towards the camera, so the top of the ship shows as it turns
+    fighter.quaternion
+      .copy(camera.quaternion)
+      .multiply(q2.setFromAxisAngle(v1.set(1, 0, 0), 0.42))
+      .multiply(q1.setFromAxisAngle(UP, time * 0.8));
   }
 
   /* ---------- look ---------- */
@@ -1360,7 +1404,11 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     button.addEventListener('click', () => showPanel(null));
   });
   element('badgeReset').addEventListener('click', pressReset);
-  element('colourReset').addEventListener('click', () => setColours(DEFAULT_COLOURS));
+  element('colourReset').addEventListener('click', () => {
+    // A reset that changes the ship's colours shows the ship, as picking one of them does
+    if (colours.hull !== DEFAULT_COLOURS.hull || colours.trim !== DEFAULT_COLOURS.trim) showroom = true;
+    setColours(DEFAULT_COLOURS);
+  });
   SKINS.forEach((name) => {
     const button = document.createElement('button');
     button.type = 'button';
@@ -1459,7 +1507,11 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
   element('mouseSteer').hidden = touch;
   element('sound').setAttribute('aria-pressed', String(sound.enabled));
   element('music').setAttribute('aria-pressed', String(sound.musicEnabled));
-  hud.renderColours(COLOUR_ROWS, (key, hex) => setColours({ ...colours, [key]: hex }));
+  hud.renderColours(COLOUR_ROWS, (key, hex) => {
+    setColours({ ...colours, [key]: hex });
+    // A new colour for the ship is shown on the ship
+    if (key !== 'towers') showroom = true;
+  });
   // Dressed first, so the ship's reflections are painted once, in the right look
   dressScene();
   paintScene();
@@ -1559,8 +1611,14 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
       }
     }
 
-    fighter.visible = aboard() && chaseDistance() > 0;
-    element('canopy').toggleAttribute('hidden', !(aboard() && chaseDistance() === 0));
+    const flying = aboard() && chaseDistance() > 0;
+    const seated = aboard() && chaseDistance() === 0;
+    const presented = showroom && !flying;
+    if (presented) presentShip();
+    else fighter.scale.setScalar(1);
+    fighter.visible = flying || presented;
+    // The cockpit's frame would stand between the pilot and a ship held up to be looked at
+    element('canopy').toggleAttribute('hidden', !seated || presented);
 
     const homing = locked >= 0 ? badges.position(locked) : null;
     if (firing && mode === 'pilot' && ship.live && weapons.fire(ship.pos, ship.fwd, fighter.quaternion, homing)) {
@@ -1591,6 +1649,15 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     );
     const moving = aboard() && !(mode === 'fly' && paused);
     const speed = moving ? ship.vel.length() : 0;
+    if (seated) {
+      readCockpit({
+        // Autopilot moves the ship along its route and leaves `ship.speed` as Pilot last had it
+        speed: (mode === 'pilot' ? ship.speed : speed) / (BOOST * power.boost),
+        locked: locked >= 0,
+        // An open panel holds the ship still, whatever is pressed
+        boosting: mode === 'pilot' && wasBoosting && !panelOpen,
+      });
+    }
     // Autopilot is watched rather than flown, so its engine sits further back in the mix
     sound.engine(aboard() ? speed / BOOST : null, mode === 'pilot' ? 1 : 0.5);
     if (moving && !(jump && jump.t < 0.5)) whooshPast(speed);
@@ -1601,7 +1668,7 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
       ((mode === 'pilot' ? clamp((ship.speed - CRUISE) / (BOOST - CRUISE), 0, 1) : 0) - surge) *
       (1 - Math.exp(-4 * dt));
     craft.update(time, dt, aboard() ? speed / CRUISE : 0);
-    if (fighter.visible) {
+    if (flying) {
       craft.wingtips(v1, v2);
       const turning = clamp(Math.abs(bankNow) * 1.1 - 0.15, 0, 1) * clamp((speed - 8) / 20, 0, 1);
       trails.update(v1, v2, Math.min(1, turning * 0.8 + clamp((speed - 26) / 20, 0, 1) * 0.3), time, camera.position);
@@ -1700,6 +1767,12 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
         stick,
         get firing() {
           return firing;
+        },
+        get showroom() {
+          return showroom;
+        },
+        get power() {
+          return power;
         },
         get mode() {
           return mode;

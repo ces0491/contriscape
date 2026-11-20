@@ -1,7 +1,7 @@
 import { AdditiveBlending, NormalBlending, ShaderMaterial } from 'three';
 import { describe, expect, it } from 'vitest';
 import * as glsl from '../src/shaders';
-import { DEFAULT_SKIN, definesFor, dress, LOOKS, pixelSize, readSkin, SKINS, type Look } from '../src/skins';
+import { DEFAULT_SKIN, definesFor, dress, LOOKS, pixelSize, readSkin, SKINS } from '../src/skins';
 
 /** The shaders that draw the scene, which branch on which scene it is. */
 const SCENE_SHADERS = ['TOWER_FRAGMENT', 'SOLID_FRAGMENT', 'GROUND_FRAGMENT', 'SKY_FRAGMENT'] as const;
@@ -18,8 +18,10 @@ const DAY_SHADERS = [
   'FIREWORK_VERTEX',
   'FIREWORK_FRAGMENT',
 ] as const;
+/** The looks other than the night, which is what a shader draws when none of them is named. */
+const SCENES = SKINS.filter((skin) => skin !== DEFAULT_SKIN).map((skin) => skin.toUpperCase());
 /** Everything a look can define, each of which some shader has to answer to. */
-const NAMES = ['BLOCKS', 'POSTER', 'VECTOR', 'DAY', 'PIXELS', 'TONES', 'DEPTH', 'SCANLINES'];
+const NAMES = [...SCENES, 'DAY', 'PIXELS', 'LEVELS'];
 
 const count = (text: string, pattern: RegExp) => text.match(pattern)?.length ?? 0;
 const sources = Object.entries(glsl).filter((entry): entry is [string, string] => typeof entry[1] === 'string');
@@ -38,7 +40,6 @@ describe('readSkin', () => {
 describe('the looks', () => {
   it('have the night as it was before there was a choice, with nothing defined for its shaders', () => {
     expect(LOOKS.night).toMatchObject({
-      scene: 'night',
       dark: true,
       fog: [0.05, 0.115, 0.165],
       fogDensity: 0.0021,
@@ -50,7 +51,7 @@ describe('the looks', () => {
 
   it('under a bright sky let only what is brighter than white glow, so the sky and the ground do not', () => {
     const bright = SKINS.filter((skin) => !LOOKS[skin].dark);
-    expect(bright).toEqual(['blocks', 'poster', 'handheld']);
+    expect(bright).toEqual(['blocks', 'poster', 'console']);
     for (const skin of bright) {
       expect(LOOKS[skin].bloom.threshold, skin).toBeGreaterThanOrEqual(1);
       for (const channel of LOOKS[skin].fog) expect(channel, skin).toBeLessThan(1);
@@ -62,28 +63,19 @@ describe('the looks', () => {
   });
 
   it('name each one for its button', () => {
-    expect(SKINS.map((skin) => LOOKS[skin].label)).toEqual([
-      'Night',
-      'Blocks',
-      'Poster',
-      'Vector',
-      'Handheld',
-      'Arcade',
-    ]);
+    expect(SKINS.map((skin) => LOOKS[skin].label)).toEqual(['Night', 'Blocks', 'Poster', 'Vector', '16-bit', 'VGA']);
   });
 
-  it('draw the handheld from the day city and the arcade from the night one, and differ only in the screen', () => {
-    const scene = (look: Look) => {
-      const rest: Partial<Look> = { ...look };
-      delete rest.label;
-      delete rest.screen;
-      return rest;
-    };
-    expect(scene(LOOKS.handheld)).toEqual(scene(LOOKS.blocks));
-    expect(LOOKS.handheld.screen).toEqual({ rows: 150, palette: 'tones', scanlines: false });
-    expect(scene(LOOKS.arcade)).toEqual(scene(LOOKS.night));
-    expect(LOOKS.arcade.screen).toEqual({ rows: 224, palette: 'depth', scanlines: true });
-    expect(LOOKS.blocks.screen).toBeUndefined();
+  it('give the two old screens their own scenes, in the rows those machines had, with nothing dithered', () => {
+    expect(LOOKS.console).toMatchObject({ dark: false, screen: { rows: 224, levels: 31 } });
+    expect(LOOKS.shooter).toMatchObject({ dark: true, screen: { rows: 200, levels: 63 } });
+    for (const skin of ['night', 'blocks', 'poster', 'vector'] as const) expect(LOOKS[skin].screen).toBeUndefined();
+    // Dithering a small palette turned a dense city into noise, which is why the two looks before these went
+    expect(glsl.FINISH_FRAGMENT).not.toMatch(/bayer|dither/i);
+  });
+
+  it('keep the stars off a sky that has hills painted on it', () => {
+    expect(SKINS.filter((skin) => LOOKS[skin].backdrop)).toEqual(['console', 'shooter']);
   });
 });
 
@@ -92,8 +84,8 @@ describe('definesFor', () => {
     expect(definesFor('blocks')).toEqual({ BLOCKS: 1, DAY: 1 });
     expect(definesFor('poster')).toEqual({ POSTER: 1, DAY: 1 });
     expect(definesFor('vector')).toEqual({ VECTOR: 1 });
-    expect(definesFor('handheld')).toEqual({ BLOCKS: 1, DAY: 1, PIXELS: 1, TONES: 1 });
-    expect(definesFor('arcade')).toEqual({ PIXELS: 1, DEPTH: 1, SCANLINES: 1 });
+    expect(definesFor('console')).toEqual({ CONSOLE: 1, DAY: 1, PIXELS: 1, LEVELS: 31 });
+    expect(definesFor('shooter')).toEqual({ SHOOTER: 1, PIXELS: 1, LEVELS: 63 });
   });
 
   it('only ever defines a name some shader answers to', () => {
@@ -113,11 +105,11 @@ describe('pixelSize', () => {
   });
 
   it('cuts the view into about as many rows as the screen had, and never into single pixels', () => {
-    expect(pixelSize('handheld', 720)).toBe(5);
-    expect(pixelSize('arcade', 720)).toBe(3);
-    expect(pixelSize('arcade', 1080)).toBe(5);
-    expect(pixelSize('arcade', 300)).toBe(2);
-    expect(pixelSize('handheld', 1)).toBe(2);
+    expect(pixelSize('console', 720)).toBe(3);
+    expect(pixelSize('console', 1080)).toBe(5);
+    expect(pixelSize('shooter', 720)).toBe(4);
+    expect(pixelSize('shooter', 300)).toBe(2);
+    expect(pixelSize('console', 1)).toBe(2);
   });
 });
 
@@ -157,7 +149,7 @@ describe('the shaders that change with the look', () => {
 
   it('draw every scene where the scene is drawn', () => {
     for (const name of SCENE_SHADERS) {
-      for (const scene of ['BLOCKS', 'POSTER', 'VECTOR']) expect(glsl[name], `${name} ${scene}`).toContain(scene);
+      for (const scene of SCENES) expect(glsl[name], `${name} ${scene}`).toContain(scene);
     }
   });
 

@@ -34,15 +34,7 @@
       <canvas id="gl" aria-label="Three-dimensional city of contribution data. Each tower is one day."></canvas>
     </div>
 
-    <svg id="canopy" viewBox="0 0 1600 900" preserveAspectRatio="none" aria-hidden="true" hidden>
-      <path
-        class="frame"
-        fill-rule="evenodd"
-        d="M0 0H1600V900H0Z M250 58 L1350 58 L1520 560 L1200 900 L400 900 L80 560 Z"
-      />
-      <path class="strut" d="M800 58 L640 900 M800 58 L960 900" />
-      <path class="edge" d="M250 58 L1350 58 L1520 560 L1200 900 M400 900 L80 560 L250 58" />
-    </svg>
+    <svg id="canopy" viewBox="0 0 1600 900" preserveAspectRatio="none" aria-hidden="true" hidden></svg>
     <svg id="reticle" width="64" height="64" viewBox="-32 -32 64 64" aria-hidden="true" hidden>
       <circle r="15" />
       <path d="M-28 0H-19M19 0H28M0 -28V-19M0 19V28" />
@@ -211,6 +203,7 @@
       <div class="colour-row">
         <h3>Ship model</h3>
         <div class="looks" id="ships" role="group" aria-label="Ship model"></div>
+        <p id="shipPower" aria-live="polite"></p>
       </div>
       <div id="colourRows"></div>
       <button id="colourReset" type="button">Back to default</button>
@@ -351,8 +344,11 @@
           passed, higher for a busier day, and in Pilot the towers you fly over play. With mouse steering on, the ship
           turns towards the cursor. It's off by default, so the mouse stays free for the buttons. Look redraws the city:
           Night, Blocks (the city by day, in stacked blocks), Poster (flat colour on paper), Vector (glowing outlines),
-          Handheld (big pixels in four shades of green) and Arcade (the night on an old tube). Ship model swaps the
-          ship's shape. All five fly the same.
+          16-bit (a bright afternoon in big pixels and flat bands of colour) and VGA (bolted metal walls and a painted
+          dusk, in bigger pixels still). Ship model swaps the ship, shows it turning beside the panel, and names its
+          power: the Interceptor locks on from further off, the Dart turns faster, the Rocket boosts faster, the Saucer
+          brakes to a stop, and the Brick keeps its speed when it clips a tower. Each ship has its own cockpit, with a
+          speed dial and lamps for a lock and for boost. Scroll all the way in to sit in it.
         </dd>
         <dt>Your year on GitHub</dt>
         <dd>A December flight through the current year, with captions and a summary.</dd>

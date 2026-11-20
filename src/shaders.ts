@@ -7,10 +7,16 @@ const BLOCK_GLSL = (TOWER / 2).toFixed(3);
 /** Where the sun stands by day. It is the direction the night's moonlight comes from, so the same faces are lit. */
 const SUN = 'normalize(vec3(-.45,.7,.55))';
 
+/** A number from 0 to 1 that is settled by a point and looks unrelated to its neighbours'. */
+const HASH = 'float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}';
+
+/** Light that falls off with distance `d` in steps, the way a shooter of the early 1990s lit a room. */
+const STEPPED = 'floor(clamp(1.1-d/800.,.6,1.)*10.+.5)/10.';
+
 /*
  * A shader that draws differently from look to look carries each version under a name that `dress` in `skins.ts`
- * defines: `BLOCKS`, `POSTER` or `VECTOR` for the scene, `DAY` for any scene with a bright sky, and `PIXELS`, `TONES`,
- * `DEPTH` and `SCANLINES` for the pass over the finished frame. Each look then compiles to its own program, so none
+ * defines: `BLOCKS`, `POSTER`, `VECTOR`, `CONSOLE` or `SHOOTER` for the scene, `DAY` for any scene with a bright sky,
+ * and `PIXELS` and `LEVELS` for the pass over the finished frame. Each look then compiles to its own program, so none
  * pays for another, and the night's shaders run as they did before there was a choice.
  */
 
@@ -58,7 +64,7 @@ varying vec3 vW,vN,vV;
 varying vec2 vL;
 varying float vMag,vSeed,vGrow,vFresh,vIn,vH,vHover,vHit;
 ${FLASHES}
-float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+${HASH}
 vec3 ramp(float t){
   t=clamp(t,0.,1.)*3.;
   return t<1.?mix(uRamp[0],uRamp[1],t):t<2.?mix(uRamp[1],uRamp[2],t-1.):mix(uRamp[2],uRamp[3],t-2.);
@@ -152,6 +158,85 @@ void main(){
   col=mix(col,uFog,1.-exp(-d*d*uFogD*uFogD));
   gl_FragColor=vec4(col,1.);
 }
+#elif defined(CONSOLE)
+/*
+ * A tower as a 16-bit console's artist shaded a pillar: the buildings' colour in flat bands across each face, lightest
+ * at one edge and darkest at the other, a dark line at each storey, and a pale roof with a rim. Nothing is blended from
+ * one shade to the next. The bands and lines fade out where a face is only a few pixels wide, where they would flicker.
+ */
+void main(){
+  vec3 n=normalize(vN);
+  float y=abs(vW.y);
+  float up=y-${PLINTH_GLSL};
+  vec2 l=clamp(vL,-.5,.5)+.5;
+  float face=n.y>.5?1.:n.z>.5?.94:n.x<-.5?.8:n.x>.5?.66:.58;
+  vec3 col;
+  if(vMag<=0.){
+    col=vec3(.5,.74,.34)*face;
+  }else{
+    float t=pow(vMag,.72);
+    vec3 base=mix(mix(vec3(1.),uRamp[3],.45),uRamp[3],t);
+    if(n.y>.5){
+      float rim=1.-step(.16,min(min(l.x,1.-l.x),min(l.y,1.-l.y)));
+      col=mix(base,vec3(1.),.35)*mix(1.,.78,rim);
+    }else{
+      float u=abs(n.x)>.5?l.y:l.x;
+      float storey=up/${BLOCK_GLSL};
+      float wide=1.-clamp(fwidth(u)*9.,0.,1.);
+      float tall=1.-clamp(fwidth(storey)*3.,0.,1.);
+      float band=u<.2?1.2:u<.62?1.:u<.84?.82:.66;
+      col=base*face*mix(1.,band,wide)*(1.-.28*step(fract(storey),.14)*tall);
+      col*=mix(.84,1.,clamp(up/1.6,0.,1.));
+    }
+    col*=mix(.8,1.,vGrow);
+  }
+  gl_FragColor=vec4(daylit(min(col,vec3(.98)),n,y),1.);
+}
+#elif defined(SHOOTER)
+/*
+ * A tower as a shooter of the early 1990s textured a wall: plates of dull metal, laid like bricks and bolted at the
+ * corners, with a strip of light up the middle in the buildings' colour, brighter for a busier day. Walls facing north
+ * and south are a step brighter than those facing east and west, and all of it dims with distance in steps.
+ */
+void main(){
+  vec3 n=normalize(vN);
+  float y=abs(vW.y);
+  float up=y-${PLINTH_GLSL};
+  vec2 l=clamp(vL,-.5,.5)+.5;
+  float d=length(vV);
+  float t=pow(max(vMag,0.),.72);
+  vec3 col=vec3(.26,.24,.22);
+  vec3 lamp=vec3(0.);
+  if(vMag>0.){
+    if(n.y>.5){
+      float rim=1.-step(.13,min(min(l.x,1.-l.x),min(l.y,1.-l.y)));
+      col=vec3(.42,.38,.34)*mix(.82,1.12,rim);
+    }else{
+      float u=abs(n.x)>.5?l.y:l.x;
+      vec2 g=vec2(u*2.,up/${BLOCK_GLSL});
+      g.x+=.5*mod(floor(g.y),2.);
+      vec2 id=floor(g),e=min(fract(g),1.-fract(g));
+      float crisp=1.-clamp(max(fwidth(u)*2.,fwidth(g.y))*2.4,0.,1.);
+      float seam=(1.-step(.07,min(e.x,e.y)))*crisp;
+      float bolt=(1.-step(.055,length(e-.17)))*crisp;
+      col=mix(vec3(.47,.39,.31),vec3(.37,.38,.42),step(.5,hash(vec2(vSeed*17.3,2.))));
+      col*=1.+(hash(id+vSeed*91.7)-.5)*.2*crisp;
+      col*=(1.-.5*seam)*(1.+.6*bolt)*(abs(n.z)>.5?1.:.72);
+      float strip=(1.-step(.1,abs(u-.5)))*step(.18,fract(up/${BLOCK_GLSL}));
+      lamp=mix(uRamp[2],uRamp[3],t)*(.45+1.2*t)*strip;
+      col*=1.-strip;
+    }
+    col*=mix(.5,1.,vGrow);lamp*=vGrow;
+  }
+  float light=${STEPPED};
+  col=col*light+lamp*(.5+.5*light);
+  col*=1.+.4*vFresh*vIn;
+  col*=mix(uDim,1.,vIn);
+  col+=flashes(vec3(vW.x,y,vW.z),n)*.6;
+  col+=vec3(1.,.66,.26)*.14*vHover;
+  col+=vec3(.9,.42,.16)*vHit*.3;
+  gl_FragColor=vec4(mix(col,uFog,1.-exp(-d*d*uFogD*uFogD)),1.);
+}
 #else
 void main(){
   vec3 n=normalize(vN);
@@ -177,11 +262,11 @@ void main(){
       float glow=mix(share*.46,pane*lit,crisp);
       col+=mix(base*1.8,uWindow,.22+.38*t)*glow*(.86+.5*t);
     }else if(n.y>.5){
-      // A roof: a lit parapet round a darker deck, with a plant room on it catching some of the light
+      // A roof: one flat deck, a shade darker inside its parapet. A plant room drawn on each read as a green square
+      // on every tower from above.
       vec2 l=clamp(vL,-.5,.5)+.5;
-      float deck=smoothstep(.07,.11,min(min(l.x,1.-l.x),min(l.y,1.-l.y)));
-      float plant=step(.18,l.x)*step(l.x,.52)*step(.2,l.y)*step(l.y,.46);
-      col=base*(.74+.3*t)*mix(1.,.46+.5*plant,deck);
+      float deck=smoothstep(.06,.1,min(min(l.x,1.-l.x),min(l.y,1.-l.y)));
+      col=base*(.6+.26*t)*mix(1.,.8,deck);
     }
     float rim=smoothstep(.09,.0,abs(y-${PLINTH_GLSL}-vH))*side;
     col+=base*rim*1.1;
@@ -208,7 +293,10 @@ const DUSK = /* glsl */ `vec3 dusk(vec3 d){float a=pow(clamp(-d.z/max(length(d.x
 export const SOLID_VERTEX = /* glsl */ `varying vec3 vN,vV;
 void main(){vN=normal;vec4 mv=modelViewMatrix*vec4(position,1.);vV=mv.xyz;gl_Position=projectionMatrix*mv;}`;
 
-/** The slab a year's towers stand on: dark by night, pale stone in Blocks, near black on the poster's paper. */
+/**
+ * The slab a year's towers stand on: dark by night, pale stone in Blocks, near black on the poster's paper, packed earth
+ * in 16-bit and a metal plate in VGA.
+ */
 export const SOLID_FRAGMENT = /* glsl */ `uniform vec3 uFog;uniform float uFogD;varying vec3 vN,vV;
 void main(){
 #if defined(BLOCKS)
@@ -217,6 +305,10 @@ vec3 c=vec3(.79,.8,.75)*(.72+.28*max(normalize(vN).y,0.));
 vec3 c=vec3(.094,.055,.153)+.05*max(normalize(vN).y,0.);
 #elif defined(VECTOR)
 vec3 c=vec3(.003,.007,.01);
+#elif defined(CONSOLE)
+vec3 c=vec3(.6,.36,.22)*(.76+.24*max(normalize(vN).y,0.));
+#elif defined(SHOOTER)
+vec3 c=vec3(.26,.24,.22)*(.6+.4*max(normalize(vN).y,0.));
 #else
 vec3 c=vec3(.042,.058,.08)*(.62+.38*max(normalize(vN).y,0.));
 #endif
@@ -233,12 +325,13 @@ return (1.-smoothstep(width*.5,width*.5+1.,min(a.x,a.y)))*(1.-clamp(max(w.x,w.y)
 
 /**
  * The ground under a sun, before any light or haze: sand in squares the size of a tower's plot with paved streets
- * between the years in Blocks, and paper ruled with hairlines in Poster. The ground draws it, and so do the towers'
- * shadows, which are this again a shade darker. `uCity` is the city's width and depth.
+ * between the years in Blocks, paper ruled with hairlines in Poster, and in 16-bit baked earth in slanted stripes of
+ * two tans with paths of pale stone, each with a darker edge. Grass was tried and green towers were lost against it. The ground draws it, and so do the towers' shadows, which
+ * are this again a shade darker. `uCity` is the city's width and depth.
  */
 const SURFACE = /* glsl */ `
 #if defined(BLOCKS)
-float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+${HASH}
 vec3 surface(vec3 p){vec2 g=p.xz/${CELL.toFixed(2)};vec2 id=floor(g);
 float crisp=1.-clamp(max(fwidth(g.x),fwidth(g.y))*1.4,0.,1.);
 vec3 sand=vec3(.88,.81,.62)*(1.+((mod(id.x+id.y,2.)-.5)*.07+(hash(id)-.5)*.05)*crisp);
@@ -249,11 +342,21 @@ vec2 s=floor(g*2.);
 return mix(sand,vec3(.7,.73,.76)*(1.+(mod(s.x+s.y,2.)-.5)*.07*crisp),street);}
 #elif defined(POSTER)
 vec3 surface(vec3 p){return mix(vec3(.914,.929,.925),vec3(.77,.8,.78),grid(p.xz,1.)*.9);}
+#elif defined(CONSOLE)
+vec3 surface(vec3 p){vec2 g=p.xz/${CELL.toFixed(2)};
+float crisp4=1.-clamp(max(fwidth(g.x),fwidth(g.y))*4.,0.,1.);
+vec3 grass=mix(vec3(.84,.63,.38),vec3(.9,.71,.45),step(.5,fract((g.x+g.y)*.125))*crisp4);
+float z=mod(p.z+${ROAD.toFixed(1)},${YEAR_PITCH.toFixed(1)});
+float street=step(-1.5,p.x)*step(p.x,uCity.x+1.5)*step(-${ROAD.toFixed(1)},p.z)*step(p.z,uCity.y+${ROAD.toFixed(1)})
+  *step(.5,z)*step(z,${(ROAD - 0.5).toFixed(1)});
+float middle=step(1.,z)*step(z,${(ROAD - 1).toFixed(1)});
+return mix(grass,mix(vec3(.58,.5,.44),vec3(.93,.9,.82),middle),street);}
 #endif`;
 
 /**
  * By night the ground is wet tarmac, see-through enough to show the towers' reflection, with its streets painted. In
- * the other looks it is solid. Vector has a grid of dim lines on black.
+ * the other looks it is solid. Vector has a grid of dim lines on black. VGA has a floor of stone flags two plots to a
+ * side, with the streets plated in metal and edged in warning stripes, dimming with distance in the walls' steps.
  */
 export const GROUND_FRAGMENT = /* glsl */ `uniform vec3 uFog,uRamp[4];uniform float uFogD;uniform vec2 uCity;varying vec3 vV,vP;${DUSK}${FLASHES}${GRID}${SURFACE}
 #ifdef DAY
@@ -264,6 +367,20 @@ gl_FragColor=vec4(mix(c,uFog,1.-exp(-d*d*uFogD*uFogD)),1.);}
 void main(){float d=length(vV);float f=1.-exp(-d*d*uFogD*uFogD);
 vec3 c=uRamp[1]*.6*grid(vP.xz,1.2)+flashes(vP,vec3(0.,1.,0.))*.12;
 gl_FragColor=vec4(mix(c,uFog,f),1.);}
+#elif defined(SHOOTER)
+${HASH}
+void main(){float d=length(vV);
+vec2 g=vP.xz/${(CELL * 2).toFixed(2)};vec2 e=min(fract(g),1.-fract(g));
+float crisp=1.-clamp(max(fwidth(g.x),fwidth(g.y))*2.,0.,1.);
+vec3 c=vec3(.36,.32,.28)*(1.+(hash(floor(g))-.5)*.22*crisp)*(1.-.5*(1.-step(.04,min(e.x,e.y)))*crisp);
+float z=mod(vP.z+${ROAD.toFixed(1)},${YEAR_PITCH.toFixed(1)});
+float street=step(-1.5,vP.x)*step(vP.x,uCity.x+1.5)*step(-${ROAD.toFixed(1)},vP.z)*step(vP.z,uCity.y+${ROAD.toFixed(1)})*step(z,${ROAD.toFixed(1)});
+float kerb=step(.7,z)*(1.-step(1.2,z))+step(${(ROAD - 1.2).toFixed(1)},z)*(1.-step(${(ROAD - 0.7).toFixed(1)},z));
+float stripes=step(.5,fract((vP.x+z)*.7))*(1.-clamp(fwidth(vP.x)*2.4,0.,1.));
+c=mix(c,vec3(.22,.22,.25),street);
+c=mix(c,vec3(.78,.6,.1),street*kerb*stripes*.9);
+c=c*${STEPPED}+flashes(vP,vec3(0.,1.,0.))*.3;
+gl_FragColor=vec4(mix(c,uFog,1.-exp(-d*d*uFogD*uFogD)),1.);}
 #else
 /* The night's streets are painted: a broken line down the middle and a solid one along each kerb, fading where they would be finer than a pixel. */
 void main(){float d=length(vV);float f=1.-exp(-d*d*uFogD*uFogD);
@@ -305,6 +422,8 @@ float z=mod(vP.z+.5,${YEAR_PITCH.toFixed(1)});
 float slab=step(-.5,vP.x)*step(vP.x,uCity.x+.5)*step(-.5,vP.z)*step(vP.z,uCity.y+.5)*step(z,${(DEPTH + 1).toFixed(1)});
 #if defined(BLOCKS)
 vec3 under=vec3(.79,.8,.75);
+#elif defined(CONSOLE)
+vec3 under=vec3(.6,.36,.22);
 #else
 vec3 under=vec3(.144,.105,.203);
 #endif
@@ -318,6 +437,9 @@ discard;
 export const SKY_VERTEX = /* glsl */ `varying vec3 vP;
 void main(){vP=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
 
+/** Columns round the whole horizon for an angle from `atan`, as a factor: a whole number of them, so none is cut at the seam. */
+const around = (columns: number): string => (columns / (2 * Math.PI)).toFixed(5);
+
 /** Value noise and a few octaves of it, for the Milky Way. */
 const NOISE = /* glsl */ `float h3(vec3 p){p=fract(p*.3183099+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
 float vnoise(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);
@@ -327,14 +449,16 @@ float fbm(vec3 p){float s=0.,a=.5;for(int i=0;i<4;i++){s+=a*vnoise(p);p*=2.03;a*
 
 /**
  * The night: a glow over the horizon in the buildings' colour, as a city lights its own sky, and a faint band of the
- * Milky Way with dark lanes of dust through it. `uDetail` drops the band on a slow GPU.
+ * Milky Way with dark lanes of dust through it. `uDetail` drops the band on a slow GPU. Along the horizon stands the
+ * rest of the city, far off: dark towers in clumps, a few windows lit, so the streets don't run out into nothing.
  */
 export const SKY_FRAGMENT = /* glsl */ `uniform vec3 uFog,uGlow;uniform float uDetail,uTime;varying vec3 vP;${DUSK}${NOISE}
 #if defined(BLOCKS)
 /*
  * The day: haze at the horizon rising to blue, a square sun, and clouds made of squares. The clouds are a flat layer far
  * overhead, cut into a grid, with each square wholly cloud or wholly sky. The sun is brighter than white, so it is one
- * of the few things that glow by day.
+ * of the few things that glow by day. Along the horizon stand flat-topped hills in steps, pale with distance, each
+ * capped with a strip of green.
  */
 void main(){vec3 d=normalize(vP);float h=max(d.y,0.);
 vec3 c=mix(uFog,vec3(.4,.66,.97),smoothstep(0.,.3,h));
@@ -347,13 +471,66 @@ c=mix(c,vec3(1.5,1.42,1.12),step(m,.06));}
 if(d.y>.02){vec2 p=d.xz/d.y*5.+vec2(uTime*.012,0.);vec2 id=floor(p);
 float cloud=step(.6,vnoise(vec3(id*.31,4.)))*smoothstep(.04,.16,d.y);
 c=mix(c,vec3(.97+.03*h3(vec3(id,1.))),cloud*.93);}
+float col=floor(atan(d.z,d.x)*${around(96)});
+float top=floor((.012+.075*h3(vec3(floor(col/4.),2.,5.))*h3(vec3(floor(col/11.),7.,1.))+.012*h3(vec3(col,3.,9.)))/.008)*.008;
+if(d.y<top&&d.y>-.002)c=mix(d.y>top-.006?vec3(.5,.72,.42):vec3(.8,.74,.6),uFog,.5);
 gl_FragColor=vec4(c,1.);}
 #elif defined(POSTER)
-/* The poster's sky is its paper, a shade lighter overhead. */
-void main(){gl_FragColor=vec4(mix(uFog,vec3(.955,.965,.96),smoothstep(0.,.6,max(normalize(vP).y,0.))),1.);}
+/*
+ * The poster's sky is its paper, a shade lighter overhead, with one flat disc low in it, cut by bands of paper that
+ * widen towards the horizon.
+ */
+void main(){vec3 d=normalize(vP);
+vec3 c=mix(uFog,vec3(.955,.965,.96),smoothstep(0.,.6,max(d.y,0.)));
+vec3 at=normalize(vec3(-.45,.13,.55));
+float disc=step(.955,dot(d,at))*step(0.,d.y);
+float cut=step(fract(d.y*26.),.5*(1.-smoothstep(.02,.26,d.y)));
+c=mix(c,vec3(.969,.212,.471),disc*(1.-cut));
+gl_FragColor=vec4(c,1.);}
 #elif defined(VECTOR)
-/* A vector display's sky is the unlit tube, with one line of the buildings' colour along the horizon. */
-void main(){vec3 d=normalize(vP);gl_FragColor=vec4(uFog+uGlow*(.5*exp(-abs(d.y)*150.)+.04*exp(-abs(d.y)*9.)),1.);}
+/*
+ * A vector display's sky is the unlit tube, with one line of the buildings' colour along the horizon and two ranges of
+ * mountains beyond it, each drawn as its outline alone. A line is as thick as a pixel or two wherever it runs.
+ */
+float ridge(float a,float f,float p){return abs(fract(a*f+p)-.5)*2.;}
+void main(){vec3 d=normalize(vP);float a=atan(d.z,d.x)/6.28319;
+vec3 c=uFog+uGlow*(.5*exp(-abs(d.y)*150.)+.04*exp(-abs(d.y)*9.));
+float far=.02+.085*ridge(a,7.,.2)*ridge(a,3.,.6)+.02*ridge(a,23.,.1);
+float near=.006+.05*ridge(a,11.,.45)*ridge(a,5.,.1)+.012*ridge(a,31.,.7);
+float w=max(fwidth(d.y),1e-5)*1.6;
+c+=uGlow*.34*(1.-smoothstep(0.,w,abs(d.y-far)))*step(near,d.y);
+c+=uGlow*.6*(1.-smoothstep(0.,w,abs(d.y-near)));
+gl_FragColor=vec4(c,1.);}
+#elif defined(CONSOLE)
+/*
+ * An afternoon as a 16-bit console drew one: the sky in flat bands that deepen overhead, a round sun brighter than
+ * white, clouds each made of three round puffs with a flat grey foot, and two ranges of hills along the horizon.
+ */
+void main(){vec3 d=normalize(vP);float h=max(d.y,0.);float a=atan(d.z,d.x);
+vec3 c=mix(uFog,vec3(.2,.46,.92),floor(clamp(h*1.5,0.,.999)*9.)/8.);
+float facing=dot(d,${SUN});
+c=mix(c,vec3(1.,.96,.74),step(.9955,facing)*.55);
+c=mix(c,vec3(1.5,1.42,1.),step(.9978,facing));
+if(d.y>.1&&d.y<.62){vec2 p=vec2(a*${(8 / Math.PI).toFixed(4)}+uTime*.004,d.y*8.);float id=mod(floor(p.x),16.);
+vec2 q=vec2((fract(p.x)-.5)*2.4,p.y-(1.6+3.*h3(vec3(id,3.,2.))));
+float puff=max(max(step(length(q),.42),step(length(q-vec2(-.5,-.1)),.3)),step(length(q-vec2(.52,-.08)),.34));
+puff*=step(-.3,q.y)*step(.42,h3(vec3(id,7.,1.)));
+c=mix(c,q.y<-.14?vec3(.8,.89,.98):vec3(1.),puff);}
+c=mix(c,vec3(.5,.76,.74),step(d.y,.03+.02*sin(a*5.+1.)+.012*sin(a*11.+4.)));
+c=mix(c,vec3(.36,.66,.44),step(d.y,.014+.014*sin(a*7.+2.5)+.007*sin(a*17.)));
+gl_FragColor=vec4(c,1.);}
+#elif defined(SHOOTER)
+/*
+ * A painted backdrop, as those games hung behind a level: dusk in flat bands, the buildings' colour low in the sky and
+ * near black overhead, behind two ridges of bare rock.
+ */
+void main(){vec3 d=normalize(vP);float h=max(d.y,0.);float a=atan(d.z,d.x);
+float band=floor(clamp(h*2.6,0.,.999)*10.)/9.;
+vec3 c=mix(uGlow*.28+vec3(.16,.08,.06),vec3(.14,.07,.16),smoothstep(0.,.4,band));
+c=mix(c,vec3(.025,.02,.045),smoothstep(.35,1.,band));
+c=mix(c,vec3(.15,.08,.12),step(d.y,.03+.05*(1.-abs(sin(a*3.+1.)))+.022*(1.-abs(sin(a*8.+2.)))+.008*(1.-abs(sin(a*21.)))));
+c=mix(c,uFog,step(d.y,.008+.034*(1.-abs(sin(a*5.+4.)))+.012*(1.-abs(sin(a*13.+1.)))));
+gl_FragColor=vec4(c,1.);}
 #else
 void main(){vec3 d=normalize(vP);float h=max(d.y,0.);
 vec3 c=mix(uFog,vec3(.03,.066,.125),smoothstep(0.,.17,h));
@@ -364,7 +541,13 @@ float core=pow(band,7.);
 if(core>.002){float cloud=fbm(d*5.+3.);float lanes=fbm(d*11.);
 float m=core*(.45+.9*cloud)*(1.-.75*smoothstep(.42,.7,lanes)*pow(band,16.))*smoothstep(0.,.3,h);
 c+=vec3(.15,.14,.22)*m*.42*uDetail;}}
-gl_FragColor=vec4(c+dusk(d),1.);}
+c+=dusk(d);
+float a=atan(d.z,d.x)*${around(520)};float col=floor(a);
+float top=.004+.05*h3(vec3(floor(col/9.),4.,2.))*h3(vec3(floor(col/31.),1.,6.))*(.35+.65*h3(vec3(col,8.,3.)));
+if(d.y<top&&d.y>-.002){vec2 w=vec2(fract(a),d.y*900.);
+float lit=step(.9,h3(vec3(col,floor(w.y),5.)))*step(.2,w.x)*step(w.x,.8)*step(.35,fract(w.y));
+c=mix(vec3(.016,.024,.036)+uGlow*.012,uGlow*.5+vec3(.2,.17,.1),lit*.8);}
+gl_FragColor=vec4(c,1.);}
 #endif`;
 
 /** Stars of different sizes and colours, each twinkling at its own pace. */
@@ -413,15 +596,16 @@ void main(){vP=position;vW=(modelMatrix*vec4(position,1.)).xyz-(modelMatrix*vec4
 gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
 
 /**
- * The rings: bands of ice and dust by distance from the planet, lit from the planet's light, and dark where the planet's
- * shadow falls across them.
+ * The rings: bands of ice and dust by distance from the planet, lit from the planet's light, and dimmer where the
+ * planet's shadow falls across them. The shadow has a soft edge and leaves the ring a third as bright. With a hard edge
+ * and an eighth, the ring looked as if it stopped short.
  */
 export const RING_FRAGMENT = /* glsl */ `uniform float uInner,uOuter,uPlanet;varying vec3 vP;varying vec3 vW;
 void main(){float t=(length(vP.xy)-uInner)/(uOuter-uInner);
 float dens=.55+.25*sin(t*41.)+.2*sin(t*97.+2.)+.15*sin(t*13.);
 dens*=smoothstep(0.,.06,t)*smoothstep(1.,.9,t)*(1.-.85*smoothstep(.6,.62,t)*smoothstep(.67,.65,t));
 vec3 L=${PLANET_LIGHT};float behind=dot(vW,L);
-float shade=behind<0.&&length(vW-behind*L)<uPlanet?.12:1.;
+float shade=behind<0.?mix(.34,1.,smoothstep(uPlanet*.86,uPlanet*1.14,length(vW-behind*L))):1.;
 vec3 c=mix(vec3(.5,.42,.38),vec3(.78,.7,.6),.5+.5*sin(t*23.))*shade*.62;
 gl_FragColor=vec4(c,clamp(dens,0.,1.)*.75);}`;
 
@@ -513,7 +697,7 @@ export const ENV_VERTEX = /* glsl */ `varying vec3 vP;
 void main(){vP=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
 
 export const ENV_FRAGMENT = /* glsl */ `uniform vec3 uGlow,uWindow;varying vec3 vP;
-float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+${HASH}
 #ifdef DAY
 /* By day the ship reflects a blue sky with the sun in it, a pale horizon, and ground tinted by the buildings on it. */
 void main(){vec3 d=normalize(vP);float h=d.y;
@@ -657,53 +841,47 @@ float a=vKind>1.5?pow(max(1.-r,0.),2.)*1.6:smoothstep(1.,.1,r);gl_FragColor=vec4
 
 export const FINISH_VERTEX = /* glsl */ `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
 
-/** A 4 by 4 ordered dither: a threshold from 0 to 1 for each pixel of a repeating block, so a hard palette shades smoothly. */
-const DITHER = /* glsl */ `float bayer2(vec2 a){a=floor(a);return fract(a.x/2.+a.y*a.y*.75);}
-float bayer4(vec2 a){return bayer2(.5*a)*.25+bayer2(a);}`;
-
 /**
  * The last pass: at speed the view streaks outward from the centre with colour fringes at the edges, then a vignette,
  * the jump's flash, the red of a collision, and a fine grain that stops the dark sky banding.
  *
  * A look with an old screen then cuts the frame down to it. `PIXELS` reads the frame in big squares, `uGrid` being one
- * square's size as a share of the view. `TONES` keeps only how bright a pixel is and gives it one of four shades of
- * olive green, as a handheld's screen had. With so few shades a pale ship is lost against a pale sky, so a square much
- * brighter or darker than its neighbour is inked in the darkest, which outlines everything. `DEPTH` keeps a few levels
- * each of red, green and blue, closer together in the dark, where the eye sees a step most. Both are dithered, or the
- * sky would band. `SCANLINES` darkens the bottom third of each row of squares.
+ * square's size as a share of the view. A square takes four readings spread over it, so a tower a pixel wide dims
+ * rather than flickering in and out as the view moves. While the view streaks at speed it takes two readings at each
+ * of four steps along the streak, which costs what the eight single readings of the other looks do. `LEVELS` keeps
+ * that many steps each of red, green and blue.
+ * Nothing is dithered and no grain is laid over it, because both put noise inside the squares, and the vignette is left
+ * off because those screens had none.
  */
 export const FINISH_FRAGMENT = /* glsl */ `uniform sampler2D tDiffuse;uniform float uFlash,uRed,uSpeed,uTime,uGrain;uniform vec2 uGrid;varying vec2 vUv;
 float grain(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
-${DITHER}
 #ifdef PIXELS
 vec2 at(vec2 uv){return (floor(uv/uGrid)+.5)*uGrid;}
+vec3 still(vec2 uv){vec2 o=uGrid*.25;
+return (texture2D(tDiffuse,uv+o).rgb+texture2D(tDiffuse,uv-o).rgb+texture2D(tDiffuse,uv+vec2(o.x,-o.y)).rgb+texture2D(tDiffuse,uv+vec2(-o.x,o.y)).rgb)*.25;}
+vec3 streak(vec2 uv,vec2 reach){vec2 o=uGrid*.25;vec3 sum=vec3(0.);
+for(int i=0;i<4;i++){vec2 p=at(uv-reach*float(i)/3.);sum+=texture2D(tDiffuse,p+o).rgb+texture2D(tDiffuse,p-o).rgb;}
+return sum/8.;}
 #else
 vec2 at(vec2 uv){return uv;}
+vec3 still(vec2 uv){return texture2D(tDiffuse,uv).rgb;}
+vec3 streak(vec2 uv,vec2 reach){vec3 sum=vec3(0.);
+for(int i=0;i<8;i++){sum+=texture2D(tDiffuse,uv-reach*float(i)/7.).rgb;}
+return sum/8.;}
 #endif
-void main(){vec2 q=vUv-.5;float r=dot(q,q);vec3 c;
-if(uSpeed>.001){vec2 reach=q*uSpeed*.045;c=vec3(0.);
-for(int i=0;i<8;i++){c+=texture2D(tDiffuse,at(vUv-reach*float(i)/7.)).rgb;}c/=8.;
-vec2 fringe=q*uSpeed*.012;c.r=mix(c.r,texture2D(tDiffuse,at(vUv+fringe)).r,.7);c.b=mix(c.b,texture2D(tDiffuse,at(vUv-fringe)).b,.7);}
-else c=texture2D(tDiffuse,at(vUv)).rgb;
-#ifndef TONES
+void main(){vec2 uv=at(vUv);vec2 q=uv-.5;float r=dot(q,q);vec3 c;
+if(uSpeed>.001){c=streak(uv,q*uSpeed*.045);
+vec2 fringe=q*uSpeed*.012;c.r=mix(c.r,texture2D(tDiffuse,at(uv+fringe)).r,.7);c.b=mix(c.b,texture2D(tDiffuse,at(uv-fringe)).b,.7);}
+else c=still(uv);
+#ifndef PIXELS
 c*=1.-r*.85;
 #endif
 c=mix(c,vec3(.86,.93,1.),uFlash);c+=vec3(.75,.06,.03)*uRed*smoothstep(.06,.5,r);
-c+=(grain(gl_FragCoord.xy+fract(uTime*7.)*91.)-.5)*uGrain;
 #ifdef PIXELS
-vec2 cell=floor(vUv/uGrid);
-#ifdef TONES
-const vec3 LUMA=vec3(.299,.587,.114);
-vec2 here=at(vUv);float l=dot(texture2D(tDiffuse,here).rgb,LUMA);
-float edge=max(abs(l-dot(texture2D(tDiffuse,here+vec2(uGrid.x,0.)).rgb,LUMA)),abs(l-dot(texture2D(tDiffuse,here-vec2(0.,uGrid.y)).rgb,LUMA)));
-float tone=edge>.13?0.:clamp(dot(c,LUMA)*1.05+(bayer4(cell)-.5)*.1,0.,.999);
-c=tone<.25?vec3(.07,.2,.11):tone<.5?vec3(.2,.38,.17):tone<.75?vec3(.52,.66,.16):vec3(.76,.83,.36);
+#ifdef LEVELS
+c=floor(clamp(c,0.,1.)*float(LEVELS)+.5)/float(LEVELS);
 #endif
-#ifdef DEPTH
-c=sqrt(clamp(c,0.,1.));c=floor(c*6.+bayer4(cell))/6.;c*=c;
-#endif
-#ifdef SCANLINES
-c*=fract(vUv.y/uGrid.y)<.34?.72:1.;
-#endif
+#else
+c+=(grain(gl_FragCoord.xy+fract(uTime*7.)*91.)-.5)*uGrain;
 #endif
 gl_FragColor=vec4(c,1.);}`;

@@ -65,14 +65,16 @@ Shooting a city's last badge clears it: rockets climb and burst across the view,
 
 Settings has six looks. A look changes how the city is drawn at once, applies to every city, and stays in the visitor's browser. Flying, badges, colours and sound are the same in all of them, and a shared link's card is drawn in the night look.
 
-| Look     | What it is                                                                                                                                                                                 |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Night    | The default: lit windows, roofs with parapets, painted streets, a wet street's reflection and a ringed planet overhead                                                                     |
-| Blocks   | The same city by day. Each tower is a stack of blocks in the buildings' colour, pale for a quiet day and full colour for a busy one, on sand under a square sun and clouds made of squares |
-| Poster   | Flat colour on pale paper with heavy black lettering, after the site for GitHub Universe '26. Seven colours, one to a tower, so the Buildings colour doesn't apply                         |
-| Vector   | Glowing outlines on black, as an old vector display drew things, with the hidden lines taken out                                                                                           |
-| Handheld | The day city on a handheld's screen: big pixels in four shades of olive green, with shapes outlined so a pale ship shows against a pale sky                                                |
-| Arcade   | The night city on an arcade cabinet's tube: big pixels, few colours, and dark gaps between the scan lines                                                                                  |
+| Look   | What it is                                                                                                                                                                                                                |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Night  | The default: lit windows, flat roofs, painted streets, a wet street's reflection, a ringed planet overhead and the rest of the city far off along the horizon                                                             |
+| Blocks | The same city by day. Each tower is a stack of blocks in the buildings' colour, pale for a quiet day and full colour for a busy one, on sand under a square sun and clouds made of squares, with flat-topped hills beyond |
+| Poster | Flat colour on pale paper with heavy black lettering, after the site for GitHub Universe '26. Seven colours, one to a tower, so the Buildings colour doesn't apply. One flat sun sits low in the sky                      |
+| Vector | Glowing outlines on black, as an old vector display drew things, with the hidden lines taken out and two mountain ranges drawn as outlines                                                                                |
+| 16-bit | A bright afternoon as a 16-bit console drew one: towers shaded in flat bands, baked earth, a sky in stripes with round clouds and hills, in the 224 rows of big pixels those machines had                                 |
+| VGA    | The city as a shooter of the early 1990s drew a level: walls of bolted metal with a strip of light in the buildings' colour, light that dims with distance in steps, and a painted dusk, in 200 rows                      |
+
+16-bit and VGA are looks of an era and copy no game: no character, level, texture or name of one is used. Neither is dithered, so a city as dense as `torvalds` stays readable.
 
 Where there is a sun the towers throw shadows across the streets, the busiest days carry a blinking red block where the night has a red light, and the fireworks for a cleared city fall as confetti. The shadows are dropped at the lowest quality step.
 
@@ -80,7 +82,19 @@ Poster takes its palette and its way of writing a name, as in `2026/`, from that
 
 ### Ships
 
-Settings has five ships: Interceptor, the swept delta the site started with, then Dart, Rocket, Saucer and Brick, which is built of boxes. They differ in shape and in nothing else. Each has the same guns, speed and size against the towers, and takes the ship and trim colours. The choice stays in the visitor's browser.
+Settings has five ships: Interceptor, the swept delta the site started with, then Dart, Rocket, Saucer and Brick, which is built of boxes. Each takes the ship and trim colours, has the same guns and the same size against the towers, and has one power of its own in Pilot:
+
+| Ship        | Power       | What it does                               |
+| ----------- | ----------- | ------------------------------------------ |
+| Interceptor | Long lock   | Locks on to a badge from half as far again |
+| Dart        | Quick turn  | Turns and climbs 30% faster                |
+| Rocket      | Afterburner | Boosts 30% faster                          |
+| Saucer      | Hover       | Brakes to a stop and hangs in the air      |
+| Brick       | Thick skin  | Keeps its speed when it clips a tower      |
+
+Autopilot flies them all alike. Each ship also has its own cockpit, seen by scrolling all the way in: a faceted canopy, a pointed windscreen, a porthole, a dome and three square panes, each with a speed dial and lamps for a lock and for boost.
+
+Picking a ship or a ship colour in Settings holds the ship up beside the panel, turning, until the panel closes. Orbit has no ship in it and the cockpit has the pilot inside it, so a choice made there would otherwise change nothing on screen. The choice stays in the visitor's browser.
 
 ### Colours
 
@@ -135,8 +149,8 @@ npm run dev
 - `src/main.ts` loads a city. A browser without WebGL 2 gets the Guide as the page instead, and the API isn't called.
 - `src/calendar.ts`, `src/map.ts` and `src/routes.ts` hold the data, the city grid and the flight paths. `src/milestones.ts` and `src/review.ts` work out the badges and the year story, `src/run.ts` keeps the clock on a timed clear, and `src/colours.ts`, `src/zoom.ts`, `src/steering.ts` and `src/quality.ts` hold the colour palettes, the zoom steps, the key response and the frame average that lowers quality on a slow GPU. `src/aim.ts` picks the badge to lock on to and curves a bolt towards it, `src/lights.ts` chooses which flashes light the towers each frame, and `src/markers.ts` places the markers and chooses which to show. `src/collision.ts` pushes the ship back out of a tower it has hit, and `src/sight.ts` holds the lines of sight: the tower being aimed at, whether one hides a badge, how far back the chase camera can sit, and the height to come at a badge from. None of them need WebGL, which is what makes them testable.
 - `src/world.ts`, `src/fighter.ts`, `src/badges.ts`, `src/blast.ts`, `src/fireworks.ts` and `src/app.ts` are the three.js scene, the ship and its guns, the floating badges, their explosions, the show for a cleared city and the flight modes. `src/environment.ts` renders what the ship's metal and glass reflect, and `src/trails.ts` draws the vapour off its wingtips.
-- `src/skins.ts` holds the looks. A look is a scene, which is how the city itself is drawn, plus what is done to the finished frame, so Handheld is the Blocks scene on an old screen and Arcade is the night on one. `dress` compiles a shader for a look: each version sits under a name such as `BLOCKS`, `VECTOR` or `DAY` in `src/shaders.ts`, so every look is its own program and none pays for another.
-- The five ships are designs in `src/fighter.ts`. A design places its own parts and says where its engines, wingtips and guns are, and the flames, lights and barrels are fitted the same way on all of them.
+- `src/skins.ts` holds the looks. A look is how the city itself is drawn, plus what is done to the finished frame: 16-bit and VGA are cut into big square pixels, each read four times so a thin tower dims at a distance where it would otherwise flicker. `dress` compiles a shader for a look: each version sits under a name such as `BLOCKS`, `SHOOTER` or `DAY` in `src/shaders.ts`, so every look is its own program and none pays for another.
+- The five ships are designs in `src/fighter.ts`. A design places its own parts and says where its engines, wingtips and guns are, and the flames, lights and barrels are fitted the same way on all of them. `src/powers.ts` holds what each does differently in Pilot, and `src/cockpits.ts` draws each one's cockpit as SVG over the view.
 - `src/badge-art.ts` draws the badge artwork at runtime, and `src/hud.ts` is everything on screen that isn't the 3D scene.
 - `src/sound.ts` makes the sound effects and mixes them with the music from `src/music.ts`, all with the Web Audio API, and builds nothing until the visitor's first click, tap or key press.
 

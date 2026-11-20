@@ -50,7 +50,11 @@ interface CityDebug {
   badges: { tokens: { visible: boolean }[]; milestones: { id: string; name: string }[]; earned: Set<string> };
   blasts: { active: boolean }[];
   fireworks: { active: boolean };
-  fighter: { visible: boolean; children: { material: { color: { getHexString(): string } } }[] };
+  fighter: {
+    visible: boolean;
+    position: { clone(): { project(camera: unknown): { x: number; y: number; z: number } } };
+    children: { material: { color: { getHexString(): string } } }[];
+  };
   shared: { uRamp: { value: { b: number }[] } };
 }
 interface Heard {
@@ -1163,10 +1167,10 @@ test('every look draws the city, with no shader left broken', async ({ page }) =
   await page.click('#m-orbit');
   await page.click('#settings');
   const looks = page.locator('#looks button');
-  await expect(looks).toHaveText(['Night', 'Blocks', 'Poster', 'Vector', 'Handheld', 'Arcade']);
+  await expect(looks).toHaveText(['Night', 'Blocks', 'Poster', 'Vector', '16-bit', 'VGA']);
 
   const levels: Record<string, number> = {};
-  for (const look of ['blocks', 'poster', 'vector', 'handheld', 'arcade', 'night']) {
+  for (const look of ['blocks', 'poster', 'vector', 'console', 'shooter', 'night']) {
     await page.click(`#skin-${look}`);
     await expect(page.locator('body')).toHaveAttribute('data-skin', look);
     await expect(page.locator(`#skin-${look}`)).toHaveAttribute('aria-pressed', 'true');
@@ -1176,11 +1180,98 @@ test('every look draws the city, with no shader left broken', async ({ page }) =
     expect(levels[look], look).toBeGreaterThan(2);
   }
   // The looks with a sun are bright, and the dark ones are not
-  for (const bright of ['blocks', 'poster', 'handheld']) {
-    for (const dark of ['night', 'vector', 'arcade'])
+  for (const bright of ['blocks', 'poster', 'console']) {
+    for (const dark of ['night', 'vector', 'shooter'])
       expect(levels[bright], `${bright} ${dark}`).toBeGreaterThan(levels[dark] + 40);
   }
   expect(shaders).toEqual([]);
+  expect(faults).toEqual([]);
+});
+
+test('a ship picked in Orbit is held up beside Settings with its power named, until the panel closes', async ({
+  page,
+}) => {
+  const faults = watchForFaults(page);
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#m-orbit');
+  await expect.poll(() => page.evaluate(() => window.__city.fighter.visible)).toBe(false);
+  await page.click('#settings');
+  await expect(page.locator('#shipPower')).toHaveText('Long lock. Locks on to a badge from half as far again.');
+  // Opening Settings alone shows no ship, so it doesn't sit over a city someone is choosing a look for
+  expect(await page.evaluate(() => window.__city.fighter.visible)).toBe(false);
+
+  await page.click('#ship-rocket');
+  await expect(page.locator('#shipPower')).toHaveText('Afterburner. Boosts 30% faster.');
+  await expect.poll(() => page.evaluate(() => window.__city.fighter.visible)).toBe(true);
+  // Where it is drawn: in front of the camera, in the part of the view the panel leaves free
+  const shown = await page.evaluate(
+    () =>
+      new Promise<{ x: number; y: number; depth: number; panel: number; width: number; height: number }>((resolve) => {
+        requestAnimationFrame(() => {
+          const { fighter, camera } = window.__city;
+          const at = fighter.position.clone().project(camera);
+          resolve({
+            x: ((at.x + 1) / 2) * innerWidth,
+            y: ((1 - at.y) / 2) * innerHeight,
+            depth: at.z,
+            panel: document.getElementById('settingsPanel')!.getBoundingClientRect().left,
+            width: innerWidth,
+            height: innerHeight,
+          });
+        });
+      }),
+  );
+  expect(shown.depth).toBeLessThan(1);
+  expect(shown.x).toBeGreaterThan(shown.width * 0.1);
+  expect(shown.x).toBeLessThan(shown.panel);
+  expect(shown.y).toBeGreaterThan(shown.height * 0.2);
+  expect(shown.y).toBeLessThan(shown.height * 0.8);
+
+  await page.locator('#settingsPanel .panel-close').click();
+  await expect.poll(() => page.evaluate(() => window.__city.fighter.visible)).toBe(false);
+  expect(faults).toEqual([]);
+});
+
+test('each ship has a cockpit of its own, and the gunsight is seen through glass in all of them', async ({ page }) => {
+  const faults = watchForFaults(page);
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#m-pilot');
+  await shipLive(page);
+  await page.mouse.move(640, 360);
+  await page.mouse.wheel(0, -3000);
+  await expect(page.locator('#canopy')).toBeVisible();
+
+  const frames = new Set<string>();
+  for (const ship of ['interceptor', 'dart', 'rocket', 'saucer', 'brick']) {
+    await page.click('#settings');
+    await page.click(`#ship-${ship}`);
+    await page.locator('#settingsPanel .panel-close').click();
+    await expect(page.locator('#canopy')).toHaveAttribute('data-ship', ship);
+    // The frame steps aside while the ship is held up beside Settings, and is back once the panel has closed
+    await expect(page.locator('#canopy')).toBeVisible();
+    const seen = await page.evaluate(() => {
+      const canopy = document.getElementById('canopy')!;
+      const frame = canopy.querySelector<SVGGeometryElement>('.frame')!;
+      const strut = canopy.querySelector<SVGGeometryElement>('.strut');
+      // The middle of the cockpit's own box, where the gunsight sits
+      const middle = new DOMPoint(800, 450);
+      return {
+        frame: frame.getAttribute('d') ?? '',
+        covered: frame.isPointInFill(middle) || (strut?.isPointInStroke(middle) ?? false),
+        needles: canopy.querySelectorAll('[data-live="speed"]').length,
+        lamps: canopy.querySelectorAll('.lamp').length,
+      };
+    });
+    expect(seen.covered, ship).toBe(false);
+    expect(seen.needles, ship).toBe(1);
+    expect(seen.lamps, ship).toBe(2);
+    frames.add(seen.frame);
+  }
+  expect(frames.size).toBe(5);
   expect(faults).toEqual([]);
 });
 

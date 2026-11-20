@@ -73,7 +73,7 @@ interface Skinned {
   lights: THREE.ShaderMaterial[];
   /** What only the night scene has: the planet, the shooting stars, the street lamps and the wet street's reflection. */
   night: THREE.Object3D[];
-  /** What any dark sky has: the stars. */
+  /** What a dark sky has, unless it is a painted one: the stars. */
   dark: THREE.Object3D[];
   /** The ground, which the night sees through to the reflection and the other scenes don't. */
   ground: THREE.ShaderMaterial | null;
@@ -676,9 +676,10 @@ export function createWorld(map: CityMap, renderer: THREE.WebGLRenderer, camera:
       const look = LOOKS[skin];
       for (const material of skinned.shaders) dress(material, skin);
       for (const material of skinned.lights) dress(material, skin, true);
-      const night = look.scene === 'night';
+      const night = skin === 'night';
       for (const part of skinned.night) part.visible = night && !(part === meteors && calmed);
-      for (const part of skinned.dark) part.visible = look.dark;
+      // A painted sky has hills along its horizon, which stars would show through
+      for (const part of skinned.dark) part.visible = look.dark && !look.backdrop;
       // A see-through ground is drawn among the lights, in the order the night was tuned with. Any other ground is
       // solid, and drawn with the solid things, or it would paint over every light drawn before it.
       if (skinned.ground) skinned.ground.transparent = night;

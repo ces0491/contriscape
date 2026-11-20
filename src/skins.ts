@@ -1,30 +1,29 @@
 import { AdditiveBlending, NormalBlending, type ShaderMaterial } from 'three';
 import type { Rgb } from './colours';
 
-/** The looks a city can be drawn in, in the order Settings lists them. The first is the default. */
-export const SKINS = ['night', 'blocks', 'poster', 'vector', 'handheld', 'arcade'] as const;
+/**
+ * The looks a city can be drawn in, in the order Settings lists them. The first is the default, and it is what a shader
+ * draws with nothing defined. Each of the others has a branch of its own, under its name in capitals, in the shaders
+ * that draw the city.
+ */
+export const SKINS = ['night', 'blocks', 'poster', 'vector', 'console', 'shooter'] as const;
 export type Skin = (typeof SKINS)[number];
 export const DEFAULT_SKIN: Skin = SKINS[0];
 
 /**
- * How the city itself is drawn. Each has its own branch in the shaders that draw it. A look is a scene plus what is
- * done to the finished frame, so two looks can share a scene.
+ * What an old screen does to a frame: big square pixels, and only so many levels each of red, green and blue. Nothing
+ * is dithered. Two looks that dithered a small palette turned a city of thousands of towers into noise.
  */
-export type Scene = 'night' | 'blocks' | 'poster' | 'vector';
-
-/** What an old screen does to a frame: big square pixels, a small palette, and the gaps between scan lines. */
 export interface Screen {
   /** Rows of big pixels down the view. */
   rows: number;
-  /** `tones` is four shades of one colour, as on a handheld's screen. `depth` is a few levels each of red, green and blue. */
-  palette: 'tones' | 'depth';
-  scanlines: boolean;
+  /** Steps each of red, green and blue above black: 31 for the 32 levels a 16-bit console had, 63 for VGA's 64. */
+  levels: number;
 }
 
 export interface Look {
   /** The name on its button in Settings. */
   label: string;
-  scene: Scene;
   /**
    * Whether the scene is dark and lit by its own lights. Lights are drawn by adding to what is behind them, which shows
    * against the dark and vanishes into a bright sky, so by day the small ones are drawn as solid shapes.
@@ -41,13 +40,14 @@ export interface Look {
   shade: number;
   /** Lettering written the way a path is, `2026/` and `jan/`, where the others write `2026` and `JAN`. */
   paths?: boolean;
+  /** The sky is a painted backdrop with hills of its own, so the stars aren't drawn over it. */
+  backdrop?: boolean;
   screen?: Screen;
 }
 
 type Base = Omit<Look, 'label'>;
 
 const NIGHT: Base = {
-  scene: 'night',
   dark: true,
   fog: [0.05, 0.115, 0.165],
   fogDensity: 0.0021,
@@ -65,7 +65,6 @@ const NIGHT: Base = {
 // A daytime city of stacked blocks under a square sun. By day only what is brighter than white glows, which leaves
 // the sky and the ground alone and keeps the glow for the sun, the lasers and anything exploding.
 const BLOCKS: Base = {
-  scene: 'blocks',
   dark: false,
   fog: [0.8, 0.9, 0.98],
   fogDensity: 0.0017,
@@ -87,7 +86,6 @@ export const LOOKS: Record<Skin, Look> = {
   // a tower, and hairlines for a grid. The haze is the paper itself, so the far city fades into the page.
   poster: {
     label: 'Poster',
-    scene: 'poster',
     dark: false,
     fog: [0.914, 0.929, 0.925],
     fogDensity: 0.0019,
@@ -107,7 +105,6 @@ export const LOOKS: Record<Skin, Look> = {
   // without it the end of every street glows white.
   vector: {
     label: 'Vector',
-    scene: 'vector',
     dark: true,
     fog: [0.004, 0.01, 0.014],
     fogDensity: 0.008,
@@ -115,10 +112,44 @@ export const LOOKS: Record<Skin, Look> = {
     shade: 0,
     ink: NIGHT.ink,
   },
-  // The day city on a handheld's screen: big pixels in four shades of one olive green.
-  handheld: { ...BLOCKS, label: 'Handheld', screen: { rows: 150, palette: 'tones', scanlines: false } },
-  // The night city on an arcade cabinet's tube: big pixels, few colours, and dark gaps between the scan lines.
-  arcade: { ...NIGHT, label: 'Arcade', screen: { rows: 224, palette: 'depth', scanlines: true } },
+  // An afternoon as a 16-bit console drew one: flat bands of colour, hard edges and a sky in stripes, in the 224 rows
+  // those machines had. It is a bright scene, so it follows the rules the other bright ones do.
+  console: {
+    label: '16-bit',
+    dark: false,
+    fog: [0.72, 0.9, 0.98],
+    fogDensity: 0.0016,
+    bloom: { strength: 0.25, radius: 0.4, threshold: 1 },
+    shade: 0.26,
+    ink: {
+      months: 'rgba(92,48,22,.85)',
+      year: 'rgba(92,48,22,.8)',
+      total: 'rgba(150,64,30,.9)',
+      name: 'rgba(92,48,22,.85)',
+      span: 'rgba(150,64,30,.95)',
+    },
+    backdrop: true,
+    screen: { rows: 224, levels: 31 },
+  },
+  // The city as a shooter of the early 1990s drew a level: bolted metal walls, light that dims with distance in
+  // steps, and a painted dusk behind it, in VGA's 200 rows. It is dark, so its lights are added as the night's are.
+  shooter: {
+    label: 'VGA',
+    dark: true,
+    fog: [0.06, 0.04, 0.055],
+    fogDensity: 0.0016,
+    bloom: { strength: 0.3, radius: 0.5, threshold: 0.8 },
+    shade: 0,
+    ink: {
+      months: 'rgba(236,224,196,.6)',
+      year: 'rgba(236,224,196,.55)',
+      total: 'rgba(214,170,60,.7)',
+      name: 'rgba(236,224,196,.62)',
+      span: 'rgba(214,170,60,.8)',
+    },
+    backdrop: true,
+    screen: { rows: 200, levels: 63 },
+  },
 };
 
 /**
@@ -127,14 +158,13 @@ export const LOOKS: Record<Skin, Look> = {
  * shaders run as they did before there was a choice.
  */
 export function definesFor(skin: Skin): Record<string, number> {
-  const { scene, dark, screen } = LOOKS[skin];
+  const { dark, screen } = LOOKS[skin];
   const defines: Record<string, number> = {};
-  if (scene !== 'night') defines[scene.toUpperCase()] = 1;
+  if (skin !== DEFAULT_SKIN) defines[skin.toUpperCase()] = 1;
   if (!dark) defines.DAY = 1;
   if (screen) {
     defines.PIXELS = 1;
-    defines[screen.palette.toUpperCase()] = 1;
-    if (screen.scanlines) defines.SCANLINES = 1;
+    defines.LEVELS = screen.levels;
   }
   return defines;
 }

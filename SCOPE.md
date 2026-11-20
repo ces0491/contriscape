@@ -27,8 +27,9 @@ Let anyone enter a GitHub username and fly through a 3D city of that person's pu
 - [x] A shared link previews with a card of that user's skyline, and falls back to the site's own picture when GitHub can't be read
 - [x] Explore lists busy cities by field and by repo, from a file made ahead of time, and Random city picks one
 - [x] A city says whose it is, from the bio, languages and repos on their GitHub profile, and still loads when GitHub can't give those
-- [x] Six looks, chosen in Settings and kept in the visitor's browser: Night, Blocks, Poster, Vector, Handheld and Arcade
-- [x] Five ships to choose from, the same in flight and different in shape
+- [x] Six looks, chosen in Settings and kept in the visitor's browser: Night, Blocks, Poster, Vector, 16-bit and VGA, each readable on a city as dense as `torvalds`
+- [x] Five ships to choose from, each with a power of its own in Pilot and a cockpit of its own
+- [x] A ship picked where none is on screen is shown beside Settings
 - [x] Where a look has a sun, the towers throw shadows
 - [x] Unit tests, browser tests under the production CSP, lint and typecheck all pass
 - [x] Name confirmed by Ces
@@ -70,3 +71,4 @@ Ces, after flying a stranger's city on the live URL from a phone and a laptop.
 - 2026-11-19: added Explore, Random city and the account of whose city it is, at Ces's request
 - 2026-11-19: added five looks and four ships, tower shadows by day, and painted streets and roofs by night, at Ces's request
 - 2026-11-20: took the list of new repos out of Explore, kept each field's list to bios that have its words, and gave a visitor over the firewall's limit a message of their own, after Ces asked for the open items to be closed
+- 2026-11-20: replaced the Handheld and Arcade looks, which Ces found unplayable, with 16-bit and VGA; gave each ship a power and a cockpit; showed a picked ship beside Settings; took the plant rooms off the night's roofs; put something on each look's horizon; and softened the planet's shadow on its ring, at Ces's request
