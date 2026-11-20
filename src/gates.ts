@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GATE_RADIUS, type Course } from './race';
+import { GATE_RADIUS, type Gate } from './race';
 
 const TUBE = 0.09;
 /** Gold past white, so the next gate glows by night as the badges' rims do. */
@@ -11,7 +11,10 @@ const FINISH = new THREE.Color(1.5, 1.5, 1.5);
 const AHEAD = 4;
 const FORWARD = new THREE.Vector3(0, 0, 1);
 
-/** The rings a race is flown through. The next is bright and pulses, the few after it are dim, and passed ones go. */
+/**
+ * The rings a race or a time attack is flown through. The next is bright and pulses, the few after it are dim, and passed
+ * ones go.
+ */
 export class Gates {
   private readonly geometry = new THREE.TorusGeometry(GATE_RADIUS, TUBE, 8, 56);
   private readonly next = new THREE.MeshBasicMaterial({ color: NEXT });
@@ -23,7 +26,7 @@ export class Gates {
   constructor(private readonly scene: THREE.Scene) {}
 
   /** Puts up a course's gates, or takes them down with `null`. */
-  set(course: Course | null): void {
+  set(course: { gates: Gate[] } | null): void {
     for (const ring of this.rings) this.scene.remove(ring);
     this.rings = (course?.gates ?? []).map((gate) => {
       const ring = new THREE.Mesh(this.geometry, this.later);

@@ -1,7 +1,8 @@
 import { Quaternion, Scene, Vector3, Vector4 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { holdsLock, LOCK_CONE, LOCK_RANGE, lockCone, lockOn, turnTowards } from '../src/aim';
-import { Weapons } from '../src/fighter';
+import { BADGE_RADIUS, closestPass, TOUCH_REACH } from '../src/badges';
+import { SHIP_HALF_SPAN, Weapons } from '../src/fighter';
 import { flashLevel, Flashes, LIGHT_SLOTS, type Flash } from '../src/lights';
 import { placeMarker, type Insets } from '../src/markers';
 import { TRAIL_FRAGMENT } from '../src/shaders';
@@ -85,6 +86,36 @@ describe('Weapons', () => {
 
   it('curves a shot fired while locked on into the badge', () => {
     expect(volley(new Vector3(4, 0, -45), ahead)).toBe(true);
+  });
+});
+
+describe('closestPass', () => {
+  const badge = new Vector3(10, 20, -30);
+  const from = (dx: number, dy: number, dz: number) => new Vector3(badge.x + dx, badge.y + dy, badge.z + dz);
+
+  it('is nothing for a move straight through a badge', () => {
+    expect(closestPass(from(0, 0, 2), from(0, 0, -2), badge)).toBeCloseTo(0);
+  });
+
+  it('catches a fast frame that starts in front of a badge and ends past it', () => {
+    // A Rocket on full boost covers about 3 units in the longest frame the game steps
+    expect(closestPass(from(0.5, 0, 1.6), from(0.5, 0, -1.6), badge)).toBeCloseTo(0.5);
+  });
+
+  it('measures from the nearer end when the move stops short of a badge or starts past it', () => {
+    expect(closestPass(from(0, 0, 6), from(0, 0, 3), badge)).toBeCloseTo(3);
+    expect(closestPass(from(0, 0, -3), from(0, 0, -6), badge)).toBeCloseTo(3);
+  });
+
+  it('works for a ship standing still', () => {
+    expect(closestPass(from(0, 1, 0), from(0, 1, 0), badge)).toBeCloseTo(1);
+  });
+
+  it('takes a wingtip brushing the rim as flying into a badge, and a wider pass as a miss', () => {
+    const brush = BADGE_RADIUS + SHIP_HALF_SPAN * 0.9;
+    expect(closestPass(from(brush, 0, 2), from(brush, 0, -2), badge)).toBeLessThanOrEqual(TOUCH_REACH);
+    const wide = TOUCH_REACH + 0.2;
+    expect(closestPass(from(0, wide, 2), from(0, wide, -2), badge)).toBeGreaterThan(TOUCH_REACH);
   });
 });
 

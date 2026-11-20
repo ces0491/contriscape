@@ -1199,7 +1199,8 @@ button:focus-visible {
   color: var(--ink-3);
   font: 400 11px/1.35 var(--mono);
 }
-#exploreViews {
+#exploreViews,
+.race-kinds {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
@@ -1212,6 +1213,7 @@ button:focus-visible {
   margin: 8px 0 10px;
 }
 #exploreViews button,
+.race-kinds button,
 #exploreGroups button {
   appearance: none;
   padding: 6px 10px;
@@ -1222,14 +1224,17 @@ button:focus-visible {
   font: 600 12px/1 var(--mono);
   cursor: pointer;
 }
-#exploreViews button {
+#exploreViews button,
+.race-kinds button {
   padding: 8px 10px;
 }
 #exploreViews button:hover,
+.race-kinds button:hover,
 #exploreGroups button:hover {
   color: var(--ink);
 }
-#exploreViews button[aria-pressed='true'] {
+#exploreViews button[aria-pressed='true'],
+.race-kinds button[aria-pressed='true'] {
   border-color: var(--sodium);
   color: var(--ink);
 }
@@ -1545,7 +1550,8 @@ button:focus-visible {
   color: var(--gold);
   font-weight: 600;
 }
-#raceScore.lost {
+#raceScore.lost,
+#raceClock.low {
   color: #ff6b6b;
 }
 /* The countdown, big, a little above the middle so the ship stays in view under it */

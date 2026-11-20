@@ -2,17 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
 import { holdsLock, LOCK_RANGE, lockOn } from '../src/aim';
 import { cockpitMarkup } from '../src/cockpits';
-import { DEFAULT_SHIP, EDITION_SHIP, halfSpan, readShip, SHIP_LABELS, SHIPS, type Design } from '../src/fighter';
+import {
+  DEFAULT_SHIP,
+  EDITION_SHIP,
+  halfSpan,
+  readShip,
+  SHIP_HALF_SPAN,
+  SHIP_LABELS,
+  SHIPS,
+  WIDEST,
+  type Design,
+} from '../src/fighter';
 
 /** The ships in Settings, and the year's own. */
 const DESIGNS: Design[] = [...SHIPS, EDITION_SHIP];
 import { POWERS, speedKept } from '../src/powers';
-
-/**
- * The widest a ship's model may reach to either side, in its own units. The flight paths are tested to clear every
- * tower by 0.42 once the model is scaled to 0.8, which is this.
- */
-const WIDEST = 0.52;
 
 describe('the ships', () => {
   it.each(DESIGNS)('%s fits the width the flight paths leave it, lights and guns included', (ship) => {
@@ -20,6 +24,10 @@ describe('the ships', () => {
     expect(reach).toBeLessThanOrEqual(WIDEST);
     // Narrow enough to slip through anything would be a different game
     expect(reach).toBeGreaterThan(0.4);
+  });
+
+  it('reach no further once scaled than the 0.42 the flight paths clear every tower by', () => {
+    expect(SHIP_HALF_SPAN).toBeLessThanOrEqual(0.42);
   });
 
   it('each have a name for their button', () => {

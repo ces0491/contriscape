@@ -16,13 +16,29 @@ export interface Readout {
 /** A year in the Race panel. */
 export interface RaceRow {
   year: number;
-  rival: string;
-  /** This ship's fastest time here, or null. */
-  best: string | null;
-  won: boolean;
+  /** The times to beat and this ship's best here. */
+  times: string;
+  /** What has been done on this year in any ship, such as beating the rival, or null. */
+  mark: string | null;
   /** Set for the year a challenge or the day's course is on. */
   tag: string | null;
 }
+
+/** The two kinds of race: against Autopilot through gates, or against the clock through rings. */
+export type RaceKind = 'rival' | 'clock';
+
+const ABOUT: Record<RaceKind, string> = {
+  rival:
+    "Race the Autopilot down a year's alleys and once round its busiest day. Fly through each gold gate in turn. " +
+    "Clipping a tower costs speed. Passing close to towers at speed scores near misses, which a clip loses before they're banked.",
+  clock:
+    'Beat the clock through gold rings, out to the far end of a year and back: low down its alleys, over its roofs, ' +
+    'and round a loop past the end. Each ring adds time, and the clock running out ends the run. Clipping a tower costs speed.',
+};
+const COUNTDOWN_NOTE: Record<RaceKind, string> = {
+  rival: 'Fly through each gold gate in turn',
+  clock: 'Each ring adds time. Keep the clock from running out',
+};
 
 /** Writes text into an element only when it has changed, because the readout is written every frame. */
 function write(box: HTMLElement, text: string): void {
@@ -30,7 +46,10 @@ function write(box: HTMLElement, text: string): void {
   box.hidden = text === '';
 }
 
-/** The race's readout, countdown and result, its panel of years, and the card a challenge link opens with. */
+/**
+ * The readout, countdown and result of a race or a time attack, the panel of years for each, and the card a challenge
+ * link opens with.
+ */
 export class RaceHud {
   private readonly box = element('raceHud');
   private readonly parts = {
@@ -57,14 +76,22 @@ export class RaceHud {
     this.lostTimer = window.setTimeout(() => this.parts.score.classList.remove('lost'), 900);
   }
 
-  /** The countdown's number or word in the middle of the view, or nothing with `null`. */
-  countdown(text: string | null): void {
-    const box = element('countdown');
-    box.hidden = text === null;
-    if (text !== null) write(box.firstElementChild as HTMLElement, text);
+  /** Marks the clock as running low, or not. */
+  urgent(on: boolean): void {
+    this.parts.clock.classList.toggle('low', on);
   }
 
-  showResult(title: string, facts: [string, string][]): void {
+  /** The countdown's number or word in the middle of the view, or nothing with `null`, and what to do in this race. */
+  countdown(text: string | null, kind: RaceKind = 'rival'): void {
+    const box = element('countdown');
+    box.hidden = text === null;
+    if (text === null) return;
+    write(box.firstElementChild as HTMLElement, text);
+    write(box.lastElementChild as HTMLElement, COUNTDOWN_NOTE[kind]);
+  }
+
+  /** The result of a race, with a challenge to copy only where there is one to send. */
+  showResult(title: string, facts: [string, string][], copyable = true): void {
     element('raceResultTitle').textContent = title;
     element('raceResultFacts').replaceChildren(
       ...facts.flatMap(([label, value]) => {
@@ -76,6 +103,7 @@ export class RaceHud {
       }),
     );
     element('raceCopy').textContent = 'Copy a challenge';
+    element('raceCopy').hidden = !copyable;
     element('raceResult').hidden = false;
   }
 
@@ -87,8 +115,12 @@ export class RaceHud {
     return !element('raceResult').hidden;
   }
 
-  /** The years that can be raced, with the rival's time and this ship's best on each. */
-  renderList(rows: RaceRow[], ship: string, start: (year: number) => void): void {
+  /** The years that can be raced in this kind of race, with the times to beat and this ship's best on each. */
+  renderList(kind: RaceKind, rows: RaceRow[], ship: string, start: (year: number) => void): void {
+    (['rival', 'clock'] as const).forEach((each) =>
+      element(each === 'rival' ? 'raceKindRival' : 'raceKindClock').setAttribute('aria-pressed', String(each === kind)),
+    );
+    element('raceAbout').textContent = ABOUT[kind];
     element('raceShip').textContent = `Bests are kept for each ship. These are the ${ship}'s.`;
     element('raceList').replaceChildren(
       ...rows.map((row) => {
@@ -98,10 +130,10 @@ export class RaceHud {
         go.dataset.year = String(row.year);
         const year = document.createElement('b');
         year.textContent = String(row.year);
-        if (row.won) {
-          const won = document.createElement('em');
-          won.textContent = 'Beaten';
-          year.append(won);
+        if (row.mark) {
+          const mark = document.createElement('em');
+          mark.textContent = row.mark;
+          year.append(mark);
         }
         if (row.tag) {
           const tag = document.createElement('em');
@@ -110,7 +142,7 @@ export class RaceHud {
           year.append(tag);
         }
         const times = document.createElement('span');
-        times.textContent = row.best ? `Rival ${row.rival} · Best ${row.best}` : `Rival ${row.rival}`;
+        times.textContent = row.times;
         go.append(year, times);
         go.addEventListener('click', () => start(row.year));
         item.append(go);

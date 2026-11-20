@@ -6,6 +6,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import type { Contributions } from '../shared/contract';
 import { holdsLock, lockOn } from './aim';
+import { AttackRecords, buildAttack, TimeAttack, type AttackCourse } from './attack';
 import { APP_NAME } from './brand';
 import { BADGE_RADIUS, Badges } from './badges';
 import { Blast } from './blast';
@@ -55,7 +56,7 @@ import {
   type GhostPose,
   type Track,
 } from './race';
-import { RaceHud, type Readout } from './race-hud';
+import { RaceHud, type RaceKind, type Readout } from './race-hud';
 
 type Mode = 'fly' | 'pilot' | 'orbit';
 
@@ -93,7 +94,7 @@ const MARKER_ROOM = 44;
 const HOME_BEYOND = 40;
 /** The marker for the way back points at the nearest edge of the city, this far up its towers. */
 const HOME_HEIGHT = 6;
-/** How far the ship flies after a jump from the Badges list before a badge it shoots counts as one it flew to. */
+/** How far the ship flies after a jump from the Badges list before a badge it wins counts as one it flew to. */
 const FLOWN_AFTER = 120;
 /** Badges out of view that get a marker at the edge, nearest first. */
 const EDGE_MARKERS = 4;
@@ -133,6 +134,10 @@ const RIVAL_COLOURS: Colours = { ...DEFAULT_COLOURS, hull: '#3b414c', trim: '#ff
 const GHOST_OPACITY = 0.32;
 /** How long "Go" stays up once a race starts. */
 const GO_SECONDS = 0.8;
+/** How long a ring's added time shows under a time attack's clock. */
+const GAIN_SECONDS = 1.2;
+/** A time attack's clock turns red, and ticks each second, once it is this low. */
+const LOW_CLOCK = 3;
 /** Seconds a year's flight opens on its number, over its empty block, before the jump in. */
 const OPENER_SECONDS = 4.5;
 /** A year's flight goes at this share of Autopilot's pace, so each of its moments has time. */
@@ -272,6 +277,10 @@ export function startApp(
   const raceList = raceYears(cal);
   const records = new RaceRecords(cal.login);
   const courses = new Map<number, Course>();
+  const attackRecords = new AttackRecords(cal.login);
+  const attacks = new Map<number, AttackCourse>();
+  /** Which kind of race the Race panel lists. */
+  let raceKind: RaceKind = 'rival';
   const raceHud = new RaceHud();
   const gates = new Gates(scene);
 
@@ -353,7 +362,7 @@ export function startApp(
   let lightsOn = true;
   /** The badge the targeting computer is locked on to, or -1. */
   let locked = -1;
-  /** How far the ship has flown since a jump from the Badges list. Far enough, and a badge it shoots was flown to. */
+  /** How far the ship has flown since a jump from the Badges list. Far enough, and a badge it wins was flown to. */
   let sinceJump = Infinity;
   /** Whether the next hint introduces the example city, before the controls. */
   let introduce = example;
@@ -375,8 +384,10 @@ export function startApp(
   const taps = new DoubleTap();
   /** Whether the ship is flying on its side, from the up key held with a direction. */
   let onEdge = false;
-  /** The race being flown, or null. Its near misses and the run recorded for its ghost go with it. */
-  let race: Race | null = null;
+  /**
+   * The race or time attack being flown, or null. A race's near misses and the run recorded for its ghost go with it.
+   */
+  let race: Race | TimeAttack | null = null;
   let near = new NearMisses();
   let recorder = new Recorder();
   let ghostTrack: Track | null = null;
@@ -385,10 +396,15 @@ export function startApp(
   /** The challenge this page was opened with, which the Race panel marks. */
   let challenge: Challenge | null = null;
   /** The last race finished, for racing it again or sending it as a challenge. */
-  let lastResult: { year: number; time: number; ship: Ship; from: Challenge | null } | null = null;
+  let lastResult: { kind: RaceKind; year: number; time: number; ship: Ship; from: Challenge | null } | null = null;
   /** Whether a race's result is up. The ship waits under it, as it does under a panel. */
   let resultUp = false;
   let goUntil = 0;
+  /** The time the last ring of a time attack added, shown until `gainUntil`. */
+  let gained = 0;
+  let gainUntil = 0;
+  /** The whole seconds left on a time attack's clock when it last ticked. */
+  let lastTick = Infinity;
   /** Where the ship was at the start of this frame, to tell whether it flew through a gate. */
   const lastPos = new THREE.Vector3();
   let contactCooldown = 0;
@@ -681,7 +697,7 @@ export function startApp(
   }
   function bump(day: number, headOn: boolean): void {
     // Any contact loses a race's chain of near misses, however soon it comes after the last
-    if (race?.phase === 'racing' && near.clip(day) > 0) raceHud.lost();
+    if (race instanceof Race && race.phase === 'racing' && near.clip(day) > 0) raceHud.lost();
     if (contactCooldown > 0) return;
     contactCooldown = 0.35;
     ship.speed *= speedKept(power, headOn);
@@ -990,7 +1006,7 @@ export function startApp(
   const HINTS: Record<Mode, string> = {
     fly: touch ? 'Pinch to zoom' : 'Scroll to zoom, all the way in for the cockpit',
     pilot: touch
-      ? 'Drag to steer · Pinch to zoom · Follow the gold markers and shoot the badges'
+      ? 'Drag to steer · Pinch to zoom · Follow the gold markers, then shoot or fly into the badges'
       : 'WASD or arrows steer · Space fires · Shift boost · C brake · Gold markers lead to badges',
     orbit: touch ? 'Drag to rotate · Pinch to zoom' : 'Drag to rotate · Scroll to zoom',
   };
@@ -1316,10 +1332,11 @@ export function startApp(
       badges.best === null ? null : formatClock(badges.best),
     );
   }
-  function earn(badge: Milestone): void {
+  /** Celebrates a badge just earned, `shot` down or flown into. */
+  function earn(badge: Milestone, shot: boolean): void {
     const cleared = badges.allEarned;
     const index = badges.milestones.indexOf(badge);
-    // Shot from where the Badges list set the ship down, or soon after, a badge is earned without having been flown to
+    // Won from where the Badges list set the ship down, or soon after, a badge is earned without having been flown to
     const flown = sinceJump >= FLOWN_AFTER;
     if (flown) badges.fly(index);
     aiming = false;
@@ -1335,10 +1352,12 @@ export function startApp(
     }
     if (!reduced) {
       const at = badges.position(index);
-      blasts[nextBlast++ % BLASTS].start(at);
+      blasts[nextBlast++ % BLASTS].start(at, shot);
       flashes.add({ x: at.x, y: at.y, z: at.z, r: 3.2, g: 1.7, b: 0.6, reach: 26, start: time, life: 1.1 });
-      sound.blast(stereoFor(at));
-      shake = 0.4;
+      if (shot) {
+        sound.blast(stereoFor(at));
+        shake = 0.4;
+      }
       if (cleared) {
         const shells = fireworks.start(camera, towerPalette(colours.towers).ramp[3]);
         sound.fireworks(shells);
@@ -1418,9 +1437,19 @@ export function startApp(
     }
     return course;
   }
-  /** Takes the ship to a year's start line and counts down. `from` is the challenge or day's course it answers. */
-  function startRace(year: number, from: Challenge | null = null): void {
-    const course = courseFor(year);
+  function attackFor(year: number): AttackCourse {
+    let course = attacks.get(year);
+    if (!course) {
+      course = buildAttack(map, year);
+      attacks.set(year, course);
+    }
+    return course;
+  }
+  /**
+   * Takes the ship to the start of a course's line, `side` units to the left of it, and starts the countdown with
+   * `begin` once it is there.
+   */
+  function toStartLine(year: number, route: Route, side: number, begin: () => void): void {
     showPanel(null);
     withdrawOffer();
     withdrawArrival();
@@ -1433,12 +1462,10 @@ export function startApp(
     if (mode !== 'pilot') setMode('pilot');
     ship.live = false;
     const arrive = () => {
-      const { route } = course;
       poseAt(route, 0, rivalPose);
       poseAt(route, 1, rivalNose);
       v1.subVectors(rivalNose.p, rivalPose.p).normalize();
-      // Left of the line, with the rival to the right of it
-      ship.pos.copy(rivalPose.p).add(v2.set(v1.z, 0, -v1.x).normalize().multiplyScalar(START_SIDE));
+      ship.pos.copy(rivalPose.p).add(v2.set(v1.z, 0, -v1.x).normalize().multiplyScalar(side));
       ship.yaw = Math.atan2(-v1.x, -v1.z);
       ship.pitch = Math.asin(clamp(v1.y, -1, 1));
       ship.bank = 0;
@@ -1448,16 +1475,35 @@ export function startApp(
       snap = true;
       aiming = false;
       parkedUntil = 0;
+      begin();
+      element('hint').hidden = true;
+    };
+    if (jump && !jump.done) jump.mid = arrive;
+    else beginJump(arrive);
+  }
+  /** Takes the ship to a year's start line and counts down. `from` is the challenge or day's course it answers. */
+  function startRace(year: number, from: Challenge | null = null): void {
+    const course = courseFor(year);
+    // Left of the line, with the rival to the right of it
+    toStartLine(year, course.route, START_SIDE, () => {
       race = new Race(course);
       near = new NearMisses();
       recorder = new Recorder();
       raceFrom = from;
       ghostTrack = readGhost(cal.login, year, shipModel);
       gates.set(course);
-      element('hint').hidden = true;
-    };
-    if (jump && !jump.done) jump.mid = arrive;
-    else beginJump(arrive);
+    });
+  }
+  /** Takes the ship to the start of a year's time attack and counts down. */
+  function startAttack(year: number): void {
+    const course = attackFor(year);
+    toStartLine(year, course.route, 0, () => {
+      race = new TimeAttack(course);
+      raceFrom = null;
+      gainUntil = 0;
+      lastTick = Infinity;
+      gates.set(course);
+    });
   }
   /** Calls off a race in progress, or tidies away one that has finished. A result stays up until it is closed. */
   function endRace(): void {
@@ -1469,16 +1515,21 @@ export function startApp(
     ghost.group.visible = false;
     raceHud.show(null);
     raceHud.countdown(null);
+    raceHud.urgent(false);
     gateMarker.place(null, 0);
   }
   function closeResult(): void {
     resultUp = false;
     raceHud.hideResult();
   }
-  /** Runs the race on by a frame, in which the ship flew from `lastPos` to where it is now. */
+  /** Runs the race or time attack on by a frame, in which the ship flew from `lastPos` to where it is now. */
   function updateRace(dt: number): void {
     const current = race;
     if (!current) return;
+    if (current instanceof TimeAttack) {
+      updateAttack(current, dt);
+      return;
+    }
     for (const event of current.update(dt, lastPos, ship.pos)) {
       if (event.kind === 'count') {
         sound.count(false);
@@ -1525,15 +1576,75 @@ export function startApp(
       facts.push(['Challenge', time < target ? `Beaten by ${by} s` : `Missed by ${by} s`]);
     }
     facts.push(['Ship', SHIP_LABELS[shipModel]]);
-    lastResult = { year, time, ship: shipModel, from: raceFrom };
+    lastResult = { kind: 'rival', year, time, ship: shipModel, from: raceFrom };
     const margin = Math.abs(rivalTime - time).toFixed(1);
     raceHud.showResult(won ? `You beat the rival by ${margin} s` : `The rival won by ${margin} s`, facts);
+    resultUp = true;
+    endRace();
+  }
+  function updateAttack(current: TimeAttack, dt: number): void {
+    for (const event of current.update(dt, lastPos, ship.pos)) {
+      if (event.kind === 'count') {
+        sound.count(false);
+      } else if (event.kind === 'go') {
+        sound.count(true);
+        goUntil = time + GO_SECONDS;
+      } else if (event.kind === 'gate') {
+        sound.gate();
+        gained = event.bonus;
+        gainUntil = time + GAIN_SECONDS;
+      } else if (event.kind === 'finish') {
+        endAttack(current, event.time, event.left);
+        return;
+      } else {
+        endAttack(current, current.elapsed, null);
+        return;
+      }
+    }
+    // The last seconds tick away, one beep each
+    const whole = Math.ceil(current.left);
+    if (current.phase === 'racing' && current.left <= LOW_CLOCK && whole < lastTick) sound.count(false);
+    lastTick = current.phase === 'racing' ? whole : Infinity;
+  }
+  /** Takes a time attack that has finished, with `left` seconds to spare, or run out of time, with `null`. */
+  function endAttack(ended: TimeAttack, time: number, left: number | null): void {
+    const { year, gates: rings } = ended.course;
+    const total = rings.length;
+    const reached = ended.next;
+    const before = attackRecords.best(year, shipModel);
+    const { most, quickest } = attackRecords.record(year, shipModel, reached, left);
+    stamp(cal.login, data.name, (entry) => addYear(entry.raced, year));
+    // A first finish has the most time left by default, so only one that beats an earlier finish is called that
+    const facts: [string, string][] =
+      left === null
+        ? [
+            ['Rings', `${reached} of ${total}${most && before ? ', your most' : ''}`],
+            ['Flown for', formatLap(time)],
+          ]
+        : [
+            ['Time left', `${formatLap(left)}${quickest && before?.left != null ? ', your best' : ''}`],
+            ['Flown in', formatLap(time)],
+            ['Rings', `${total} of ${total}`],
+          ];
+    facts.push(['Ship', SHIP_LABELS[shipModel]]);
+    if (left === null) sound.timeUp();
+    else sound.fanfare();
+    lastResult = { kind: 'clock', year, time, ship: shipModel, from: null };
+    raceHud.showResult(
+      left === null ? `Out of time at ring ${reached + 1} of ${total}` : `Finished with ${formatLap(left)} to spare`,
+      facts,
+      false,
+    );
     resultUp = true;
     endRace();
   }
   /** The race readout and countdown for this frame. */
   function showRace(): void {
     if (!race) return;
+    if (race instanceof TimeAttack) {
+      showAttack(race);
+      return;
+    }
     const { course, next, elapsed } = race;
     const total = course.gates.length;
     const gap = race.gap;
@@ -1550,9 +1661,31 @@ export function startApp(
     raceHud.countdown(race.phase === 'countdown' ? String(race.count) : time < goUntil ? 'Go' : null);
     gates.update(next, time);
   }
+  /** A time attack's readout for this frame: the clock running down, the ring next, and what the last one added. */
+  function showAttack(attack: TimeAttack): void {
+    const { course, next, left } = attack;
+    const total = course.gates.length;
+    const best = attackRecords.best(course.year, shipModel);
+    let target = '';
+    if (best?.left != null) target = `Best ${formatLap(best.left)} to spare`;
+    else if (best) target = `Most ${best.rings} of ${total} rings`;
+    raceHud.show({
+      gate: next >= total - 1 ? `${course.year} · Finish` : `${course.year} · Ring ${next + 1} of ${total}`,
+      clock: formatLap(left),
+      gap: time < gainUntil ? `+${gained.toFixed(1)} s` : '',
+      target,
+      score: '',
+      chain: '',
+    });
+    raceHud.urgent(attack.phase === 'racing' && left <= LOW_CLOCK);
+    const counting = attack.phase === 'countdown' ? String(attack.count) : time < goUntil ? 'Go' : null;
+    raceHud.countdown(counting, 'clock');
+    gates.update(next, time);
+  }
   /** Flies the rival down the course, and the ghost along the run it recorded. */
   function updateRivals(dt: number): void {
-    const current = race;
+    // A time attack is flown against the clock alone
+    const current = race instanceof Race ? race : null;
     rival.group.visible = current !== null && ship.live;
     ghost.group.visible = false;
     if (!current || !ship.live) return;
@@ -1581,17 +1714,37 @@ export function startApp(
       .multiply(q2.setFromAxisAngle(ROLL_AXIS, ghostPose.bank));
     ghost.update(time, dt, 1);
   }
-  /** The years that can be raced, with the rival's time and this ship's best on each. */
+  /**
+   * The years that can be raced in the kind of race the panel shows, with the rival's time or the number of rings, and
+   * this ship's best on each.
+   */
   function drawRaceList(): void {
+    if (raceKind === 'clock') {
+      raceHud.renderList(
+        'clock',
+        raceList.map((year) => {
+          const rings = attackFor(year).gates.length;
+          const best = attackRecords.best(year, shipModel);
+          let times = `${rings} rings`;
+          if (best?.left != null) times += ` · Best ${formatLap(best.left)} to spare`;
+          else if (best) times += ` · Most ${best.rings}`;
+          return { year, times, mark: attackRecords.finished(year) ? 'Finished' : null, tag: null };
+        }),
+        SHIP_LABELS[shipModel],
+        startAttack,
+      );
+      return;
+    }
     raceHud.renderList(
+      'rival',
       raceList.map((year) => {
         const best = records.best(year, shipModel);
+        const rival = formatLap(courseFor(year).rivalTime);
         const marked = challenge?.year === year;
         return {
           year,
-          rival: formatLap(courseFor(year).rivalTime),
-          best: best ? formatLap(best.time) : null,
-          won: records.won(year),
+          times: best ? `Rival ${rival} · Best ${formatLap(best.time)}` : `Rival ${rival}`,
+          mark: records.won(year) ? 'Beaten' : null,
           tag: marked ? (challenge?.daily ? "Today's course" : 'Challenge') : null,
         };
       }),
@@ -1978,8 +2131,15 @@ export function startApp(
   });
   element('challengeLater').addEventListener('click', withdrawChallenge);
   element('raceAgain').addEventListener('click', () => {
-    if (lastResult) startRace(lastResult.year, lastResult.from);
+    if (lastResult?.kind === 'clock') startAttack(lastResult.year);
+    else if (lastResult) startRace(lastResult.year, lastResult.from);
   });
+  (['rival', 'clock'] as const).forEach((kind) =>
+    element(kind === 'rival' ? 'raceKindRival' : 'raceKindClock').addEventListener('click', () => {
+      raceKind = kind;
+      drawRaceList();
+    }),
+  );
   element('raceResultClose').addEventListener('click', closeResult);
   element('raceCopy').addEventListener('click', (e) => {
     const button = e.currentTarget as HTMLElement;
@@ -2153,6 +2313,14 @@ export function startApp(
       } else {
         lastPos.copy(ship.pos);
         updatePilot(dt);
+        // A ship that flies into a badge earns it as a shot would. A jump's move isn't flown, so it takes none.
+        if (ship.live && !(jump && jump.t < 0.5)) {
+          let badge = badges.touched(lastPos, ship.pos, play);
+          while (badge) {
+            earn(badge, false);
+            badge = badges.touched(lastPos, ship.pos, play);
+          }
+        }
         // An open panel holds the race as it holds the ship
         if (ship.live && !panelOpen && !(jump && jump.t < 0.5)) updateRace(dt);
       }
@@ -2181,7 +2349,7 @@ export function startApp(
       (p) => {
         const badge = badges.hit(p, play);
         if (badge) {
-          earn(badge);
+          earn(badge, true);
           return -1;
         }
         if (p.y < PLINTH) return -1;
@@ -2330,6 +2498,8 @@ export function startApp(
         stick,
         startRace,
         courseFor,
+        startAttack,
+        attackFor,
         rival: rival.group,
         ghost: ghost.group,
         get race() {

@@ -174,11 +174,11 @@
         <h2 id="raceTitle">Race</h2>
         <button class="panel-close" type="button">Close</button>
       </div>
-      <p>
-        Race the Autopilot down a year's alleys and once round its busiest day. Fly through each gold gate in turn.
-        Clipping a tower costs speed. Passing close to towers at speed scores near misses, which a clip loses before
-        they're banked.
-      </p>
+      <div class="race-kinds" role="group" aria-label="Kind of race">
+        <button id="raceKindRival" type="button" aria-pressed="true">Rival</button>
+        <button id="raceKindClock" type="button" aria-pressed="false">Time attack</button>
+      </div>
+      <p id="raceAbout"></p>
       <p id="raceShip"></p>
       <ul id="raceList"></ul>
     </section>
@@ -189,8 +189,8 @@
         <button class="panel-close" type="button">Close</button>
       </div>
       <p>
-        Milestones from this history. Pick one to jump to it, then shoot it to earn it. Find one by its gold marker
-        instead and it's earned as flown.
+        Milestones from this history. Pick one to jump to it, then shoot it or fly into it to earn it. Find one by its
+        gold marker instead and it's earned as flown.
       </p>
       <p id="badgeFlown" hidden></p>
       <ul id="badgeList"></ul>
@@ -280,6 +280,13 @@
           is bright and has a marker, and one flown past has to be gone back for. Passing close to towers at speed
           scores near misses, which build a chain until two seconds pass without one, and a clip loses the chain. Your
           fastest run with each ship is kept, and flies alongside as a faint ghost the next time.
+        </dd>
+        <dt>Time attack</dt>
+        <dd>
+          Beat the clock through gold rings, out to the far end of a year and back: low down its alleys, over its roofs,
+          high up its walls where the roofs are too tall to hop, and round a loop past the end. Each ring adds time, the
+          clock turns red in its last three seconds, and running out ends the run. Your most rings and most time to
+          spare with each ship are kept.
         </dd>
       </dl>
 
@@ -384,19 +391,21 @@
         <dd>Lists the years. Pick one to fly it, or All for the whole history.</dd>
         <dt>Race</dt>
         <dd>
-          Lists the years you can race, with the rival's time and your fastest with this ship. After a race, Copy a
-          challenge copies a link that offers the same race with your time to beat. Explore names a day's course, the
-          same for everyone that day, and lists the cities you've flown here under Flown here.
+          Lists the years you can race, under Rival with the rival's time and your fastest with this ship, and under
+          Time attack with the number of rings and your best. After a race against the rival, Copy a challenge copies a
+          link that offers the same race with your time to beat. Explore names a day's course, the same for everyone
+          that day, and lists the cities you've flown here under Flown here.
         </dd>
         <dt>Timeline</dt>
         <dd>Drag it to move through the dates.</dd>
         <dt>Badges</dt>
         <dd>
           Lists the milestones in this history. Pick one to jump to it. The ship waits there while you line up the shot,
-          and Shift or the Boost button flies off. Aim close to a badge and the targeting computer locks on, with a tone
-          and the badge's name, and shots fired while locked curve into it. A badge you find by its gold marker, without
-          the jump, is earned as flown, and the list keeps count of those. Clear a city by flying, with no jump, and
-          it's timed: the clock is under the date, and your fastest clear is kept.
+          and Shift or the Boost button flies on. Flying into a badge earns it too. Aim close to a badge and the
+          targeting computer locks on, with a tone and the badge's name, and shots fired while locked curve into it. A
+          badge you find by its gold marker, without the jump, is earned as flown, and the list keeps count of those.
+          Clear a city by flying, with no jump, and it's timed: the clock is under the date, and your fastest clear is
+          kept.
         </dd>
         <dt>Settings</dt>
         <dd>
@@ -428,8 +437,8 @@
         has no API for them, its policy only allows scraping for research and archiving, and the artwork is GitHub's.
       </p>
       <p>
-        Shooting a badge blows it up and saves it in this browser. It changes nothing on GitHub. Reset, at the top of
-        the Badges list, brings back the ones you've earned on this city so you can shoot them again.
+        A badge you earn is saved in this browser. It changes nothing on GitHub. Reset, at the top of the Badges list,
+        brings back the ones you've earned on this city so you can win them again.
       </p>
 
       <h3>Your data</h3>

@@ -464,13 +464,28 @@ function evenlySpaced(wp: Waypoint[]) {
   return out;
 }
 
-function sampled(map: CityMap, wp: Waypoint[], centre: Vector3): Route {
+/** How a line is smoothed: how far its turns and its lift over towers are spread, in units, and how steeply it climbs. */
+export interface Shape {
+  turn: number;
+  lift: number;
+  /** Units up or down for each unit along, at most, where the line rises over a tower. */
+  climb: number;
+}
+
+/** Autopilot's line, gentle enough for a camera to ride. */
+const RIDE: Shape = { turn: TURN_SMOOTHING, lift: LIFT_SMOOTHING, climb: CLIMB_SLOPE };
+
+/**
+ * The waypoints as a line of evenly spaced samples, lifted over the finished city so it clears every tower, slowed for
+ * its corners and banked for its turns.
+ */
+export function sampled(map: CityMap, wp: Waypoint[], centre: Vector3, shape: Shape = RIDE): Route {
   wp.forEach((w, i) => {
     w.g ??= i ? wp[i - 1].g : centre;
     w.spin ??= i ? wp[i - 1].spin : 0;
   });
   const raw = evenlySpaced(wp);
-  const turn = samplesWithin(TURN_SMOOTHING);
+  const turn = samplesWithin(shape.turn);
   const x = blurredTwice(raw.x, turn);
   const z = blurredTwice(raw.z, turn);
 
@@ -483,9 +498,9 @@ function sampled(map: CityMap, wp: Waypoint[], centre: Vector3): Route {
     });
     return h;
   });
-  for (let i = 1; i < needed.length; i++) needed[i] = Math.max(needed[i], needed[i - 1] - STEP * CLIMB_SLOPE);
-  for (let i = needed.length - 2; i >= 0; i--) needed[i] = Math.max(needed[i], needed[i + 1] - STEP * CLIMB_SLOPE);
-  const lift = samplesWithin(LIFT_SMOOTHING);
+  for (let i = 1; i < needed.length; i++) needed[i] = Math.max(needed[i], needed[i - 1] - STEP * shape.climb);
+  for (let i = needed.length - 2; i >= 0; i--) needed[i] = Math.max(needed[i], needed[i + 1] - STEP * shape.climb);
+  const lift = samplesWithin(shape.lift);
   const y = blurredTwice(dilated(needed, lift * 2), lift);
 
   // How sharply the path bends at each point, in radians per unit

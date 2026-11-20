@@ -53,7 +53,7 @@ The lists are a file, `public/explore.json`, which `npm run explore` writes from
 
 ### Racing
 
-Race, beside the timeline, lists the years with any contributions, newest first, each with the rival's time and your fastest. A race takes the ship to a start line west of that year's block and counts down from three. The course is the line Autopilot takes down the year's alleys, then once round its busiest day, climbing, to finish on a short straight. Gold rings are the gates: the next one is bright and has a marker, the few after it are dim, and one flown past has to be gone back for. The end of an Autopilot flight also offers Race it.
+Race, beside the timeline, offers two kinds of race on any year with contributions: Rival, against Autopilot, and Time attack, below. Under Rival it lists those years newest first, each with the rival's time and your fastest. A race takes the ship to a start line west of that year's block and counts down from three. The course is the line Autopilot takes down the year's alleys, then once round its busiest day, climbing, to finish on a short straight. Gold rings are the gates: the next one is bright and has a marker, the few after it are dim, and one flown past has to be gone back for. The end of an Autopilot flight also offers Race it.
 
 The rival is Autopilot, flying the same line in another ship. It picks up speed as the ship does and takes each stretch as fast as its corners allow. On the courses tested it averages from Pilot's cruising speed to a third faster, so a clean run at cruise ties or loses, and one that boosts where it can wins. The readout under the header gives the gate, the clock, the gap to the rival at the last gate, and the score.
 
@@ -67,17 +67,25 @@ Explore names a day's course at the top of its lists: one of its cities, picked 
 
 Explore also lists the cities flown in this browser, under Flown here, with what was done on each, and marks them in the other lists as Flown, Raced or Cleared.
 
+### Time attack
+
+Time attack, the other half of the Race panel, is flown against the clock with no rival. The course goes out from the west end of a year's block to its east end, round a loop past it, and back to finish near the start. Each way it weaves: a ring low down an alley between the towers, then one over the roofs of the next row on the way to the alley beside it, or, where those roofs are too tall to hop, one high up the walls of the same alley. A ring over the roofs clears the row it crosses by more than the ring's own radius. A course has a dozen rings or more, and a busy year keeps more of them down in its alleys.
+
+The clock starts with enough time to reach the first ring at 21 units a second, plus three seconds. Each ring adds the time the stretch to the next one takes at that speed, so flying the line at cruising speed runs out partway, and averaging more than 21 along it finishes with time to spare. As with a race's gates, a ring flown past has to be gone back for, an open panel holds the clock, and changing mode, year or ship calls the run off. The readout gives the ring, the clock, the time the last ring added, and this ship's best. The clock turns red and ticks in its last three seconds, and running out ends the run at the ring it was heading for. The most rings reached and the most time left at a finish are kept for each year and ship, and the list marks a year finished in any ship. A time attack has no ghost, near-miss score or challenge link.
+
 ### Badges
 
 Illustrated medallions float over the days a user hit a milestone: joining GitHub, a first pull request, a thousandth contribution, a longest streak, a busiest day. In Pilot, gold markers show the badges still standing, with their distance. Up to four of the nearest out of view are pinned to the edge of the screen with their artwork, pointing the way. Or open the Badges list and pick one to jump there, and the ship waits in front of it while you line up the shot.
 
-A badge found by its marker is earned as flown, and the list tags it and keeps count. One shot from where a jump set the ship down, or within 120 units of flying after it, is earned without the tag. With no badge left standing, a marker in the buildings' colour points back to the city once the ship is more than 40 units clear of it.
+A badge is earned by shooting it or by flying into it. One flown into throws out its gold around the ship, without the fireball and shake of a shot, which would fill the view from just behind. It counts once a wingtip reaches the medallion's rim, and a fast ship can't skip one between frames. When the wait in front of a badge runs out, the ship flies on into it.
+
+A badge found by its marker is earned as flown, and the list tags it and keeps count. One won from where a jump set the ship down, or within 120 units of flying after it, is earned without the tag. With no badge left standing, a marker in the buildings' colour points back to the city once the ship is more than 40 units clear of it.
 
 A city cleared by flying, from no badge earned to the last, is timed. The clock sits under the date in Pilot and counts while the ship is in your hands, so it stops for an open panel. A jump from the list ends the timing. The fastest clear is kept in the browser, shown in the Badges list, and outlasts a reset.
 
 Aim close to a badge with no tower in the way and the targeting computer locks on, with a tone and its name. Shots fired while locked curve into it, which helps on a phone. A hit blows the badge up and earns it. These are this site's own badges, dated from GitHub's API. GitHub has no API for its profile achievements, so they aren't shown. Earned badges are stored only in the visitor's browser and don't change anything on GitHub. Reset, at the top of the list, brings back the ones earned on that city after a second press.
 
-Shooting a city's last badge clears it: rockets climb and burst across the view, lighting the towers under them, the ship does a victory roll, and the Badges button turns gold. The Guide leaves this out so it stays a surprise. With reduced motion on, a message marks the moment and the show is skipped.
+Earning a city's last badge clears it: rockets climb and burst across the view, lighting the towers under them, the ship does a victory roll, and the Badges button turns gold. The Guide leaves this out so it stays a surprise. With reduced motion on, a message marks the moment and the show is skipped.
 
 ### Looks
 
@@ -152,13 +160,13 @@ npm run dev
 
 `GITHUB_TOKEN` is a [personal access token (classic)](https://github.com/settings/tokens) with no scopes ticked. GitHub's GraphQL API needs a token even for public data, so it lives on the server. `npm run dev` runs the API inside the Vite dev server, with no Vercel login needed.
 
-| Command            | Does                                                                                                                                                      |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm test`         | API, card, route, ride, race, near-miss, badge, year, zoom, colour, look, ship, sound, music, aiming, collision, sight, clock, passport and Explore tests |
-| `npm run test:e2e` | Browser tests with a stubbed API, under the production CSP                                                                                                |
-| `npm run lint`     | ESLint                                                                                                                                                    |
-| `npm run build`    | Typecheck, then build to `dist`                                                                                                                           |
-| `npm run explore`  | Rewrites `public/explore.json` from GitHub's search. Needs `GITHUB_TOKEN`, from the environment or `.env.local`                                           |
+| Command            | Does                                                                                                                                                                   |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm test`         | API, card, route, ride, race, time attack, near-miss, badge, year, zoom, colour, look, ship, sound, music, aiming, collision, sight, clock, passport and Explore tests |
+| `npm run test:e2e` | Browser tests with a stubbed API, under the production CSP                                                                                                             |
+| `npm run lint`     | ESLint                                                                                                                                                                 |
+| `npm run build`    | Typecheck, then build to `dist`                                                                                                                                        |
+| `npm run explore`  | Rewrites `public/explore.json` from GitHub's search. Needs `GITHUB_TOKEN`, from the environment or `.env.local`                                                        |
 
 `npx playwright install chromium` fetches the browser for the end-to-end tests.
 
@@ -173,7 +181,7 @@ npm run dev
 - `src/world.ts`, `src/fighter.ts`, `src/badges.ts`, `src/blast.ts`, `src/fireworks.ts` and `src/app.ts` are the three.js scene, the ship and its guns, the floating badges, their explosions, the show for a cleared city and the flight modes. `src/environment.ts` renders what the ship's metal and glass reflect, and `src/trails.ts` draws the vapour off its wingtips.
 - `src/skins.ts` holds the looks. A look is how the city itself is drawn, plus what is done to the finished frame: 16-bit and VGA are cut into big square pixels, each read four times so a thin tower dims at a distance where it would otherwise flicker. `dress` compiles a shader for a look: each version sits under a name such as `BLOCKS`, `SHOOTER` or `DAY` in `src/shaders.ts`, so every look is its own program and none pays for another.
 - The five ships are designs in `src/fighter.ts`. A design places its own parts and says where its engines, wingtips and guns are, and the flames, lights and barrels are fitted the same way on all of them. `src/powers.ts` holds what each does differently in Pilot, and `src/cockpits.ts` draws each one's cockpit as SVG over the view.
-- `src/race.ts` builds a year's course from `courseRoute` in `src/routes.ts`, sets its gates, works out the rival's flight ahead of the race, and keeps the race, the bests, the ghosts, challenge links and the day's course. `src/near.ts` scores near misses, `src/gates.ts` draws the gates, `src/race-hud.ts` is the race's readout, panel and cards, and `src/passport.ts` remembers the cities flown here. None of them but the gates need WebGL.
+- `src/race.ts` builds a year's course from `courseRoute` in `src/routes.ts`, sets its gates, works out the rival's flight ahead of the race, and keeps the race, the bests, the ghosts, challenge links and the day's course. `src/attack.ts` plans a year's time attack, lifts its line over the city with `sampled` in `src/routes.ts` at a sharper setting than Autopilot's, sets its rings, and keeps the clock and the bests. `src/near.ts` scores near misses, `src/gates.ts` draws the gates and rings, `src/race-hud.ts` is the readout, panel and cards for both, and `src/passport.ts` remembers the cities flown here. None of them but the gates need WebGL.
 - `src/badge-art.ts` draws the badge artwork at runtime, and `src/hud.ts` is everything on screen that isn't the 3D scene.
 - `src/sound.ts` makes the sound effects and mixes them with the music from `src/music.ts`, all with the Web Audio API, and builds nothing until the visitor's first click, tap or key press.
 

@@ -17,6 +17,13 @@ const MUZZLE_SECONDS = 0.07;
 export const HOMING = 3;
 /** The model is drawn a little larger than the ship's footprint, then scaled down to it. */
 const SCALE = 0.8;
+/**
+ * The widest a ship's model may reach to either side, in its own units, lights and guns included. `tests/ships.test.ts`
+ * holds every design to it.
+ */
+export const WIDEST = 0.52;
+/** How far a ship can reach to either side of its centre, in the scene's units. */
+export const SHIP_HALF_SPAN = WIDEST * SCALE;
 /** The guns sit either side of the centre, in the scene's units. In the model's own units they're this over SCALE. */
 const GUN = new THREE.Vector3(0.34, 0, -0.1);
 /** Past 1 on purpose: the old bolts' colour, bright enough for the bloom pass to make them glow. */

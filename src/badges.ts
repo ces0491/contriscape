@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { paintBadge } from './badge-art';
+import { SHIP_HALF_SPAN } from './fighter';
 import type { CityMap } from './map';
 import type { Milestone } from './milestones';
 import { BADGE_GLOW_FRAGMENT, BADGE_GLOW_VERTEX } from './shaders';
@@ -7,6 +8,28 @@ import type { Shared } from './world';
 
 const HIT_RADIUS = 1.8;
 export const BADGE_RADIUS = 0.85;
+/** A ship whose centre passes this close to a badge's has flown into it. A badge spins, so its edge sweeps a ball. */
+export const TOUCH_REACH = BADGE_RADIUS + SHIP_HALF_SPAN;
+
+interface Point {
+  x: number;
+  y: number;
+  z: number;
+}
+
+/**
+ * How close a move from `from` to `to` comes to `at`. The whole move counts, so a fast ship can't skip a badge between
+ * frames.
+ */
+export function closestPass(from: Point, to: Point, at: Point): number {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const dz = to.z - from.z;
+  const length = dx * dx + dy * dy + dz * dz;
+  const along = length > 0 ? ((at.x - from.x) * dx + (at.y - from.y) * dy + (at.z - from.z) * dz) / length : 0;
+  const k = Math.min(1, Math.max(0, along));
+  return Math.hypot(from.x + dx * k - at.x, from.y + dy * k - at.y, from.z + dz * k - at.z);
+}
 const THICKNESS = 0.12;
 const HOVER = 2.1;
 const STACK = 2.1;
@@ -191,16 +214,30 @@ export class Badges {
   /** The badge a laser bolt has reached at this point, marked as earned, or null. */
   hit(point: THREE.Vector3, play: number): Milestone | null {
     for (let i = 0; i < this.milestones.length; i++) {
-      const badge = this.milestones[i];
-      if (badge.day > play || this.earned.has(badge.id) || point.distanceTo(this.places[i]) > HIT_RADIUS) continue;
-      this.earned.add(badge.id);
-      saveIds(this.key, this.earned);
-      return badge;
+      if (this.isStanding(i, play) && point.distanceTo(this.places[i]) <= HIT_RADIUS) return this.claim(i);
     }
     return null;
   }
 
-  /** Forgets what this visitor has earned on this city, so the badges can be shot again. */
+  /**
+   * A badge the ship flew into on its move from `from` to `to`, marked as earned, or null. One at a time, so a ship that
+   * takes two stacked badges at once earns the city's last only once: ask again until it says null.
+   */
+  touched(from: THREE.Vector3, to: THREE.Vector3, play: number): Milestone | null {
+    for (let i = 0; i < this.milestones.length; i++) {
+      if (this.isStanding(i, play) && closestPass(from, to, this.places[i]) <= TOUCH_REACH) return this.claim(i);
+    }
+    return null;
+  }
+
+  private claim(index: number): Milestone {
+    const badge = this.milestones[index];
+    this.earned.add(badge.id);
+    saveIds(this.key, this.earned);
+    return badge;
+  }
+
+  /** Forgets what this visitor has earned on this city, so the badges can be won again. */
   reset(): void {
     this.earned.clear();
     this.flown.clear();

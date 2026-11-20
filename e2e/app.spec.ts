@@ -47,9 +47,12 @@ interface CityDebug {
     bank: number;
     pos: { x: number; y: number; z: number; set(x: number, y: number, z: number): void };
   };
+  startAttack: (year: number) => void;
   race: {
     phase: string;
     next: number;
+    /** Seconds on a time attack's clock. */
+    left?: number;
     course: {
       year: number;
       gates: { at: { x: number; y: number; z: number }; normal: { x: number; y: number; z: number } }[];
@@ -61,7 +64,7 @@ interface CityDebug {
   camera: { matrixWorld: { elements: number[] } };
   weapons: { activeBolts: number };
   badges: { tokens: { visible: boolean }[]; milestones: { id: string; name: string }[]; earned: Set<string> };
-  blasts: { active: boolean }[];
+  blasts: { active: boolean; exploding: boolean }[];
   fireworks: { active: boolean };
   fighter: {
     visible: boolean;
@@ -1472,6 +1475,35 @@ test('shooting a badge earns it, and it stays earned', async ({ page }) => {
   await expect(page.locator('#badges')).toHaveText(/^Badges 1\/\d+$/);
 });
 
+test('flying into a badge earns it without a shot, and scatters its gold with no fireball', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#badges');
+  await page.locator('#badgeList button').first().click();
+  await shipLive(page);
+  // The list sets the ship down aimed at the badge, and boost flies it straight on
+  await page.keyboard.down('ShiftLeft');
+  // The gold is in the air for a second and a bit, so it is read in the frame the badge is won
+  const won = await page.waitForFunction(
+    () => {
+      const { badges, blasts, weapons } = window.__city;
+      if (!badges.earned.has(badges.milestones[0].id)) return null;
+      return {
+        bolts: weapons.activeBolts,
+        gold: blasts.some((blast) => blast.active),
+        fireball: blasts.some((blast) => blast.exploding),
+      };
+    },
+    null,
+    { timeout: 60_000 },
+  );
+  await page.keyboard.up('ShiftLeft');
+  expect(await won.jsonValue()).toEqual({ bolts: 0, gold: true, fireball: false });
+  await expect(page.locator('#toast b')).toHaveText(/^Badge earned: /);
+  await expect(page.locator('#badges')).toHaveText(/^Badges 1\/\d+$/);
+});
+
 test('a badge jumped to from the list is earned, and one flown to is marked as flown', async ({ page }) => {
   await stubApi(page, { body: busy('octo-dev') });
   await page.goto('/octo-dev');
@@ -1491,12 +1523,16 @@ test('a badge jumped to from the list is earned, and one flown to is marked as f
   await expect(rows.nth(0).locator('em')).toHaveCount(0);
   await expect(tally).toBeHidden();
 
-  // Jump to the next to learn where to line up on it, fly well away, and come back to that spot
+  // Jump to the next to learn where to line up on it, fly well away, and come back to that spot. The ship flies away
+  // high over the city, because flying on from where the jump left it would take it into the badge.
   await rows.nth(1).click();
   await shipLive(page);
   const pose = await page.evaluate(() => {
     const { ship } = window.__city;
-    return { x: ship.pos.x, y: ship.pos.y, z: ship.pos.z, yaw: ship.yaw, pitch: ship.pitch };
+    const at = { x: ship.pos.x, y: ship.pos.y, z: ship.pos.z, yaw: ship.yaw, pitch: ship.pitch };
+    ship.pos.y = 150;
+    ship.pitch = 0;
+    return at;
   });
   await page.keyboard.down('ShiftLeft');
   await expect.poll(() => page.evaluate(() => window.__city.sinceJump), { timeout: 120_000 }).toBeGreaterThan(125);
@@ -1991,6 +2027,61 @@ test('a challenge link opens with the time to beat, which the race shows', async
   await page.click('#m-orbit');
   await expect(page.locator('#raceHud')).toBeHidden();
   expect(await page.evaluate(() => window.__city.race)).toBeNull();
+});
+
+test('a time attack counts down, is flown through its rings, and keeps the time to spare for the ship', async ({
+  page,
+}) => {
+  const faults = watchForFaults(page);
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#race');
+  await page.click('#raceKindClock');
+  await expect(page.locator('#raceKindClock')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#raceAbout')).toContainText('Each ring adds time');
+  await expect(page.locator('#raceList button').first()).toHaveText(/^2026\d+ rings$/);
+  await page.locator('#raceList button[data-year="2025"]').click();
+
+  await expect(page.locator('#raceGate')).toHaveText(/^2025 · Ring 1 of \d+$/, { timeout: 30_000 });
+  await expect(page.locator('#countdown span')).toHaveText('Each ring adds time. Keep the clock from running out');
+  expect(await page.evaluate(() => window.__city.rival.visible)).toBe(false);
+  await flyGates(page);
+  await expect(page.locator('#raceResult')).toBeVisible({ timeout: 200_000 });
+  await expect(page.locator('#raceResultTitle')).toHaveText(/^Finished with 0:\d\d\.\d to spare$/);
+  await expect(page.locator('#raceResultFacts')).toContainText('Interceptor');
+  // A challenge link sets a race against the rival, so a time attack has none to copy
+  await expect(page.locator('#raceCopy')).toBeHidden();
+  await page.click('#raceResultClose');
+  await page.click('#race');
+  await expect(page.locator('#raceKindClock')).toHaveAttribute('aria-pressed', 'true');
+  const row = page.locator('#raceList button[data-year="2025"]');
+  await expect(row).toContainText('Finished');
+  await expect(row).toContainText(/Best 0:\d\d\.\d to spare/);
+  // The rival's list is as it was
+  await page.click('#raceKindRival');
+  await expect(row).toContainText(/^2025Rival 0:\d\d\.\d$/);
+  expect(faults).toEqual([]);
+});
+
+test('a time attack ends when its clock runs out, and Race again starts another', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.evaluate(() => window.__city.startAttack(2024));
+  await expect
+    .poll(() => page.evaluate(() => window.__city.race?.phase), { timeout: 200_000, intervals: [500] })
+    .toBe('racing');
+  // Nearly out of time, and nowhere near the first ring
+  await page.evaluate(() => {
+    const { race } = window.__city;
+    if (race) race.left = 0.2;
+  });
+  await expect(page.locator('#raceResultTitle')).toHaveText(/^Out of time at ring 1 of \d+$/, { timeout: 60_000 });
+  await expect(page.locator('#raceResultFacts')).toContainText(/Rings0 of \d+/);
+  await page.click('#raceAgain');
+  await expect(page.locator('#raceGate')).toHaveText(/^2024 · Ring 1 of \d+$/, { timeout: 30_000 });
+  await expect(page.locator('#raceResult')).toBeHidden();
 });
 
 test("the day's course is in Explore, and opens on a year of that city's", async ({ page }) => {

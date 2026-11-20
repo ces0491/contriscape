@@ -12,8 +12,8 @@ Let anyone enter a GitHub username and fly through a 3D city of that person's pu
 - [x] Autopilot never touches a tower, proven by tests across unusual account shapes
 - [x] The GitHub token stays on the server, and repeat visits are served from the CDN
 - [x] Missing users, rate limits and outages each show a clear message
-- [x] Milestone badges sit on their real dates and can be shot, earned, blown up and reset, kept in the visitor's browser
-- [x] Shooting a city's last badge sets off fireworks and a victory roll, and marks the Badges button, with reduced motion respected
+- [x] Milestone badges sit on their real dates and can be earned by shooting them or flying into them, and reset, kept in the visitor's browser
+- [x] Earning a city's last badge sets off fireworks and a victory roll, and marks the Badges button, with reduced motion respected
 - [x] A December flight through the current year, with captions and a closing summary
 - [x] Visitors can change the building and ship colours, choose mouse steering, and read a guide to the controls and badges on the page
 - [x] Sound effects that start only after the visitor's first click, tap or key press, and switch off from Settings or a key, with the choice kept in the visitor's browser
@@ -32,6 +32,7 @@ Let anyone enter a GitHub username and fly through a 3D city of that person's pu
 - [x] A ship picked where none is on screen is shown beside Settings
 - [x] Where a look has a sun, the towers throw shadows
 - [x] Any year with contributions can be raced against Autopilot through gates, with near misses scored, bests and a ghost kept for each year and ship, a challenge link, and a day's course in Explore
+- [x] Any year with contributions has a time attack: rings low down its alleys and over or high up its walls, out and back, against a clock each ring adds to, with bests kept for each year and ship
 - [x] A double tap of a direction rolls the ship one alley across, and up with a direction flies it on its side
 - [x] The site root opens the city the browser opened last, and Explore lists the cities flown there
 - [x] Your year opens on the year's number, counts up as it rises, celebrates its moments and badges, ends in fireworks, and flies a limited edition ship, colours, look and music
@@ -78,3 +79,4 @@ Ces, after flying a stranger's city on the live URL from a phone and a laptop.
 - 2026-11-20: took the list of new repos out of Explore, kept each field's list to bios that have its words, and gave a visitor over the firewall's limit a message of their own, after Ces asked for the open items to be closed
 - 2026-11-20: replaced the Handheld and Arcade looks, which Ces found unplayable, with 16-bit and VGA; gave each ship a power and a cockpit; showed a picked ship beside Settings; took the plant rooms off the night's roofs; put something on each look's horizon; and softened the planet's shadow on its ring, at Ces's request
 - 2026-11-20: added racing, with near misses, ghosts, challenge links, a day's course and the passport; the barrel roll and flying on the side; the root opening on the last city; and a Your year with an opening, a running count, celebrated moments, fireworks, a limited edition and its own share link and card, at Ces's request
+- 2026-11-20: badges can be earned by flying into them, and races gained a time attack through rings against the clock, at Ces's request

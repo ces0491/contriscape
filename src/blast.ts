@@ -12,7 +12,7 @@ const WAVE = new THREE.Color(1.5, 1, 0.45);
 
 const easeOut = (k: number) => 1 - Math.pow(1 - k, 3);
 
-/** A badge going up: a fireball, a shockwave and its gold thrown out in pieces. */
+/** A badge going up: a fireball, a shockwave and its gold thrown out in pieces. A badge flown into has only the gold. */
 export class Blast {
   private readonly group = new THREE.Group();
   private readonly fireball: THREE.Mesh;
@@ -68,10 +68,21 @@ export class Blast {
     return this.age < SECONDS;
   }
 
-  start(at: THREE.Vector3): void {
+  /** Whether this is a badge blown up, with its fireball and shockwave, rather than one flown into. */
+  get exploding(): boolean {
+    return this.active && this.fireball.visible;
+  }
+
+  /**
+   * Sets a badge going up. One flown into only throws out its gold: the ship is where it was, so a fireball would fill the
+   * view from the cockpit and the chase camera just behind.
+   */
+  start(at: THREE.Vector3, explode = true): void {
     this.age = 0;
     this.group.position.copy(at);
     this.group.visible = true;
+    this.fireball.visible = explode;
+    this.wave.visible = explode;
     const { random } = this;
     this.flung.forEach((v, i) => {
       const y = random() * 2 - 1;

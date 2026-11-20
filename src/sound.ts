@@ -458,6 +458,19 @@ export class Sound {
     );
   }
 
+  /** Three falling notes for a time attack whose clock ran out. */
+  timeUp(): void {
+    const rig = this.live();
+    if (!rig) return;
+    // E, C and the G below, the last held
+    [659.25, 523.25, 392].forEach((pitch, i, notes) =>
+      tone(rig, 'triangle', [[0, pitch]], fade(0.22, i === notes.length - 1 ? 0.7 : 0.2, 0.01), {
+        delay: i * 0.14,
+        wet: 0.4,
+      }),
+    );
+  }
+
   /** A rising run of notes for a cleared city. */
   fanfare(): void {
     const rig = this.live();
