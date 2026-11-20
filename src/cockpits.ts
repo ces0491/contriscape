@@ -1,4 +1,4 @@
-import type { Ship } from './fighter';
+import type { Design as Model } from './fighter';
 
 /**
  * The view from each ship's seat: what the pilot looks through, the bars across it, and a few instruments on the frame.
@@ -75,7 +75,7 @@ function row(x1: number, y1: number, x2: number, y2: number, count: number, size
   }).join('');
 }
 
-const DESIGNS: Record<Ship, Design> = {
+const DESIGNS: Record<Model, Design> = {
   // A fighter's canopy: one faceted bubble with two bars running back from the nose
   interceptor: {
     glass: ['M250 58L1350 58L1520 560L1200 900L400 900L80 560Z'],
@@ -108,6 +108,17 @@ const DESIGNS: Record<Ship, Design> = {
     fittings:
       dial(800, 114, 50) + lamp('lock', 668, 116, 22) + lamp('boost', 932, 116, 22) + row(120, 716, 1480, 716, 18, 8),
   },
+  // The year's own ship: one wide window with rivets down both sides, and the instruments below it in the middle
+  comet: {
+    glass: ['M120 110Q800 -30 1480 110L1500 620Q800 820 100 620Z'],
+    struts: '',
+    fittings:
+      row(52, 180, 52, 580, 6, 6) +
+      row(1548, 180, 1548, 580, 6, 6) +
+      dial(800, 830, 50) +
+      lamp('lock', 690, 836, 22) +
+      lamp('boost', 910, 836, 22),
+  },
   // Built of boxes: three square panes with a row of small ones over them, and square lamps
   brick: {
     glass: ['M190 100H1410V226H190Z', 'M190 276H575V860H190Z', 'M625 276H975V860H625Z', 'M1025 276H1410V860H1025Z'],
@@ -122,7 +133,7 @@ const DESIGNS: Record<Ship, Design> = {
 };
 
 /** The markup for a ship's cockpit, to go inside an SVG whose view box is 1600 by 900. */
-export function cockpitMarkup(ship: Ship): string {
+export function cockpitMarkup(ship: Model): string {
   const { glass, struts, fittings } = DESIGNS[ship];
   const openings = glass.join('');
   return (
@@ -134,7 +145,7 @@ export function cockpitMarkup(ship: Ship): string {
 }
 
 /** Fits a ship's cockpit into the page's canopy and returns what moves its instruments. */
-export function fitCockpit(canopy: Element, ship: Ship): (readings: Readings) => void {
+export function fitCockpit(canopy: Element, ship: Model): (readings: Readings) => void {
   canopy.innerHTML = cockpitMarkup(ship);
   canopy.setAttribute('data-ship', ship);
   const needle = canopy.querySelector('[data-live="speed"]');

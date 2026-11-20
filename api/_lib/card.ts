@@ -1,6 +1,6 @@
 import type { Contributions } from '../../shared/contract.js';
 import { Calendar, formatCount } from '../../src/calendar.js';
-import { DEFAULT_COLOURS, towerPalette } from '../../src/colours.js';
+import { DEFAULT_COLOURS, EDITION_COLOURS, towerPalette } from '../../src/colours.js';
 import { CityMap } from '../../src/map.js';
 import { canWrite, textHeight, textWidth, write } from './letters.js';
 import { Picture, type Rgb } from './png.js';
@@ -111,6 +111,98 @@ export function drawCard(data: Contributions): Picture {
     write(picture, lastYear, CARD_WIDTH - MARGIN - textWidth(lastYear, 2), GROUND + 12, 2, MUTED);
   }
   write(picture, 'contriscape', MARGIN, CARD_HEIGHT - 44, 3, accent);
+  const disclaimer = 'Not affiliated with GitHub';
+  write(picture, disclaimer, CARD_WIDTH - MARGIN - textWidth(disclaimer, 2), CARD_HEIGHT - 40, 2, MUTED);
+  return picture;
+}
+
+/** The year card's skyline stands on this line, a little lower than the history's, to leave room for the year above. */
+const YEAR_GROUND = 548;
+const YEAR_TALLEST = 250;
+const YEAR_TOP = 156;
+const YEAR_SCALE = 18;
+const STATS_SCALE = 4;
+
+const plural = (n: number, word: string) => `${formatCount(n)} ${word}${n === 1 ? '' : 's'}`;
+
+/** The lines beside the year on its card: how much was in it, on how many days, and the longest run of them. */
+export function yearLines(cal: Calendar, year: number): string[] {
+  const { a, b } = cal.span(year);
+  let active = 0;
+  for (let day = a; day <= b; day++) if (cal.counts[day]) active++;
+  return [
+    plural(cal.sum(a, b), 'contribution'),
+    `${plural(active, 'active day')}`,
+    `Longest streak ${plural(cal.longestStreak(a, b).length, 'day')}`,
+  ];
+}
+
+/**
+ * The card a shared link to one year shows, in the year's own gold: the name, the year written large as a wall of lit
+ * windows, what was in it, and the year as a skyline, one tower to a week at the height of its busiest day. Null for a
+ * year with nothing in it, which gets the history's card instead.
+ */
+export function drawYearCard(data: Contributions, year: number): Picture | null {
+  const cal = new Calendar(data);
+  if (!cal.years.includes(year) || !cal.yearTotal(year)) return null;
+  const map = new CityMap(cal);
+  const { ramp, window } = towerPalette(EDITION_COLOURS.towers);
+  const picture = new Picture(CARD_WIDTH, CARD_HEIGHT, NIGHT);
+  const random = seeded(`${cal.login}:${year}`);
+  const gold: Rgb = [byte(ramp[3][0]), byte(ramp[3][1]), byte(ramp[3][2])];
+  const lit: Rgb = [byte(window[0]), byte(window[1]), byte(window[2])];
+
+  for (let band = 0; band < 14; band++) {
+    picture.rect(0, YEAR_GROUND - (band + 1) * 14, CARD_WIDTH, 14, gold, 0.06 * (1 - band / 14));
+  }
+  picture.rect(0, YEAR_GROUND, CARD_WIDTH, CARD_HEIGHT - YEAR_GROUND, [4, 7, 13]);
+
+  const { a, b } = cal.span(year);
+  const weeks = Math.ceil((b - a + 1) / 7);
+  // Spaced for the whole year, so a year still going leaves its weeks to come empty, under December
+  const yearDays = Math.round((Date.UTC(year + 1, 0, 1) - Date.UTC(year, 0, 1)) / 864e5);
+  const span = CARD_WIDTH - MARGIN * 2;
+  const pitch = span / Math.ceil(yearDays / 7);
+  const across = Math.max(2, Math.floor(pitch) - 3);
+  for (let week = 0; week < weeks; week++) {
+    let busiest = 0;
+    for (let day = a + week * 7; day <= Math.min(b, a + week * 7 + 6); day++)
+      busiest = Math.max(busiest, cal.counts[day]);
+    const share = map.share(busiest);
+    const x = Math.round(MARGIN + week * pitch);
+    if (!share) {
+      picture.rect(x, YEAR_GROUND - 2, across, 2, MUTED, 0.35);
+      continue;
+    }
+    const height = Math.max(4, Math.round(share * YEAR_TALLEST));
+    const t = Math.pow(share, 0.72) * 3;
+    const from = ramp[Math.min(2, Math.floor(t))];
+    const to = ramp[Math.min(3, Math.floor(t) + 1)];
+    const mix = Math.min(1, t - Math.min(2, Math.floor(t)));
+    const wall: Rgb = [0, 1, 2].map((c) => byte((from[c] + (to[c] - from[c]) * mix) * 0.62)) as unknown as Rgb;
+    picture.rect(x, YEAR_GROUND - height, across, height, wall);
+    picture.rect(x, YEAR_GROUND - height, across, 2, gold, 0.9);
+    for (let y = YEAR_GROUND - height + 6; y < YEAR_GROUND - 4; y += 6) {
+      for (let wx = x + 1; wx + 2 <= x + across - 1; wx += 4) {
+        if (random() < 0.42) picture.rect(wx, y, 2, 3, lit, 0.5 + random() * 0.4);
+      }
+    }
+  }
+  picture.rect(MARGIN, YEAR_GROUND, span, 2, gold, 0.5);
+
+  const name = [...cal.login].filter(canWrite).join('');
+  const scale = Math.min(9, nameScale(name));
+  write(picture, name, MARGIN, NAME_TOP - 6, scale, INK, scale >= WINDOWED_FROM ? 1 : 0);
+  const yearText = String(year);
+  write(picture, yearText, MARGIN, YEAR_TOP, YEAR_SCALE, gold, 2);
+  const beside = MARGIN + textWidth(yearText, YEAR_SCALE) + 44;
+  const step = (textHeight(YEAR_SCALE) - textHeight(STATS_SCALE)) / 2;
+  yearLines(cal, year).forEach((line, i) => {
+    write(picture, line, beside, YEAR_TOP + i * step, STATS_SCALE, i ? [180, 199, 190] : INK);
+  });
+  write(picture, 'Jan', MARGIN, YEAR_GROUND + 12, 2, MUTED);
+  write(picture, 'Dec', CARD_WIDTH - MARGIN - textWidth('Dec', 2), YEAR_GROUND + 12, 2, MUTED);
+  write(picture, 'contriscape', MARGIN, CARD_HEIGHT - 44, 3, gold);
   const disclaimer = 'Not affiliated with GitHub';
   write(picture, disclaimer, CARD_WIDTH - MARGIN - textWidth(disclaimer, 2), CARD_HEIGHT - 40, 2, MUTED);
   return picture;

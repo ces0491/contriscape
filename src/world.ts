@@ -63,6 +63,8 @@ export interface World {
   simplify(): void;
   /** Stops the shooting stars, for a visitor who asks for reduced motion. */
   calm(): void;
+  /** The aurora in the night's sky and snow in the air, for a year's flight, or neither. */
+  festive(aurora: boolean, snow: boolean): void;
 }
 
 /** The parts of the scene that change with the look, gathered as the scene is built. */
@@ -584,6 +586,8 @@ export function createWorld(map: CityMap, renderer: THREE.WebGLRenderer, camera:
 
   const glow = new THREE.Color();
   const detail = { value: 1 };
+  const aurora = { value: 0 };
+  const snow = { value: 0 };
   const sky = new THREE.Mesh(
     new THREE.SphereGeometry(3000, 48, 24),
     new THREE.ShaderMaterial({
@@ -591,7 +595,7 @@ export function createWorld(map: CityMap, renderer: THREE.WebGLRenderer, camera:
       depthWrite: false,
       vertexShader: glsl.SKY_VERTEX,
       fragmentShader: glsl.SKY_FRAGMENT,
-      uniforms: { uFog: shared.uFog, uGlow: { value: glow }, uDetail: detail, uTime: shared.uTime },
+      uniforms: { uFog: shared.uFog, uGlow: { value: glow }, uDetail: detail, uTime: shared.uTime, uAurora: aurora },
     }),
   );
   sky.renderOrder = -10;
@@ -621,7 +625,7 @@ export function createWorld(map: CityMap, renderer: THREE.WebGLRenderer, camera:
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
-      uniforms: { uCam: { value: camera.position }, uVel: { value: dustVelocity } },
+      uniforms: { uCam: { value: camera.position }, uVel: { value: dustVelocity }, uTime: shared.uTime, uSnow: snow },
       vertexShader: glsl.DUST_VERTEX,
       fragmentShader: glsl.DUST_FRAGMENT,
     }),
@@ -699,6 +703,10 @@ export function createWorld(map: CityMap, renderer: THREE.WebGLRenderer, camera:
     calm() {
       calmed = true;
       meteors.visible = false;
+    },
+    festive(on, falling) {
+      aurora.value = on ? 1 : 0;
+      snow.value = falling ? 1 : 0;
     },
   };
 }

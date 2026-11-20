@@ -31,6 +31,11 @@ Let anyone enter a GitHub username and fly through a 3D city of that person's pu
 - [x] Five ships to choose from, each with a power of its own in Pilot and a cockpit of its own
 - [x] A ship picked where none is on screen is shown beside Settings
 - [x] Where a look has a sun, the towers throw shadows
+- [x] Any year with contributions can be raced against Autopilot through gates, with near misses scored, bests and a ghost kept for each year and ship, a challenge link, and a day's course in Explore
+- [x] A double tap of a direction rolls the ship one alley across, and up with a direction flies it on its side
+- [x] The site root opens the city the browser opened last, and Explore lists the cities flown there
+- [x] Your year opens on the year's number, counts up as it rises, celebrates its moments and badges, ends in fireworks, and flies a limited edition ship, colours, look and music
+- [x] A year has its own address, which link previews show as a card of that year
 - [x] Unit tests, browser tests under the production CSP, lint and typecheck all pass
 - [x] Name confirmed by Ces
 - [x] Deployed to production with a real token, verified on the live URL
@@ -72,3 +77,4 @@ Ces, after flying a stranger's city on the live URL from a phone and a laptop.
 - 2026-11-19: added five looks and four ships, tower shadows by day, and painted streets and roofs by night, at Ces's request
 - 2026-11-20: took the list of new repos out of Explore, kept each field's list to bios that have its words, and gave a visitor over the firewall's limit a message of their own, after Ces asked for the open items to be closed
 - 2026-11-20: replaced the Handheld and Arcade looks, which Ces found unplayable, with 16-bit and VGA; gave each ship a power and a cockpit; showed a picked ship beside Settings; took the plant rooms off the night's roofs; put something on each look's horizon; and softened the planet's shadow on its ring, at Ces's request
+- 2026-11-20: added racing, with near misses, ghosts, challenge links, a day's course and the passport; the barrel roll and flying on the side; the root opening on the last city; and a Your year with an opening, a running count, celebrated moments, fireworks, a limited edition and its own share link and card, at Ces's request

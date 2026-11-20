@@ -3,6 +3,7 @@ import { contributionsSchema, LOGIN_PATTERN, type ApiError, type Contributions }
 import { startApp } from './app';
 import { APP_NAME, DEFAULT_LOGIN } from './brand';
 import { Explorer } from './explorer';
+import { forget, lastCity } from './passport';
 import './style.css';
 
 const MESSAGE_SECONDS = 5;
@@ -118,23 +119,36 @@ async function boot(): Promise<void> {
   }
   // Before any city loads, so a visitor whose username isn't found still has somewhere to go
   const explorer = new Explorer();
-  const requested = location.pathname.replace(/^\/|\/$/g, '');
-  const login = requested || DEFAULT_LOGIN;
+  // `/<username>`, or `/<username>/<year>` for that year's flight, which is the address a year is shared at
+  const path = location.pathname.replace(/^\/|\/$/g, '');
+  const [requested = '', year, ...rest] = path.split('/');
+  const linkedYear = year !== undefined && /^\d{4}$/.test(year) && !rest.length ? Number(year) : null;
+  // The site's root goes back to the city this browser opened last. A first visit gets the example.
+  let remembered = requested ? null : lastCity();
+  let login = requested || remembered || DEFAULT_LOGIN;
 
-  if (!LOGIN_PATTERN.test(login)) {
-    showStatus(MESSAGES['invalid-login'](login));
+  if (!LOGIN_PATTERN.test(login) || (year !== undefined && linkedYear === null)) {
+    showStatus(MESSAGES['invalid-login'](path));
     return;
   }
 
   showStatus(`Surveying ${login}'s city…`);
-  const data = await load(login);
+  let data = await load(login);
+  // An account that has gone since is forgotten, and the example shown instead
+  if (remembered && (data === 'not-found' || data === 'invalid-login')) {
+    forget(remembered);
+    remembered = null;
+    login = DEFAULT_LOGIN;
+    showStatus(`Surveying ${login}'s city…`);
+    data = await load(login);
+  }
   if (typeof data === 'string') {
     showStatus(MESSAGES[data](login));
     return;
   }
 
   try {
-    startApp(data, !requested, explorer);
+    startApp(data, !requested && !remembered, explorer, linkedYear);
   } catch (error) {
     // The renderer asks for its own context, which can fail where the probe's didn't
     console.error(error);
@@ -144,11 +158,12 @@ async function boot(): Promise<void> {
 
   element('status').hidden = true;
   document.body.classList.remove('empty');
-  // Google renders the city, so a title set here is the one it indexes. The root keeps the page's own.
-  if (requested) {
+  // Google renders the city, so a title set here is the one it indexes. The root keeps the page's own for the example,
+  // and a remembered city gets its own address, as it would have had it been asked for.
+  if (requested || remembered) {
     document.title = `${data.login} · ${APP_NAME}`;
     // The fragment stays, because `#your-year` is what opens the year's flight
-    history.replaceState(null, '', `/${data.login}${location.hash}`);
+    history.replaceState(null, '', `/${data.login}${linkedYear === null ? '' : `/${linkedYear}`}${location.hash}`);
   }
   wireShare(data.login);
 }

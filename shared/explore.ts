@@ -35,6 +35,18 @@ export interface Choice {
   group: Group;
 }
 
+/** Each account in the catalogue once, under the first group that lists it, leaving out `current`. */
+function everyone(catalogue: Catalogue, current: string | null): Choice[] {
+  const choices = new Map<string, Choice>();
+  for (const group of catalogue.groups) {
+    for (const person of group.people) {
+      const key = person.login.toLowerCase();
+      if (key !== current?.toLowerCase() && !choices.has(key)) choices.set(key, { person, group });
+    }
+  }
+  return [...choices.values()];
+}
+
 /**
  * Someone from the catalogue other than the city being shown. Each account is as likely as any other, however many
  * groups list it. `null` when there is nobody else to offer.
@@ -44,13 +56,23 @@ export function pickRandom(
   current: string | null,
   random: () => number = Math.random,
 ): Choice | null {
-  const choices = new Map<string, Choice>();
-  for (const group of catalogue.groups) {
-    for (const person of group.people) {
-      const key = person.login.toLowerCase();
-      if (key !== current?.toLowerCase() && !choices.has(key)) choices.set(key, { person, group });
-    }
+  const choices = everyone(catalogue, current);
+  if (!choices.length) return null;
+  return choices[Math.min(choices.length - 1, Math.floor(random() * choices.length))];
+}
+
+/** A number from a piece of text, the same every time and spread evenly. FNV-1a. */
+export function hashText(text: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
   }
-  if (!choices.size) return null;
-  return [...choices.values()][Math.min(choices.size - 1, Math.floor(random() * choices.size))];
+  return h >>> 0;
+}
+
+/** The city a day's course is flown on, picked by the day, so everyone with the same lists gets the same one. */
+export function dailyPick(catalogue: Catalogue, day: string): Choice {
+  const choices = everyone(catalogue, null);
+  return choices[hashText(day) % choices.length];
 }

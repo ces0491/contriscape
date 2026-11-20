@@ -59,6 +59,8 @@ export class Fireworks {
   private readonly right = new THREE.Vector3();
   private readonly up = new THREE.Vector3();
   private readonly back = new THREE.Vector3();
+  /** The way the camera looks, tilt included, which the shells are spread along. */
+  private readonly ahead = new THREE.Vector3();
   private readonly centre = new THREE.Vector3();
   private readonly a = new THREE.Vector3();
   private readonly b = new THREE.Vector3();
@@ -114,6 +116,8 @@ export class Fireworks {
   start(camera: THREE.PerspectiveCamera, accent: Rgb): Shell[] {
     const { random } = this;
     camera.updateMatrixWorld();
+    // Along the view, so a camera looking down on the city has the show in front of it and not over the top of it
+    camera.getWorldDirection(this.ahead);
     camera.getWorldDirection(this.back).setY(0);
     if (this.back.lengthSq() < 1e-6) this.back.set(0, 0, -1);
     this.back.normalize().negate();
@@ -129,7 +133,7 @@ export class Fireworks {
       const across = random() * 1.3 - 0.65;
       this.centre
         .copy(camera.position)
-        .addScaledVector(this.back, -distance)
+        .addScaledVector(this.ahead, distance)
         .addScaledVector(this.right, across * tall * camera.aspect)
         .addScaledVector(this.up, (0.05 + random() * 0.4) * tall);
       this.centre.y = Math.max(this.centre.y, LOWEST);

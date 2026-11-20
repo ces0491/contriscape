@@ -101,6 +101,10 @@ function glowPoints(
 /** The ships a visitor can fly, in the order Settings lists them. The first is the default. */
 export const SHIPS = ['interceptor', 'dart', 'rocket', 'saucer', 'brick'] as const;
 export type Ship = (typeof SHIPS)[number];
+/** The year's own ship, flown in a year's flight and nowhere else, so it isn't in Settings. */
+export const EDITION_SHIP = 'comet';
+/** Every design there is a model of: the ships in Settings, and the year's own. */
+export type Design = Ship | typeof EDITION_SHIP;
 export const DEFAULT_SHIP: Ship = SHIPS[0];
 export const SHIP_LABELS: Record<Ship, string> = {
   interceptor: 'Interceptor',
@@ -349,6 +353,100 @@ function dart({ add }: Kit): Fittings {
   };
 }
 
+/** The year's own ship: a slim hull with crescent wings, and a ring round its tail in the trim colour on three vanes. */
+function comet({ add }: Kit): Fittings {
+  add(
+    body(
+      [
+        [0, -0.9],
+        [0.025, -0.8],
+        [0.05, -0.62],
+        [0.075, -0.4],
+        [0.09, -0.15],
+        [0.095, 0.1],
+        [0.09, 0.32],
+        [0.075, 0.48],
+        [0.05, 0.56],
+        [0, 0.57],
+      ],
+      20,
+      1,
+      0.85,
+    ),
+    'hull',
+  );
+  const canopy = new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2);
+  canopy.scale(0.058, 0.06, 0.26);
+  add(canopy, 'glass', 0, 0.045, -0.34);
+
+  [-1, 1].forEach((w) => {
+    add(
+      plate(
+        [
+          [0.08 * w, -0.1],
+          [0.3 * w, 0.04],
+          [0.46 * w, 0.3],
+          [0.44 * w, 0.36],
+          [0.3 * w, 0.22],
+          [0.08 * w, 0.3],
+        ],
+        0.02,
+      ),
+      'hull',
+      0,
+      0,
+      0,
+      w * -0.05,
+    );
+    // The leading edge, in the trim colour
+    add(
+      plate(
+        [
+          [0.08 * w, -0.1],
+          [0.3 * w, 0.04],
+          [0.46 * w, 0.3],
+          [0.45 * w, 0.33],
+          [0.29 * w, 0.09],
+          [0.08 * w, -0.05],
+        ],
+        0.026,
+      ),
+      'trim',
+      0,
+      0.001,
+      0,
+      w * -0.05,
+    );
+  });
+  add(new THREE.TorusGeometry(0.2, 0.018, 8, 40), 'trim', 0, 0, 0.42);
+  for (let vane = 0; vane < 3; vane++) {
+    add(
+      plate(
+        [
+          [0.06, 0.36],
+          [0.2, 0.39],
+          [0.2, 0.45],
+          [0.06, 0.47],
+        ],
+        0.012,
+      ),
+      'dark',
+      0,
+      0,
+      0,
+      Math.PI / 2 + (vane * Math.PI * 2) / 3,
+    );
+  }
+  add(new THREE.TorusGeometry(0.052, 0.01, 6, 20), 'dark', 0, 0, 0.565);
+
+  return {
+    engines: [[0, 0, 0.57, 0.048]],
+    wingtip: new THREE.Vector3(0.455, -0.02, 0.33),
+    strobes: [[0, 0.2, 0.42]],
+    gunZ: 0.1,
+  };
+}
+
 /** A rocket off a tin toy: a fat round body with a painted nose and a band, a porthole, one big engine and three fins. */
 function rocket({ add }: Kit): Fittings {
   add(
@@ -516,7 +614,7 @@ function brick({ add }: Kit): Fittings {
   };
 }
 
-const DESIGNS: Record<Ship, (kit: Kit) => Fittings> = { interceptor, dart, rocket, saucer, brick };
+const DESIGNS: Record<Design, (kit: Kit) => Fittings> = { interceptor, dart, rocket, saucer, brick, comet };
 
 /** The radius the flame's cone is modelled at. Each engine's flame is scaled from it. */
 const FLAME_RADIUS = 0.046;
@@ -528,7 +626,7 @@ const BARREL_LENGTH = 0.36;
  * How far a design reaches to either side, in the model's own units: its parts, its nav lights and its gun barrels.
  * The flight paths are tested to clear the towers by a fixed margin, so every ship has to fit inside it.
  */
-export function halfSpan(ship: Ship): number {
+export function halfSpan(ship: Design): number {
   const box = new THREE.Box3();
   const part = new THREE.Box3();
   const turn = new THREE.Matrix4();
@@ -547,7 +645,7 @@ export interface Fighter {
   /** The ship, facing -Z. Its first child is the fuselage, in the hull colour. */
   group: THREE.Group;
   /** Swaps the ship for another design, where it is, in the same colours. */
-  setModel(ship: Ship): void;
+  setModel(ship: Design): void;
   paint(colours: Colours): void;
   /** What the metal and glass reflect. */
   reflect(map: THREE.Texture): void;
@@ -557,10 +655,12 @@ export interface Fighter {
   muzzle(): void;
   /** Writes where the wingtips are in the scene into `left` and `right`. */
   wingtips(left: THREE.Vector3, right: THREE.Vector3): void;
+  /** Draws the ship see-through, for a ghost: 1 is solid. */
+  fade(opacity: number): void;
 }
 
 /** A ship of the given design, nose towards -Z. The designs share their materials, so colours carry from one to the next. */
-export function buildFighter(ship: Ship = DEFAULT_SHIP): Fighter {
+export function buildFighter(ship: Design = DEFAULT_SHIP): Fighter {
   const finishes: Record<Finish, THREE.MeshStandardMaterial> = {
     hull: new THREE.MeshStandardMaterial({ metalness: 0.55, roughness: 0.34, envMapIntensity: 1.15 }),
     trim: new THREE.MeshStandardMaterial({ metalness: 0.3, roughness: 0.4, emissiveIntensity: 0.22 }),
@@ -614,7 +714,7 @@ export function buildFighter(ship: Ship = DEFAULT_SHIP): Fighter {
     return mesh;
   };
 
-  function assemble(next: Ship): void {
+  function assemble(next: Design): void {
     // The glow textures and the materials are kept. Everything shaped for the old design goes.
     for (const child of [...group.children]) {
       group.remove(child);
@@ -713,6 +813,15 @@ export function buildFighter(ship: Ship = DEFAULT_SHIP): Fighter {
       group.updateMatrixWorld();
       left.set(-wingtip.x, wingtip.y, wingtip.z).applyMatrix4(group.matrixWorld);
       right.copy(wingtip).applyMatrix4(group.matrixWorld);
+    },
+    fade(opacity) {
+      // The materials outlast a change of design, so the ship stays faded whichever it becomes
+      for (const material of [...Object.values(finishes), nozzle, ...Object.values(lights)]) {
+        material.transparent = opacity < 1;
+        material.opacity = opacity;
+        material.depthWrite = opacity >= 1;
+        material.needsUpdate = true;
+      }
     },
   };
 }

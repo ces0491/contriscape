@@ -227,6 +227,7 @@ export class Sound {
   private lastImpact = -Infinity;
   private lastWhoosh = -Infinity;
   private side = 1;
+  private festive = false;
 
   constructor(
     private on: boolean,
@@ -247,6 +248,12 @@ export class Sound {
 
   get musicEnabled(): boolean {
     return this.musicOn;
+  }
+
+  /** Bells in the music, for a year's flight. */
+  setFestive(on: boolean): void {
+    this.festive = on;
+    if (this.rig) this.rig.music.festive = on;
   }
 
   /** Switching on is always a click or key press, so audio can start straight away. */
@@ -320,6 +327,7 @@ export class Sound {
     const samples = noise.getChannelData(0);
     for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
     const music = new Music(context, musicBus, echo, this.tune.counts, this.tune.peak);
+    music.festive = this.festive;
     this.rig = { context, out, reverb, echo, musicBus, music, noise, engine: startEngine(context, out, noise) };
     if (this.musicOn) this.setMusic(true);
     return context;
@@ -415,6 +423,22 @@ export class Sound {
     const rig = this.live();
     if (!rig) return;
     [0, 0.075].forEach((delay) => tone(rig, 'sine', [[0, 1760]], fade(0.07, 0.05, 0.003), { delay, wet: 0.2 }));
+  }
+
+  /** A beep for each second of a race's countdown, and a longer one an octave up for the start. */
+  count(go: boolean): void {
+    const rig = this.live();
+    if (!rig) return;
+    const pitch = go ? 1318.5 : 659.25;
+    tone(rig, 'square', [[0, pitch]], fade(0.06, go ? 0.42 : 0.14, 0.004), { wet: 0.15 });
+    tone(rig, 'sine', [[0, pitch]], fade(0.14, go ? 0.42 : 0.14, 0.004), { wet: 0.15 });
+  }
+
+  /** A quick rising note for flying through a race's gate. */
+  gate(): void {
+    const rig = this.live();
+    if (!rig) return;
+    tone(rig, 'triangle', sweep(1046.5, 1568, 0.06), fade(0.16, 0.22, 0.004), { wet: 0.3 });
   }
 
   /** A badge going up. */

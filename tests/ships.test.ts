@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
 import { holdsLock, LOCK_RANGE, lockOn } from '../src/aim';
 import { cockpitMarkup } from '../src/cockpits';
-import { DEFAULT_SHIP, halfSpan, readShip, SHIP_LABELS, SHIPS } from '../src/fighter';
+import { DEFAULT_SHIP, EDITION_SHIP, halfSpan, readShip, SHIP_LABELS, SHIPS, type Design } from '../src/fighter';
+
+/** The ships in Settings, and the year's own. */
+const DESIGNS: Design[] = [...SHIPS, EDITION_SHIP];
 import { POWERS, speedKept } from '../src/powers';
 
 /**
@@ -12,7 +15,7 @@ import { POWERS, speedKept } from '../src/powers';
 const WIDEST = 0.52;
 
 describe('the ships', () => {
-  it.each(SHIPS)('%s fits the width the flight paths leave it, lights and guns included', (ship) => {
+  it.each(DESIGNS)('%s fits the width the flight paths leave it, lights and guns included', (ship) => {
     const reach = halfSpan(ship);
     expect(reach).toBeLessThanOrEqual(WIDEST);
     // Narrow enough to slip through anything would be a different game
@@ -75,14 +78,16 @@ describe("the ships' powers", () => {
 describe('the cockpits', () => {
   const count = (text: string, pattern: RegExp) => text.match(pattern)?.length ?? 0;
 
-  it('are a different one for each ship', () => {
-    expect(new Set(SHIPS.map(cockpitMarkup)).size).toBe(SHIPS.length);
+  const designs = DESIGNS;
+
+  it("are a different one for each ship, the year's own included", () => {
+    expect(new Set(designs.map(cockpitMarkup)).size).toBe(designs.length);
     // The glass itself differs, and not only the instruments
-    const frames = SHIPS.map((ship) => /class="frame"[^>]* d="([^"]+)"/.exec(cockpitMarkup(ship))?.[1]);
-    expect(new Set(frames).size).toBe(SHIPS.length);
+    const frames = designs.map((ship) => /class="frame"[^>]* d="([^"]+)"/.exec(cockpitMarkup(ship))?.[1]);
+    expect(new Set(frames).size).toBe(designs.length);
   });
 
-  it.each(SHIPS)(
+  it.each(designs)(
     '%s has a frame with glass cut out of it, one speed needle and a lamp each for lock and boost',
     (ship) => {
       const markup = cockpitMarkup(ship);

@@ -21,7 +21,19 @@
       ],
       "destination": "/api/share/:login"
     },
-    { "source": "/:login([A-Za-z0-9][A-Za-z0-9-]{0,38})", "destination": "/index.html" }
+    { "source": "/:login([A-Za-z0-9][A-Za-z0-9-]{0,38})", "destination": "/index.html" },
+    {
+      "source": "/:login([A-Za-z0-9][A-Za-z0-9-]{0,38})/:year(\\d{4})",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(facebookexternalhit|Facebot|Twitterbot|Slackbot|LinkedInBot|Discordbot|WhatsApp|TelegramBot|Pinterest|redditbot|Embedly|SkypeUriPreview|Mastodon|Bluesky|Iframely|vkShare).*"
+        }
+      ],
+      "destination": "/api/share/:login?year=:year"
+    },
+    { "source": "/:login([A-Za-z0-9][A-Za-z0-9-]{0,38})/:year(\\d{4})", "destination": "/index.html" }
   ],
   "headers": [
     {

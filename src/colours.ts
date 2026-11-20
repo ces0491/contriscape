@@ -20,6 +20,8 @@ export interface ColourRow {
 }
 
 export const DEFAULT_COLOURS: Colours = { towers: '#39d353', hull: '#9aa5b2', trim: '#ffb454' };
+/** A year's own colours, for its flight and its card: a gold city, and the year's ship in midnight blue with gold trim. */
+export const EDITION_COLOURS: Colours = { towers: '#f2b632', hull: '#1c2340', trim: '#ffd27a' };
 
 export const COLOUR_ROWS: ColourRow[] = [
   {

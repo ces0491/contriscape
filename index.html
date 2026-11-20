@@ -77,6 +77,15 @@
     </header>
     <p id="hint" hidden></p>
     <div id="status" role="status" hidden></div>
+    <div id="raceHud" hidden>
+      <b id="raceGate"></b>
+      <span id="raceClock"></span>
+      <span id="raceGap"></span>
+      <span id="raceTarget"></span>
+      <span id="raceScore"></span>
+      <span id="raceChain"></span>
+    </div>
+    <div id="countdown" aria-live="assertive" hidden><b></b><span>Fly through each gold gate in turn</span></div>
 
     <footer class="hud deck">
       <div class="readout">
@@ -114,6 +123,7 @@
         <div class="tools">
           <button id="review" type="button" hidden></button>
           <button id="year" type="button" aria-expanded="false" aria-controls="yearPanel">All years</button>
+          <button id="race" type="button" aria-expanded="false" aria-controls="racePanel" hidden>Race</button>
           <button id="badges" type="button" aria-expanded="false" aria-controls="badgePanel" hidden>Badges</button>
           <button id="settings" type="button" aria-expanded="false" aria-controls="settingsPanel">Settings</button>
           <button id="guide" type="button" aria-expanded="false" aria-controls="guidePanel">Guide</button>
@@ -127,6 +137,12 @@
     <div id="offer" hidden>
       <span>That was Autopilot.</span>
       <button id="offerPilot" type="button">Take the controls</button>
+      <button id="offerRace" type="button">Race it</button>
+    </div>
+    <div id="challenge" hidden>
+      <span id="challengeText" role="status"></span>
+      <button id="challengeGo" type="button">Race</button>
+      <button id="challengeLater" type="button">Not now</button>
     </div>
     <div id="arrival" hidden>
       <div role="status">
@@ -139,6 +155,12 @@
     <div id="tip" hidden></div>
     <div id="toast" role="status" hidden></div>
     <div id="caption" role="status" hidden></div>
+    <div id="opener" role="status" hidden>
+      <small>Your year on GitHub</small>
+      <b id="openerYear"></b>
+      <span id="openerName"></span>
+    </div>
+    <div id="yearCount" hidden><b id="yearCountNumber"></b><span id="yearCountLabel"></span></div>
     <section id="yearPanel" class="panel" aria-labelledby="yearTitle" hidden>
       <div class="panel-head">
         <h2 id="yearTitle">Years</h2>
@@ -146,6 +168,19 @@
       </div>
       <p>Fly one year, or the whole history.</p>
       <div class="years" id="years" role="group" aria-label="Choose a year"></div>
+    </section>
+    <section id="racePanel" class="panel" aria-labelledby="raceTitle" hidden>
+      <div class="panel-head">
+        <h2 id="raceTitle">Race</h2>
+        <button class="panel-close" type="button">Close</button>
+      </div>
+      <p>
+        Race the Autopilot down a year's alleys and once round its busiest day. Fly through each gold gate in turn.
+        Clipping a tower costs speed. Passing close to towers at speed scores near misses, which a clip loses before
+        they're banked.
+      </p>
+      <p id="raceShip"></p>
+      <ul id="raceList"></ul>
     </section>
     <section id="badgePanel" class="panel" aria-labelledby="badgeTitle" hidden>
       <div class="panel-head">
@@ -178,6 +213,7 @@
         <ul id="aboutRepos"></ul>
       </div>
       <div id="others">
+        <p id="daily" hidden></p>
         <p id="exploreNote"></p>
         <div id="exploreGroups" role="group" aria-label="Choose a list"></div>
         <p id="exploreBlurb"></p>
@@ -238,6 +274,13 @@
         </dd>
         <dt>Orbit</dt>
         <dd>Rotate and zoom around the finished city. Point at a tower to read it.</dd>
+        <dt>Race</dt>
+        <dd>
+          Race Autopilot down a year's alleys and once round its busiest day, through gold gates in turn. The next gate
+          is bright and has a marker, and one flown past has to be gone back for. Passing close to towers at speed
+          scores near misses, which build a chain until two seconds pass without one, and a clip loses the chain. Your
+          fastest run with each ship is kept, and flies alongside as a faint ghost the next time.
+        </dd>
       </dl>
 
       <h3>Controls</h3>
@@ -281,6 +324,16 @@
             <td>Fire button</td>
           </tr>
           <tr>
+            <th scope="row">Barrel roll</th>
+            <td>Double-tap A or D</td>
+            <td>None</td>
+          </tr>
+          <tr>
+            <th scope="row">Fly on the side</th>
+            <td>W with A or D</td>
+            <td>None</td>
+          </tr>
+          <tr>
             <th scope="row">Mouse steering</th>
             <td>M, or Settings</td>
             <td>None</td>
@@ -307,7 +360,10 @@
           </tr>
         </tbody>
       </table>
-      <p>Zoom all the way in for the cockpit view, and zoom out to leave it.</p>
+      <p>
+        Zoom all the way in for the cockpit view, and zoom out to leave it. A barrel roll carries the ship one alley
+        across. On its side the ship turns half as fast again, and doesn't climb.
+      </p>
 
       <h3>Buttons</h3>
       <dl>
@@ -326,6 +382,12 @@
         <dd>Stops or resumes Autopilot. From Pilot or Orbit, Replay starts the flight again.</dd>
         <dt>All years</dt>
         <dd>Lists the years. Pick one to fly it, or All for the whole history.</dd>
+        <dt>Race</dt>
+        <dd>
+          Lists the years you can race, with the rival's time and your fastest with this ship. After a race, Copy a
+          challenge copies a link that offers the same race with your time to beat. Explore names a day's course, the
+          same for everyone that day, and lists the cities you've flown here under Flown here.
+        </dd>
         <dt>Timeline</dt>
         <dd>Drag it to move through the dates.</dd>
         <dt>Badges</dt>
@@ -351,7 +413,12 @@
           speed dial and lamps for a lock and for boost. Scroll all the way in to sit in it.
         </dd>
         <dt>Your year on GitHub</dt>
-        <dd>A December flight through the current year, with captions and a summary.</dd>
+        <dd>
+          Through December, and the first half of January for the year just ended, a flight through the year: its
+          number, its count rising with its towers, its biggest moments and badges, and fireworks at the end. It flies a
+          limited edition of its own, a ship, colours, look and music that can't be picked in Settings. The card at the
+          end gives the year's own link, which previews as a card of the year.
+        </dd>
       </dl>
 
       <h3>Why these badges</h3>
@@ -369,16 +436,29 @@
       <p>
         A city shows what a public GitHub profile already shows. This site has no accounts or cookies. Vercel Web
         Analytics counts page views, recording the page, the site that linked here, a rough location, and the type of
-        device and browser, without identifying you. Your badges and settings stay in this browser. Fonts load from
-        Google Fonts.
+        device and browser, without identifying you. Your badges, settings, race times and ghosts, and the cities you've
+        flown, stay in this browser, which opens on the last of them. Fonts load from Google Fonts.
       </p>
     </section>
     <section id="summary" class="panel" aria-labelledby="summaryTitle" hidden>
+      <p id="summaryKicker"></p>
       <h2 id="summaryTitle"></h2>
+      <p id="summaryTotal"><b></b><span>contributions</span></p>
       <dl id="summaryFacts"></dl>
       <div class="summary-actions">
+        <button id="summaryAgain" type="button">Watch again</button>
+        <button id="summaryNative" type="button" hidden>Share</button>
         <button id="summaryShare" type="button">Copy link</button>
         <button id="summaryClose" type="button">Close</button>
+      </div>
+    </section>
+    <section id="raceResult" class="panel result" aria-labelledby="raceResultTitle" hidden>
+      <h2 id="raceResultTitle"></h2>
+      <dl id="raceResultFacts"></dl>
+      <div class="summary-actions">
+        <button id="raceAgain" type="button">Race again</button>
+        <button id="raceCopy" type="button">Copy a challenge</button>
+        <button id="raceResultClose" type="button">Close</button>
       </div>
     </section>
 

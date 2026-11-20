@@ -145,14 +145,15 @@ export class Markers {
 }
 
 /**
- * The way back to the city, for a ship that has flown clear of it: the same diamond and edge pointer as a badge's
- * marker, in the buildings' colour, with a skyline where a badge has its artwork.
+ * A marker for one place, with the same diamond and edge pointer as a badge's marker. The way back to the city, for a
+ * ship that has flown clear of it, is in the buildings' colour with a skyline where a badge has its artwork. The next
+ * gate of a race is a ring.
  */
-export class HomeMarker {
+export class SpotMarker {
   private readonly item: Item;
 
-  constructor(layer: HTMLElement) {
-    this.item = build(layer, 'marker home', 'The city', document.createElement('b'));
+  constructor(layer: HTMLElement, kind: 'home' | 'gate', name: string) {
+    this.item = build(layer, `marker ${kind}`, name, document.createElement('b'));
   }
 
   /** Places the marker, or hides it with `null`. */

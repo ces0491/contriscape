@@ -1,6 +1,8 @@
 import type { Contributions } from '../shared/contract';
-import { catalogueSchema, pickRandom, type Catalogue, type Group, type Person } from '../shared/explore';
+import { catalogueSchema, dailyPick, pickRandom, type Catalogue, type Group, type Person } from '../shared/explore';
 import { formatCount, MONTHS } from './calendar';
+import { readPassport, stampLine, type Stamp } from './passport';
+import { today } from './race';
 
 const CATALOGUE_URL = '/explore.json';
 const GITHUB = 'https://github.com';
@@ -44,6 +46,20 @@ export function personLine(person: Person): string {
   const repo = `${person.repo.name}, ${formatCount(person.repo.stars)} stars`;
   return person.about ? `${repo}. ${person.about}` : repo;
 }
+
+/** The list of cities flown in this browser, from the passport, or null before any has been. */
+export function flownGroup(stamps: Stamp[]): Group | null {
+  if (!stamps.length) return null;
+  return {
+    id: 'flown',
+    title: 'Flown here',
+    blurb: 'Cities flown in this browser, most recent first. The list is kept here and goes nowhere else.',
+    people: stamps.map((entry) => ({ login: entry.login, name: entry.name, about: stampLine(entry) })),
+  };
+}
+
+/** What the lists mark beside a city already flown here. */
+export const flownTag = (entry: Stamp): string => (entry.cleared ? 'Cleared' : entry.raced.length ? 'Raced' : 'Flown');
 
 /** Remembers the list a city was picked from, so the city can say so when it opens. */
 export function noteArrival(login: string, from: string): void {
@@ -191,9 +207,13 @@ export class Explorer {
   private render(catalogue: Catalogue): void {
     element('exploreNote').textContent =
       `Busy cities, picked from GitHub's search on ${writtenDay(catalogue.generated)}. Pick a list, then a city.`;
-    const group = catalogue.groups[Math.min(this.shown, catalogue.groups.length - 1)];
+    this.renderDaily(catalogue);
+    const stamps = readPassport();
+    const flown = new Map(stamps.map((entry) => [entry.login.toLowerCase(), entry]));
+    const groups = [...catalogue.groups, flownGroup(stamps)].filter((each) => each !== null);
+    const group = groups[Math.min(this.shown, groups.length - 1)];
     element('exploreGroups').replaceChildren(
-      ...catalogue.groups.map((each, i) => {
+      ...groups.map((each, i) => {
         const tab = make('button', each.title);
         tab.type = 'button';
         tab.setAttribute('aria-pressed', String(each === group));
@@ -205,16 +225,35 @@ export class Explorer {
       }),
     );
     element('exploreBlurb').textContent = group.blurb;
-    element('explorePeople').replaceChildren(...group.people.map((person) => this.row(person, group)));
+    element('explorePeople').replaceChildren(
+      ...group.people.map((person) => this.row(person, group, group.id === 'flown' ? null : flown)),
+    );
   }
 
-  private row(person: Person, group: Group): HTMLLIElement {
+  /** The day's course: one city from the lists, the same for everyone today, with a year picked when it opens. */
+  private renderDaily(catalogue: Catalogue): void {
+    const day = today();
+    const { person } = dailyPick(catalogue, day);
+    const link = make('a', person.name ?? person.login);
+    link.href = `/${person.login}#daily=${day}`;
+    element('daily').replaceChildren(
+      make('b', "Today's course: "),
+      link,
+      ". A race through one of this city's years, the same one for everyone who opens it today.",
+    );
+    element('daily').hidden = false;
+  }
+
+  /** A city in a list, marked if it has been flown here. `flown` is null for the list of those already. */
+  private row(person: Person, group: Group, flown: Map<string, Stamp> | null): HTMLLIElement {
     const item = make('li');
     const link = make('a');
     link.href = `/${person.login}`;
     if (person.login.toLowerCase() === this.current?.toLowerCase()) link.setAttribute('aria-current', 'page');
     const name = make('b', person.name ?? person.login);
     if (person.name) name.append(make('small', person.login));
+    const entry = flown?.get(person.login.toLowerCase());
+    if (entry) name.append(make('em', flownTag(entry)));
     link.append(name);
     const line = personLine(person);
     if (line) link.append(make('span', line));

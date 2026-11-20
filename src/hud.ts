@@ -221,10 +221,40 @@ export class Hud {
     element('arrival').hidden = true;
   }
 
-  showCaption(title: string, detail: string): void {
+  /** A caption for a moment of the year, with a badge's artwork when the moment is a badge. */
+  showCaption(title: string, detail: string, picture: string | null = null): void {
     const caption = element('caption');
     this.fill(caption, title, detail);
+    if (picture) {
+      const image = document.createElement('img');
+      image.src = picture;
+      image.alt = '';
+      caption.prepend(image);
+    }
     caption.hidden = false;
+  }
+
+  /** The year's number over its empty block, before its flight starts. */
+  showOpener(year: number, login: string): void {
+    element('openerYear').textContent = String(year);
+    element('openerName').textContent = login;
+    element('opener').hidden = false;
+  }
+
+  hideOpener(): void {
+    element('opener').hidden = true;
+  }
+
+  /** The year's contributions so far, counting up as its towers rise, or nothing with `null`. */
+  showYearCount(count: number | null, year: number): void {
+    element('yearCount').hidden = count === null;
+    if (count === null) return;
+    const number = element('yearCountNumber');
+    const text = formatCount(count);
+    if (number.textContent !== text) number.textContent = text;
+    const label = element('yearCountLabel');
+    const words = `contribution${count === 1 ? '' : 's'} in ${year}`;
+    if (label.textContent !== words) label.textContent = words;
   }
 
   hideCaption(): void {
@@ -329,8 +359,14 @@ export class Hud {
     });
   }
 
-  showSummary(title: string, facts: [string, string][]): void {
+  /** The card that closes a year's flight: whose year, its total, and the rest of its facts. */
+  showSummary(title: string, login: string, total: number, facts: [string, string][]): void {
+    element('summaryKicker').textContent = login;
     element('summaryTitle').textContent = title;
+    const hero = element('summaryTotal');
+    (hero.firstElementChild as HTMLElement).textContent = formatCount(total);
+    (hero.lastElementChild as HTMLElement).textContent = total === 1 ? 'contribution' : 'contributions';
+    element('summaryShare').textContent = 'Copy link';
     element('summaryFacts').replaceChildren(
       ...facts.flatMap(([label, value]) => {
         const term = document.createElement('dt');

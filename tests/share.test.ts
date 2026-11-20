@@ -1,9 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CARD_HEIGHT, CARD_WIDTH, cardSummary, drawCard, nameScale } from '../api/_lib/card';
+import { CARD_HEIGHT, CARD_WIDTH, cardSummary, drawCard, drawYearCard, nameScale, yearLines } from '../api/_lib/card';
 import { canWrite, textHeight, textWidth, write } from '../api/_lib/letters';
 import { Picture } from '../api/_lib/png';
+import { requestedLogin, requestedYear } from '../api/_lib/request';
 import { GET as card } from '../api/card/[login]';
 import { GET as share } from '../api/share/[login]';
 import type { Contributions } from '../shared/contract';
@@ -141,6 +142,59 @@ describe('drawCard', () => {
   });
 });
 
+describe('drawYearCard', () => {
+  it('draws one year at the size link previews use, the same each time', () => {
+    const png = (drawYearCard(history, 2025) as Picture).png();
+    expect(decode(png)).toMatchObject({ width: CARD_WIDTH, height: CARD_HEIGHT });
+    expect([...png]).toEqual([...(drawYearCard(history, 2025) as Picture).png()]);
+  });
+
+  it('says how much was in the year, on how many days, and its longest run of them', () => {
+    const lines = yearLines(new Calendar(history), 2024);
+    // 2024 has 366 days, every fifth of them empty, and 3 on each of the rest
+    expect(lines).toEqual(['876 contributions', '292 active days', 'Longest streak 4 days']);
+    for (const line of lines) expect([...line].every(canWrite), line).toBe(true);
+  });
+
+  it('stands the year in gold, where the history card is green', () => {
+    const gold = decode((drawYearCard(history, 2025) as Picture).png());
+    const green = decode(drawCard(history).png());
+    // Along the line each skyline stands on
+    const warm = (at: number[]) => at[0] > at[2] + 60 && at[0] >= at[1];
+    expect(Array.from({ length: 1000 }, (_, x) => gold.at(x + 100, 549)).some(warm)).toBe(true);
+    expect(Array.from({ length: 1000 }, (_, x) => green.at(x + 100, 541)).some(warm)).toBe(false);
+  });
+
+  it('leaves a year with nothing in it, or not in the history, to the history card', () => {
+    const quiet: Contributions = {
+      ...history,
+      years: { ...history.years, '2023': Array.from({ length: 365 }, () => 0) },
+    };
+    expect(drawYearCard(quiet, 2023)).toBeNull();
+    expect(drawYearCard(history, 2019)).toBeNull();
+  });
+});
+
+describe('a year in a request', () => {
+  const now = new Date('2026-11-20T12:00:00Z');
+  const url = (query: string) => new URL(`https://example.test/api/card/octo-dev${query}`);
+
+  it("is a year from GitHub's first to this one, or nothing", () => {
+    expect(requestedYear(url(''), now)).toBeNull();
+    expect(requestedYear(url('?year=2026'), now)).toBe(2026);
+    expect(requestedYear(url('?year=2008'), now)).toBe(2008);
+    for (const bad of ['2007', '2027', '26', '20x6', '2026.0', '']) {
+      expect(requestedYear(url(`?year=${bad}`), now), bad).toBeUndefined();
+    }
+  });
+
+  it('is let through only where a route takes one', () => {
+    expect(requestedLogin(url('?year=2026'))).toBeNull();
+    expect(requestedLogin(url('?year=2026'), true)).toBe('octo-dev');
+    expect(requestedLogin(url('?year=2026&x=1'), true)).toBeNull();
+  });
+});
+
 describe('GET /api/card/:login', () => {
   const fetchMock = vi.fn<typeof fetch>();
   const ok = (data: unknown) => new Response(JSON.stringify({ data }), { status: 200 });
@@ -223,10 +277,19 @@ describe('GET /api/card/:login', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('redirects mixed case, so each user has one cached card', async () => {
+  it('redirects mixed case, so each user has one cached card, and keeps the year', async () => {
     const reply = await card(request('SomeOne'));
     expect(reply.status).toBe(308);
     expect(reply.headers.get('location')).toBe('https://example.test/api/card/someone');
+    const year = await card(request('SomeOne?year=2025'));
+    expect(year.headers.get('location')).toBe('https://example.test/api/card/someone?year=2025');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses a year that cannot be, without calling GitHub', async () => {
+    for (const bad of ['someone?year=1999', 'someone?year=next', 'someone?year=3000']) {
+      expect((await card(request(bad))).status, bad).toBe(400);
+    }
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
@@ -269,6 +332,17 @@ describe('GET /api/share/:login', () => {
     expect(share(request('octo-dev?login=octo-dev')).status).toBe(200);
   });
 
+  it("gives a link to one year that year's address, title and card", async () => {
+    const html = await share(request('Octo-Dev?year=2025')).text();
+    expect(html).toContain('<meta property="og:url" content="https://example.test/Octo-Dev/2025" />');
+    expect(html).toContain('<meta property="og:image" content="https://example.test/api/card/octo-dev?year=2025" />');
+    expect(html).toContain(`<meta property="og:title" content="Octo-Dev's 2025 on GitHub · contriscape" />`);
+    const description = /<meta property="og:description" content="([^"]*)"/.exec(html)?.[1] ?? '';
+    expect(description.length).toBeGreaterThanOrEqual(100);
+    expect(share(request('[login]?login=octo-dev&year=2025')).status).toBe(200);
+    expect(share(request('octo-dev?year=1999')).status).toBe(400);
+  });
+
   it('refuses anything that is not a GitHub login, so nothing else can be written into the page', async () => {
     for (const bad of ['-leading', 'a"><script>', 'has_underscore', 'someone?x=1']) {
       const reply = share(request(bad));
@@ -305,6 +379,14 @@ describe('the rule that sends link previews to their page', () => {
     ]) {
       expect(matches(agent), agent).toBe(true);
     }
+  });
+
+  it("sends a year's previews to its page on the same terms, and everyone else to the city", () => {
+    const [, , yearPreviews, yearEveryone] = config.rewrites;
+    expect(yearPreviews.destination).toBe('/api/share/:login?year=:year');
+    expect(yearPreviews.has).toEqual(previews.has);
+    expect(yearEveryone).toEqual({ source: yearPreviews.source, destination: '/index.html' });
+    expect(yearPreviews.source).toBe(`${previews.source}/:year(\\d{4})`);
   });
 
   it('leaves people and search engines with the city itself', () => {

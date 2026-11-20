@@ -78,6 +78,8 @@ export class Music {
   private touched = -1;
   private pad: Pad | null = null;
   private running = false;
+  /** Bells for a year's flight: the melody rung, and the chord's notes run up high as it changes. */
+  festive = false;
 
   constructor(
     private readonly context: BaseAudioContext,
@@ -130,6 +132,8 @@ export class Music {
     if (step % CHORD_STEPS === 0) {
       this.pad?.stop(at + 0.3);
       this.pad = this.startPad(chord.pad, at);
+      // The chord's own notes, two octaves up, so they can't clash with the melody any more than the chord does
+      if (this.festive) chord.pad.forEach((note, i) => this.bell(note + 24, 0.35, at + (i * STEP) / 2));
     }
     if (step % BAR_STEPS === 0) this.bass(chord.bass, at);
 
@@ -147,8 +151,40 @@ export class Music {
     if (count > 0 && this.peak > 0) this.pluck(melodyNote(count / this.peak), melodyLevel(count / this.peak), at);
   }
 
+  /**
+   * A rung bell: a sine at the note with two quieter partials at the uneven ratios a bell's metal gives, ringing for two
+   * seconds, into the echo too.
+   */
+  private bell(note: number, level: number, at: number): void {
+    const { context } = this;
+    const hz = midiToHz(note);
+    const gain = context.createGain();
+    gain.gain.setValueAtTime(QUIET, at);
+    gain.gain.exponentialRampToValueAtTime(0.1 * level, at + 0.004);
+    gain.gain.exponentialRampToValueAtTime(QUIET, at + 2.2);
+    gain.connect(this.out);
+    gain.connect(this.echo);
+    [
+      [hz, 1],
+      [hz * 2.76, 0.4],
+      [hz * 5.4, 0.16],
+    ].forEach(([frequency, share]) => {
+      const oscillator = context.createOscillator();
+      const voice = context.createGain();
+      oscillator.frequency.value = frequency;
+      voice.gain.value = share;
+      oscillator.connect(voice).connect(gain);
+      oscillator.start(at);
+      oscillator.stop(at + 2.25);
+    });
+  }
+
   /** A soft bell: a triangle with a quieter octave above, fading over most of a second, into the echo too. */
   private pluck(note: number, level: number, at: number): void {
+    if (this.festive) {
+      this.bell(note, level, at);
+      return;
+    }
     const { context } = this;
     const hz = midiToHz(note);
     const gain = context.createGain();

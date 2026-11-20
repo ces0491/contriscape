@@ -5,6 +5,7 @@ import { pushOut, type Hull } from '../src/collision';
 import { CELL, CityMap, TOWER, WIDTH } from '../src/map';
 import { chooseMarkers, type Candidate } from '../src/markers';
 import { approachHeight, blockedBetween, clearReach, towerAlong } from '../src/sight';
+import { DOUBLE_TAP, DoubleTap, ROLL_SECONDS, ROLL_SHIFT, rollDrift, rollSpin } from '../src/steering';
 
 const RADIUS = 0.3;
 /** Sun 1 March 2026, with a week of empty days round it and empty alleys on every side. */
@@ -213,5 +214,36 @@ describe('chooseMarkers', () => {
     const given = [marker(0, 0, 0, 90), marker(1, 200, 0, 20)];
     chooseMarkers(given, 44, 4);
     expect(given.map((c) => c.i)).toEqual([0, 1]);
+  });
+});
+
+describe('a barrel roll', () => {
+  it('comes from two presses of one direction close together, and not from two apart or from left then right', () => {
+    const taps = new DoubleTap();
+    expect(taps.press(1, 10)).toBe(false);
+    expect(taps.press(1, 10 + DOUBLE_TAP * 0.5)).toBe(true);
+    // A third press starts counting again
+    expect(taps.press(1, 10 + DOUBLE_TAP * 0.8)).toBe(false);
+    expect(taps.press(-1, 20)).toBe(false);
+    expect(taps.press(-1, 20 + DOUBLE_TAP * 1.5)).toBe(false);
+    expect(taps.press(1, 30)).toBe(false);
+    expect(taps.press(-1, 30.1)).toBe(false);
+  });
+
+  it('turns the ship once round, easing in and out', () => {
+    expect(rollSpin(0)).toBe(0);
+    expect(rollSpin(0.5)).toBeCloseTo(Math.PI, 6);
+    expect(rollSpin(1)).toBeCloseTo(Math.PI * 2, 6);
+    expect(rollSpin(2)).toBeCloseTo(Math.PI * 2, 6);
+  });
+
+  it('carries the ship one alley across over the roll', () => {
+    const steps = 1000;
+    let across = 0;
+    for (let n = 1; n <= steps; n++) across += rollDrift(n / steps) * (ROLL_SECONDS / steps);
+    expect(across).toBeCloseTo(ROLL_SHIFT, 2);
+    expect(ROLL_SHIFT).toBe(CELL);
+    expect(rollDrift(0)).toBe(0);
+    expect(rollDrift(1)).toBe(0);
   });
 });

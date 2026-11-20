@@ -261,7 +261,8 @@ input,
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  #badgeLock::before {
+  #badgeLock::before,
+  #opener {
     animation: none;
   }
 }
@@ -326,6 +327,30 @@ input,
 }
 .marker.edge span {
   top: 20px;
+}
+/* The next gate of a race, in white, with a ring where a badge has its artwork. */
+.marker.gate i {
+  border-color: var(--ink);
+}
+.marker.gate span {
+  color: var(--ink);
+}
+.marker.gate b {
+  display: none;
+}
+.marker.gate.edge b {
+  display: block;
+  position: absolute;
+  left: -16px;
+  top: -16px;
+  width: 32px;
+  height: 32px;
+  border: 4px solid var(--gold);
+  border-radius: 50%;
+  background: var(--night);
+  box-shadow:
+    0 0 0 2px var(--night),
+    0 0 10px rgba(255, 210, 74, 0.45);
 }
 /* The way back to the city, in the buildings' colour, with three towers where a badge has its artwork. */
 .marker.home i {
@@ -776,12 +801,90 @@ button:focus-visible {
   top: calc(env(safe-area-inset-top, 0px) + 112px);
   border: 1px solid var(--sodium);
 }
+/* Under the year's running count, which sits under the header */
 #caption {
-  top: calc(env(safe-area-inset-top, 0px) + 18%);
-  border: 1px solid var(--rule);
+  top: calc(env(safe-area-inset-top, 0px) + var(--header) + 96px);
+  border: 1px solid var(--sodium);
 }
-/* The offer of the controls when an Autopilot flight ends. Unlike the toast it takes a click. */
-#offer {
+#caption img {
+  display: block;
+  width: 64px;
+  height: 64px;
+  margin: 2px auto 6px;
+}
+/* A year's flight opens on its number, big, over its empty block */
+#opener {
+  position: fixed;
+  z-index: 3;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 4px;
+  text-align: center;
+  text-shadow:
+    0 0 6px var(--night),
+    0 0 24px var(--night);
+  pointer-events: none;
+  animation: opener-in 1.1s ease-out both;
+}
+#opener small {
+  color: var(--sodium);
+  font: 600 13px/1.3 var(--mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+#opener b {
+  color: var(--gold);
+  font: 800 clamp(96px, 24vw, 260px) / 0.9 var(--display);
+  font-stretch: 125%;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+#opener span {
+  color: var(--ink);
+  font: 600 clamp(16px, 2.4vw, 24px) / 1.3 var(--display);
+}
+@keyframes opener-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* The year's contributions so far, counting up as the towers rise */
+#yearCount {
+  position: fixed;
+  z-index: 2;
+  top: calc(env(safe-area-inset-top, 0px) + var(--header) + 2px);
+  left: 50%;
+  display: grid;
+  justify-items: center;
+  padding: 4px 14px 6px;
+  border-radius: 6px;
+  background: var(--scrim-soft);
+  text-shadow:
+    0 0 3px var(--night),
+    0 1px 8px var(--night);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+#yearCount b {
+  color: var(--gold);
+  font: 800 clamp(30px, 4.4vw, 46px) / 1.05 var(--display);
+  font-stretch: 112%;
+  font-variant-numeric: tabular-nums;
+}
+#yearCount span {
+  color: var(--ink-2);
+  font: 400 12px/1.3 var(--mono);
+}
+/* The offer of the controls when an Autopilot flight ends, and the card a challenge link opens with. Unlike the toast they take a click. */
+#offer,
+#challenge {
   position: fixed;
   z-index: 3;
   left: 50%;
@@ -800,10 +903,12 @@ button:focus-visible {
   font: 400 13px/1.35 var(--mono);
   transform: translateX(-50%);
 }
-#offer[hidden] {
+#offer[hidden],
+#challenge[hidden] {
   display: none;
 }
-#offer button {
+#offer button,
+#challenge button {
   appearance: none;
   padding: 8px 14px;
   border: 1px solid var(--sodium);
@@ -812,6 +917,18 @@ button:focus-visible {
   color: var(--night);
   font: 700 14px/1 var(--display);
   cursor: pointer;
+}
+/* The second choice on each card is the quieter one */
+#offerRace,
+#challengeLater {
+  background: transparent;
+  color: var(--ink);
+}
+#offerRace {
+  border-color: var(--gold);
+}
+#challengeLater {
+  border-color: var(--rule);
 }
 /* Whose city this is, for a visitor who picked it from Explore. Like the offer, it takes a click. */
 #arrival {
@@ -1273,7 +1390,9 @@ button:focus-visible {
 #badgeList .earned b {
   color: var(--g4);
 }
-#badgeList em {
+#badgeList em,
+#raceList em,
+#explorePeople b em {
   margin-left: 7px;
   padding: 1px 4px;
   border: 1px solid currentColor;
@@ -1284,7 +1403,8 @@ button:focus-visible {
   text-transform: uppercase;
   vertical-align: 1px;
 }
-#summary {
+#summary,
+#raceResult {
   top: 50%;
   right: auto;
   bottom: auto;
@@ -1294,16 +1414,19 @@ button:focus-visible {
   padding: 20px;
   transform: translate(-50%, -50%);
 }
-#summaryFacts {
+#summaryFacts,
+#raceResultFacts {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px 16px;
   margin: 14px 0;
 }
-#summaryFacts dt {
+#summaryFacts dt,
+#raceResultFacts dt {
   color: var(--ink-2);
   font: 400 13px/1.4 var(--mono);
 }
+#raceResultFacts dd,
 #summaryFacts dd {
   margin: 0;
   font: 600 13px/1.4 var(--mono);
@@ -1325,10 +1448,183 @@ button:focus-visible {
   font: 600 13px/1 var(--display);
   cursor: pointer;
 }
-#summaryShare {
+#summary {
+  border-color: var(--sodium);
+  text-align: center;
+}
+#summary h2 {
+  font-size: 22px;
+}
+#summaryKicker {
+  margin: 0 0 2px;
+  color: var(--sodium);
+  font: 600 12px/1.3 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+#summaryTotal {
+  display: grid;
+  margin: 10px 0 0;
+}
+#summaryTotal b {
+  color: var(--gold);
+  font: 800 clamp(44px, 9vw, 64px) / 1 var(--display);
+  font-stretch: 112%;
+  font-variant-numeric: tabular-nums;
+}
+#summaryTotal span {
+  color: var(--ink-2);
+  font: 400 13px/1.4 var(--mono);
+}
+#summaryFacts {
+  text-align: left;
+}
+#summary .summary-actions {
+  flex-wrap: wrap;
+}
+#summary .summary-actions button {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+#summaryShare,
+#raceAgain {
   border-color: var(--sodium);
   background: var(--sodium);
   color: var(--night);
+}
+/* Three to a row where they fit, and onto a second row on a phone, rather than breaking a label in two */
+#raceResult .summary-actions {
+  flex-wrap: wrap;
+}
+#raceResult .summary-actions button {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+
+/* A race's readout, under the header in the middle, where the eye already is */
+#raceHud {
+  position: fixed;
+  z-index: 2;
+  top: calc(env(safe-area-inset-top, 0px) + var(--header) + 2px);
+  left: 50%;
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  max-width: calc(100vw - 32px);
+  padding: 4px 12px 6px;
+  border-radius: 6px;
+  background: var(--scrim-soft);
+  text-align: center;
+  text-shadow:
+    0 0 3px var(--night),
+    0 0 3px var(--night),
+    0 1px 8px var(--night);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+#raceGate {
+  color: var(--gold);
+  font: 600 11px/1.3 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+#raceClock {
+  font: 700 clamp(24px, 3.4vw, 34px) / 1.05 var(--display);
+  font-stretch: 112%;
+  font-variant-numeric: tabular-nums;
+}
+#raceGap,
+#raceTarget,
+#raceScore,
+#raceChain {
+  color: var(--ink-2);
+  font: 400 12px/1.35 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+#raceChain {
+  color: var(--gold);
+  font-weight: 600;
+}
+#raceScore.lost {
+  color: #ff6b6b;
+}
+/* The countdown, big, a little above the middle so the ship stays in view under it */
+#countdown {
+  position: fixed;
+  z-index: 3;
+  top: 34%;
+  left: 50%;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  text-shadow:
+    0 0 4px var(--night),
+    0 0 14px var(--night);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+#countdown b {
+  color: var(--gold);
+  font: 800 clamp(56px, 10vw, 96px) / 1 var(--display);
+  font-stretch: 112%;
+}
+#countdown span {
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--scrim-soft);
+  color: var(--ink-2);
+  font: 400 13px/1.35 var(--mono);
+  white-space: nowrap;
+}
+#raceList {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+#raceList button {
+  appearance: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+#raceList button:hover {
+  border-color: var(--sodium);
+}
+#raceList b {
+  font: 600 14px/1.3 var(--display);
+  white-space: nowrap;
+}
+#raceList span {
+  color: var(--ink-2);
+  font: 400 11px/1.35 var(--mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+#raceList em.tag {
+  color: var(--sodium);
+}
+#daily {
+  padding: 8px 10px;
+  border: 1px solid var(--sodium);
+  border-radius: 4px;
+}
+#daily b {
+  color: var(--sodium);
+}
+#daily a {
+  color: var(--ink);
+  font-weight: 600;
 }
 
 /* With no city, the panel would sit across the message in the middle of the page */

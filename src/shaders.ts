@@ -452,7 +452,7 @@ float fbm(vec3 p){float s=0.,a=.5;for(int i=0;i<4;i++){s+=a*vnoise(p);p*=2.03;a*
  * Milky Way with dark lanes of dust through it. `uDetail` drops the band on a slow GPU. Along the horizon stands the
  * rest of the city, far off: dark towers in clumps, a few windows lit, so the streets don't run out into nothing.
  */
-export const SKY_FRAGMENT = /* glsl */ `uniform vec3 uFog,uGlow;uniform float uDetail,uTime;varying vec3 vP;${DUSK}${NOISE}
+export const SKY_FRAGMENT = /* glsl */ `uniform vec3 uFog,uGlow;uniform float uDetail,uTime,uAurora;varying vec3 vP;${DUSK}${NOISE}
 #if defined(BLOCKS)
 /*
  * The day: haze at the horizon rising to blue, a square sun, and clouds made of squares. The clouds are a flat layer far
@@ -542,6 +542,16 @@ if(core>.002){float cloud=fbm(d*5.+3.);float lanes=fbm(d*11.);
 float m=core*(.45+.9*cloud)*(1.-.75*smoothstep(.42,.7,lanes)*pow(band,16.))*smoothstep(0.,.3,h);
 c+=vec3(.15,.14,.22)*m*.42*uDetail;}}
 c+=dusk(d);
+/*
+ * A year's flight has an aurora: a band of light that waves along the sky, green below and violet above, in fine
+ * upright rays. It fades out well above the horizon, because the night's ground lets the sky show through.
+ */
+if(uAurora>0.){float a=atan(d.z,d.x);
+float wave=.16+.04*sin(a*3.+uTime*.06)+.025*sin(a*7.-uTime*.09);
+float x=(h-wave)*9.;
+float rays=.55+.45*sin(a*60.+3.*sin(a*5.+uTime*.15));
+float glow=exp(-x*x)*rays*smoothstep(.05,.12,h);
+c+=mix(vec3(.06,.5,.3),vec3(.32,.14,.48),smoothstep(-.02,.1,h-wave))*glow*.5*uAurora;}
 float a=atan(d.z,d.x)*${around(520)};float col=floor(a);
 float top=.004+.05*h3(vec3(floor(col/9.),4.,2.))*h3(vec3(floor(col/31.),1.,6.))*(.35+.65*h3(vec3(col,8.,3.)));
 if(d.y<top&&d.y>-.002){vec2 w=vec2(fract(a),d.y*900.);
@@ -660,18 +670,25 @@ float r=length(gl_PointCoord-.5)*2.;float a=smoothstep(1.,.1,r);gl_FragColor=vec
 #endif
 }`;
 
-export const DUST_VERTEX = /* glsl */ `attribute float aEnd;uniform vec3 uCam,uVel;varying float vA;
-void main(){const float S=44.;vec3 w=uCam+(fract(position-uCam/S)-.5)*S;
-vA=smoothstep(22.,7.,length(w-uCam))*clamp(length(uVel)/12.-.4,0.,1.);
-w-=uVel*aEnd*.03;gl_Position=projectionMatrix*viewMatrix*vec4(w,1.);}`;
+/*
+ * Specks in the air around the camera, which streak past at speed. In a year's flight they are snow instead: they fall
+ * and drift, show at any speed, and each is a short white stroke.
+ */
+export const DUST_VERTEX = /* glsl */ `attribute float aEnd;uniform vec3 uCam,uVel;uniform float uTime,uSnow;varying float vA;
+void main(){const float S=44.;
+vec3 fall=vec3(sin(uTime*.4)*1.2,-uTime*2.2,cos(uTime*.3)*.8)*uSnow;
+vec3 w=uCam+(fract(position+(fall-uCam)/S)-.5)*S;
+vA=smoothstep(22.,7.,length(w-uCam))*max(clamp(length(uVel)/12.-.4,0.,1.),uSnow*.9);
+w-=uVel*aEnd*.03*(1.-.7*uSnow);w.y-=aEnd*.18*uSnow;
+gl_Position=projectionMatrix*viewMatrix*vec4(w,1.);}`;
 
 /* By day the streaks are drawn over the view, where by night they are added to it, so their strength is in the alpha. */
-export const DUST_FRAGMENT = /* glsl */ `varying float vA;
+export const DUST_FRAGMENT = /* glsl */ `uniform float uSnow;varying float vA;
 void main(){
 #ifdef DAY
-gl_FragColor=vec4(vec3(1.),clamp(vA,0.,1.)*.4);
+gl_FragColor=vec4(vec3(1.),clamp(vA,0.,1.)*mix(.4,.8,uSnow));
 #else
-gl_FragColor=vec4(vec3(.72,.85,.95)*vA*.42,1.);
+gl_FragColor=vec4(mix(vec3(.3,.36,.4),vec3(.7,.72,.75),uSnow)*vA,1.);
 #endif
 }`;
 

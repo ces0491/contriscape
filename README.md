@@ -20,24 +20,26 @@ A flight through the whole history flies down the alleys of two years: the busie
 
 Scroll zooms in all three. In Autopilot and Pilot it runs from far behind the ship into the cockpit, and scrolling out leaves the cockpit again.
 
-| Pilot control  | Action                |
-| -------------- | --------------------- |
-| WASD or arrows | Steer                 |
-| Q / E          | Down / up             |
-| Shift          | Boost                 |
-| C              | Brake                 |
-| Click or Space | Fire                  |
-| M              | Mouse steering on/off |
-| I              | Invert Y              |
-| N              | Sound on/off          |
+| Pilot control     | Action                                   |
+| ----------------- | ---------------------------------------- |
+| WASD or arrows    | Steer                                    |
+| Q / E             | Down / up                                |
+| Shift             | Boost                                    |
+| C                 | Brake                                    |
+| Click or Space    | Fire                                     |
+| Double-tap A or D | Barrel roll that way, one alley across   |
+| W with A or D     | Fly on the side that way, turning harder |
+| M                 | Mouse steering on/off                    |
+| I                 | Invert Y                                 |
+| N                 | Sound on/off                             |
 
-A tap of a steering key nudges the nose and holding it turns harder. Mouse steering is off by default, so the mouse stays free for the buttons, and the ship stops while a panel is open.
+A tap of a steering key nudges the nose and holding it turns harder. A double tap of a direction rolls the ship once round and carries it one alley across. Holding W, or the up arrow, with a direction puts the ship on its side and pulls it round that way half as fast again, without climbing. Mouse steering is off by default, so the mouse stays free for the buttons, and the ship stops while a panel is open.
 
-On a phone, drag to steer, pinch to zoom, and use the Fire, Boost and Brake buttons. Dragging up and down climbs and dives, so there are no buttons for those.
+On a phone, drag to steer, pinch to zoom, and use the Fire, Boost and Brake buttons. Dragging up and down climbs and dives, so there are no buttons for those. The barrel roll and flying on the side are on the keyboard only.
 
 All years opens the list of years, which keeps the screen the same size however long the history is. Settings holds sound, music, mouse steering, Invert Y and the colours. N switches sound on and off in Autopilot and Orbit as well as Pilot. The Guide button on the page covers the controls, the buttons and where the badges come from. Esc closes any panel.
 
-A city lives at `/<username>`, so the address is the share link. The site root shows `torvalds` as an example, and its first hint says so.
+A city lives at `/<username>`, so the address is the share link. On a first visit the site root shows `torvalds` as an example, and its first hint says so. After that the root opens the city the browser opened last, at that city's own address, and falls back to the example if the account has gone.
 
 A link pasted into Slack, LinkedIn and the like previews with a card of that user's history as a skyline. The site's one page is the same file for every username and can't carry a card of its own, so `vercel.json` sends the programs that fetch previews, picked out by their user agent, to a small page that names the card. People and search engines get the city.
 
@@ -48,6 +50,22 @@ Explore, beside the username box, lists other cities to fly, for a visitor with 
 A city picked there opens with its owner's name and bio. The panel's other half, This city, says more about any city's owner: the bio, the follower count, the languages most of their repos are in, and the repos they pinned, or their most-starred if they pinned none, each linked to GitHub.
 
 The lists are a file, `public/explore.json`, which `npm run explore` writes from GitHub's search, so opening the panel costs GitHub nothing. They are a snapshot, and the panel gives its date. There is no list of trending repos. GitHub's API has none, and the nearest search, new repos by stars, turns up whatever is popular that month, which nobody can check before it is on the page. Explore also works when a username isn't found, where there is no city to show.
+
+### Racing
+
+Race, beside the timeline, lists the years with any contributions, newest first, each with the rival's time and your fastest. A race takes the ship to a start line west of that year's block and counts down from three. The course is the line Autopilot takes down the year's alleys, then once round its busiest day, climbing, to finish on a short straight. Gold rings are the gates: the next one is bright and has a marker, the few after it are dim, and one flown past has to be gone back for. The end of an Autopilot flight also offers Race it.
+
+The rival is Autopilot, flying the same line in another ship. It picks up speed as the ship does and takes each stretch as fast as its corners allow. On the courses tested it averages from Pilot's cruising speed to a third faster, so a clean run at cruise ties or loses, and one that boosts where it can wins. The readout under the header gives the gate, the clock, the gap to the rival at the last gate, and the score.
+
+Passing close to a tower at speed scores a near miss, more the closer and faster, and each tower counts once a race. Near misses in quick succession build a chain, multiplied by up to three, which banks when two seconds pass without another or it reaches the top multiplier. Clipping a tower loses the chain, and costs speed as it does outside a race. An open panel holds the race. Changing mode, year or ship calls it off.
+
+The fastest time and the highest score are kept for each year and each ship, and the list marks a year where the rival has been beaten. The fastest run with a ship is kept as a ghost, a faint copy that flies alongside in later races on that course with that ship. The browser keeps the 20 most recent ghosts.
+
+A result can be copied as a challenge: a link such as `/<username>#race=2025&beat=41.2&ship=rocket`, which opens on a card offering that race with the time to beat, and the readout shows it. Nothing checks the time, which is fine between friends.
+
+Explore names a day's course at the top of its lists: one of its cities, picked by the date, on one of that city's busier years, picked by the date too, so everyone with the same lists gets the same course that day. Its link opens on a card offering the race.
+
+Explore also lists the cities flown in this browser, under Flown here, with what was done on each, and marks them in the other lists as Flown, Raced or Cleared.
 
 ### Badges
 
@@ -82,7 +100,7 @@ Poster takes its palette and its way of writing a name, as in `2026/`, from that
 
 ### Ships
 
-Settings has five ships: Interceptor, the swept delta the site started with, then Dart, Rocket, Saucer and Brick, which is built of boxes. Each takes the ship and trim colours, has the same guns and the same size against the towers, and has one power of its own in Pilot:
+Settings has five ships: Interceptor, the swept delta the site started with, then Dart, Rocket, Saucer and Brick, which is built of boxes. A sixth, the Comet, flies only in Your year. Each takes the ship and trim colours, has the same guns and the same size against the towers, and has one power of its own in Pilot:
 
 | Ship        | Power       | What it does                               |
 | ----------- | ----------- | ------------------------------------------ |
@@ -110,11 +128,15 @@ The sounds and music are made in the browser with the Web Audio API, so there ar
 
 ### Your year on GitHub
 
-During December a button offers a flight through the current year, with captions for its biggest moments and a closing summary. `/<username>#your-year` opens it at any time of year.
+Through December a button offers a flight through the year, and through the first half of January the year just ended. It opens on the year's number over its empty block, with a fanfare, while the camera pushes in. Then the year rises week by week, a little slower than other flights, with its count running under the header. It stops for the first contribution, the biggest month, the busiest day, the longest streak and the year's badges, each lit with a burst and a chime, and closes with fireworks over the block and a card of the year's numbers. The card has Watch again, Copy link and, where the browser can, Share.
+
+The year's flight is a limited edition: its own ship, the Comet, in midnight blue and gold, a gold city at night under an aurora with snow falling, and bells in the music. None of it can be picked in Settings. The visitor's own ship, colours, look and music come back when the card closes, or sooner if they fly another way.
+
+A year has its own address, `/<username>/<year>`, which Copy link and Share give and which opens straight on that year's flight. Its link preview is a card of the year in gold: the name, the year written large, its total, active days and longest streak, and its weeks as a skyline. `/<username>#your-year` opens the latest year at any time.
 
 ## Data and privacy
 
-The page shows what a user's public GitHub profile already shows, including the bio and repos in Explore. Private contributions appear as anonymous counts only if that user has turned them on in their profile settings. Responses are cached on the CDN for six hours, and the site has no database, accounts or cookies. [Vercel Web Analytics](https://vercel.com/docs/analytics/privacy-policy) counts page views without cookies, recording the page, the referrer, a rough location, and the device and browser, with nothing that identifies a visitor. Only production builds load it. Earned badges and settings, including whether sound and music are on, stay in the visitor's own browser. Fonts load from Google Fonts.
+The page shows what a user's public GitHub profile already shows, including the bio and repos in Explore. Private contributions appear as anonymous counts only if that user has turned them on in their profile settings. Responses are cached on the CDN for six hours, and the site has no database, accounts or cookies. [Vercel Web Analytics](https://vercel.com/docs/analytics/privacy-policy) counts page views without cookies, recording the page, the referrer, a rough location, and the device and browser, with nothing that identifies a visitor. Only production builds load it. Earned badges and settings, including whether sound and music are on, stay in the visitor's own browser, and so do race bests, ghosts, the cities flown and the one opened last. Fonts load from Google Fonts.
 
 Tower height is the square root of the day's contributions, measured against a busy day for that user: 99 in 100 of their active days have no more. The few days above that stand a little taller, by up to a third, so one enormous day doesn't leave every other tower a stub. The busiest day is still the tallest tower. With fewer than 50 active days, heights are measured against the busiest. The towers' colours and the music's notes follow the same measure.
 
@@ -130,20 +152,20 @@ npm run dev
 
 `GITHUB_TOKEN` is a [personal access token (classic)](https://github.com/settings/tokens) with no scopes ticked. GitHub's GraphQL API needs a token even for public data, so it lives on the server. `npm run dev` runs the API inside the Vite dev server, with no Vercel login needed.
 
-| Command            | Does                                                                                                                           |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| `npm test`         | API, route, ride, badge, year, zoom, colour, look, ship, show, sound, music, aiming, collision, sight, clock and Explore tests |
-| `npm run test:e2e` | Browser tests with a stubbed API, under the production CSP                                                                     |
-| `npm run lint`     | ESLint                                                                                                                         |
-| `npm run build`    | Typecheck, then build to `dist`                                                                                                |
-| `npm run explore`  | Rewrites `public/explore.json` from GitHub's search. Needs `GITHUB_TOKEN`, from the environment or `.env.local`                |
+| Command            | Does                                                                                                                                                      |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm test`         | API, card, route, ride, race, near-miss, badge, year, zoom, colour, look, ship, sound, music, aiming, collision, sight, clock, passport and Explore tests |
+| `npm run test:e2e` | Browser tests with a stubbed API, under the production CSP                                                                                                |
+| `npm run lint`     | ESLint                                                                                                                                                    |
+| `npm run build`    | Typecheck, then build to `dist`                                                                                                                           |
+| `npm run explore`  | Rewrites `public/explore.json` from GitHub's search. Needs `GITHUB_TOKEN`, from the environment or `.env.local`                                           |
 
 `npx playwright install chromium` fetches the browser for the end-to-end tests.
 
 ## How it's built
 
 - `api/contributions/[login].ts` is a Vercel Function that validates the login and sets cache headers. `api/_lib/github.ts` talks to GitHub, and reads the user's profile in the same request as their account.
-- `api/card/[login].ts` draws the card a shared link previews with, and `api/share/[login].ts` is the page a preview fetcher reads. `api/_lib/card.ts` lays the card out, and `api/_lib/png.ts` and `api/_lib/letters.ts` draw it as rectangles and block capitals with Node's own zlib, so it needs no image library.
+- `api/card/[login].ts` draws the card a shared link previews with, a city's or with `?year=` one year's, and `api/share/[login].ts` is the page a preview fetcher reads. `vercel.json` sends preview fetchers for `/<username>` and `/<username>/<year>` there. `api/_lib/card.ts` lays the cards out, and `api/_lib/png.ts` and `api/_lib/letters.ts` draw it as rectangles and block capitals with Node's own zlib, so it needs no image library.
 - `shared/contract.ts` holds the API's schema, used on both sides.
 - `scripts/catalogue.ts` builds Explore's lists from GitHub's search and `scripts/explore.ts` writes them to `public/explore.json`. `scripts/run.ts` loads them through Vite, so there is no build step. `shared/explore.ts` holds the file's schema and the random pick, and `src/explorer.ts` is the panel.
 - `src/main.ts` loads a city. A browser without WebGL 2 gets the Guide as the page instead, and the API isn't called.
@@ -151,6 +173,7 @@ npm run dev
 - `src/world.ts`, `src/fighter.ts`, `src/badges.ts`, `src/blast.ts`, `src/fireworks.ts` and `src/app.ts` are the three.js scene, the ship and its guns, the floating badges, their explosions, the show for a cleared city and the flight modes. `src/environment.ts` renders what the ship's metal and glass reflect, and `src/trails.ts` draws the vapour off its wingtips.
 - `src/skins.ts` holds the looks. A look is how the city itself is drawn, plus what is done to the finished frame: 16-bit and VGA are cut into big square pixels, each read four times so a thin tower dims at a distance where it would otherwise flicker. `dress` compiles a shader for a look: each version sits under a name such as `BLOCKS`, `SHOOTER` or `DAY` in `src/shaders.ts`, so every look is its own program and none pays for another.
 - The five ships are designs in `src/fighter.ts`. A design places its own parts and says where its engines, wingtips and guns are, and the flames, lights and barrels are fitted the same way on all of them. `src/powers.ts` holds what each does differently in Pilot, and `src/cockpits.ts` draws each one's cockpit as SVG over the view.
+- `src/race.ts` builds a year's course from `courseRoute` in `src/routes.ts`, sets its gates, works out the rival's flight ahead of the race, and keeps the race, the bests, the ghosts, challenge links and the day's course. `src/near.ts` scores near misses, `src/gates.ts` draws the gates, `src/race-hud.ts` is the race's readout, panel and cards, and `src/passport.ts` remembers the cities flown here. None of them but the gates need WebGL.
 - `src/badge-art.ts` draws the badge artwork at runtime, and `src/hud.ts` is everything on screen that isn't the 3D scene.
 - `src/sound.ts` makes the sound effects and mixes them with the music from `src/music.ts`, all with the Web Audio API, and builds nothing until the visitor's first click, tap or key press.
 

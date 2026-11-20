@@ -4,6 +4,13 @@ export function formatClock(seconds: number): string {
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
 }
 
+/** Minutes, seconds and tenths, for a race: 0:41.2. The hundredths are cut off, so 0:41.2 means 41.2 seconds have passed. */
+export function formatLap(seconds: number): string {
+  const tenths = Math.max(0, Math.floor(seconds * 10 + 1e-6));
+  const whole = Math.floor(tenths / 10);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}.${tenths % 10}`;
+}
+
 /**
  * The clock on clearing a city by flying. It starts from a city with no badge earned and counts the time the ship is
  * flown. A jump from the Badges list ends the timing, because it carries the ship across the city in no time, and so

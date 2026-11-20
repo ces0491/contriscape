@@ -177,10 +177,15 @@ function uTurn(x: number, z0: number, z1: number, dir: number, day: number, pace
 }
 
 /**
- * Swings left around the end of the run, joins a circle on its north side already heading along it,
- * climbs around the tower, and leaves straight for the jump.
+ * Swings left around the end of the run, joins a circle on its north side already heading along it, and climbs
+ * around the tower. Gives the points and the heading on the ground it leaves the circle on.
  */
-function ringPoints(map: CityMap, tower: number, last: Waypoint, day: number): Waypoint[] {
+function ringAround(
+  map: CityMap,
+  tower: number,
+  last: Waypoint,
+  day: number,
+): { points: Waypoint[]; tx: number; tz: number } {
   const { cx, cz, top } = map;
   const radius = Math.max(RING_RADIUS, cz[tower] - last.z + 12);
   const height = Math.max(6, last.y);
@@ -204,7 +209,13 @@ function ringPoints(map: CityMap, tower: number, last: Waypoint, day: number): W
     });
   }
   const a = entry - turns * Math.PI * 2;
-  return [...swing, ...ring, ...exitPoints(ring[steps], Math.sin(a), -Math.cos(a))];
+  return { points: [...swing, ...ring], tx: Math.sin(a), tz: -Math.cos(a) };
+}
+
+/** Round the tower as `ringAround` goes, then straight out and up for the jump. */
+function ringPoints(map: CityMap, tower: number, last: Waypoint, day: number): Waypoint[] {
+  const { points, tx, tz } = ringAround(map, tower, last, day);
+  return [...points, ...exitPoints(points[points.length - 1], tx, tz)];
 }
 
 function exitPoints(last: Waypoint, tx: number, tz: number): Waypoint[] {
@@ -529,6 +540,46 @@ function sampled(map: CityMap, wp: Waypoint[], centre: Vector3): Route {
 
 export function buildRoute(map: CityMap, scope: RouteScope, centre: Vector3): Route {
   return scope === 'all' ? routeAll(map, centre) : routeYear(map, scope, centre);
+}
+
+/**
+ * The fastest a race's rival flies where no corner slows it. Pilot cruises at 17 and boosts at 46, so a clean run at
+ * cruise loses to it and one that boosts where it can wins.
+ */
+export const RIVAL_PACE = 24;
+/** Where a race starts, west of its block, so the straight in gives the ship time to get up to speed. */
+const RACE_START = -40;
+/** The straight a race finishes on, after the last turn. */
+const FINISH_RUN = 16;
+
+/**
+ * The line a race follows through a year: in along a straight from the west, down the alleys Autopilot takes, and once
+ * round the year's busiest day, climbing, to finish on a short straight. It is paced for a rival racing it, and lifted
+ * over the finished city as Autopilot's routes are, so it clears every tower.
+ */
+export function courseRoute(map: CityMap, year: number): Route {
+  const route = alleyRoute(map, year);
+  const entry = map.blockZ(year) + route[0] * CELL;
+  const { b } = map.cal.span(year);
+  const level = Math.max(3.6, flightLevel(map, year));
+  // The whole city is up for a race, and the rival takes every stretch as fast as its corners allow
+  const raced = (p: Waypoint): Waypoint => ({ ...p, day: b, pace: RIVAL_PACE, gaze: 0 });
+  const wp: Waypoint[] = [
+    raced({ x: RACE_START, y: level, z: entry, day: b, pace: 0, gaze: 0 }),
+    raced({ x: RACE_START / 2, y: level, z: entry, day: b, pace: 0, gaze: 0 }),
+    raced({ x: -8, y: level, z: entry, day: b, pace: 0, gaze: 0 }),
+    ...runPoints(map, year, route, 0).map(raced),
+  ];
+  const last = wp[wp.length - 1];
+  const tower = map.cal.busiestIn(year);
+  if (tower >= 0) {
+    const { points, tx, tz } = ringAround(map, tower, last, b);
+    const end = points[points.length - 1];
+    wp.push(...points.map(raced), raced({ ...end, x: end.x + tx * FINISH_RUN, z: end.z + tz * FINISH_RUN }));
+  } else {
+    wp.push(raced({ ...last, x: last.x + FINISH_RUN }));
+  }
+  return sampled(map, wp, new Vector3());
 }
 
 export interface Pose {

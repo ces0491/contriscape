@@ -9,32 +9,53 @@ import { holdsLock, lockOn } from './aim';
 import { APP_NAME } from './brand';
 import { BADGE_RADIUS, Badges } from './badges';
 import { Blast } from './blast';
-import { Calendar, describeCount, MONTHS } from './calendar';
+import { Calendar, describeCount, formatCount, MONTHS } from './calendar';
 import { pushOut } from './collision';
-import { COLOUR_ROWS, DEFAULT_COLOURS, readColours, towerPalette, type Colours } from './colours';
+import { COLOUR_ROWS, DEFAULT_COLOURS, EDITION_COLOURS, readColours, towerPalette, type Colours } from './colours';
 import { Environment } from './environment';
-import { takeArrival, type Explorer } from './explorer';
-import { buildFighter, readShip, SHIP_LABELS, SHIPS, Weapons, type Ship } from './fighter';
+import { takeArrival, writtenDay, type Explorer } from './explorer';
+import { buildFighter, EDITION_SHIP, readShip, SHIP_LABELS, SHIPS, Weapons, type Ship } from './fighter';
 import { FINALE_SECONDS, Fireworks } from './fireworks';
 import { Hud, type Scope } from './hud';
 import { Flashes } from './lights';
 import { CityMap, DEPTH, PLINTH, TOWER, WIDTH } from './map';
-import { chooseMarkers, HomeMarker, Markers, placeMarker, type Insets, type Placed } from './markers';
+import { chooseMarkers, Markers, placeMarker, SpotMarker, type Insets, type Placed } from './markers';
 import { findMilestones, type Milestone } from './milestones';
 import { averageFrame, countedFrame, tooSlow } from './quality';
-import { reviewFacts, reviewTitle, reviewYear } from './review';
+import { reviewFacts, reviewSeason, reviewTitle, reviewYear, type YearReview } from './review';
 import { buildRoute, lengthAtDay, newPose, poseAt, RISE, type Route } from './routes';
-import { formatClock, Run } from './run';
+import { formatClock, formatLap, Run } from './run';
 import { FINISH_FRAGMENT, FINISH_VERTEX } from './shaders';
 import { definesFor, LOOKS, pixelSize, readSkin, SKINS, type Skin } from './skins';
 import { approachHeight, blockedBetween, clearReach, towerAlong } from './sight';
 import { Sound, stereo } from './sound';
-import { keyTurn } from './steering';
+import { DoubleTap, EDGE_TURN, keyTurn, ON_EDGE, ROLL_SECONDS, rollDrift, rollSpin } from './steering';
 import { Trails } from './trails';
 import { createWorld, SETTLED_OFFSET } from './world';
 import { COCKPIT_BELOW, nextZoom } from './zoom';
 import { fitCockpit } from './cockpits';
 import { POWERS, speedKept } from './powers';
+import { Gates } from './gates';
+import { multiplier, NearMisses } from './near';
+import { addYear, stamp } from './passport';
+import {
+  buildCourse,
+  challengeHash,
+  ghostAt,
+  Race,
+  RaceRecords,
+  raceYears,
+  readChallenge,
+  readGhost,
+  Recorder,
+  saveGhost,
+  today,
+  type Challenge,
+  type Course,
+  type GhostPose,
+  type Track,
+} from './race';
+import { RaceHud, type Readout } from './race-hud';
 
 type Mode = 'fly' | 'pilot' | 'orbit';
 
@@ -103,6 +124,25 @@ const GRAIN = 0.022;
 const BOOST_PULL = 0.3;
 /** The largest city a single view frames well. Older years sit behind the opening camera. */
 const FRAMED_DEPTH = 189;
+/** How far either side of a race's line the ship and the rival start, so neither sits inside the other. */
+const START_SIDE = 0.9;
+/** The rival eases onto the line over this much of the course. */
+const MERGE = 25;
+/** The rival flies another design in colours of its own, so it is never taken for the ship. */
+const RIVAL_COLOURS: Colours = { ...DEFAULT_COLOURS, hull: '#3b414c', trim: '#ff5a5f' };
+const GHOST_OPACITY = 0.32;
+/** How long "Go" stays up once a race starts. */
+const GO_SECONDS = 0.8;
+/** Seconds a year's flight opens on its number, over its empty block, before the jump in. */
+const OPENER_SECONDS = 4.5;
+/** A year's flight goes at this share of Autopilot's pace, so each of its moments has time. */
+const REVIEW_PACE = 0.8;
+/** Seconds of fireworks before a year's closing card comes up. */
+const CARD_AFTER = 2.6;
+
+const rivalFor = (mine: Ship): Ship => (mine === 'dart' ? 'interceptor' : 'dart');
+/** The keys that steer left and right, which a double tap turns into a barrel roll that way. */
+const SIDES: Partial<Record<string, -1 | 1>> = { KeyA: -1, ArrowLeft: -1, KeyD: 1, ArrowRight: 1 };
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 const smooth = (k: number) => k * k * (3 - 2 * k);
@@ -112,6 +152,7 @@ const element = <T extends HTMLElement>(id: string): T => document.getElementByI
 const PANELS = {
   explore: 'explorePanel',
   year: 'yearPanel',
+  race: 'racePanel',
   badges: 'badgePanel',
   settings: 'settingsPanel',
   guide: 'guidePanel',
@@ -151,7 +192,12 @@ function remember(key: string, on: boolean): void {
  * front page, which the visitor didn't ask for by name, so the first hint says what it is. `explorer` is the Explore
  * panel, which is on the page before there is a city and is handed over here.
  */
-export function startApp(data: Contributions, example: boolean, explorer: Explorer): void {
+export function startApp(
+  data: Contributions,
+  example: boolean,
+  explorer: Explorer,
+  linkedYear: number | null = null,
+): void {
   // Colours are authored for the display, and every shader writes them straight through
   THREE.ColorManagement.enabled = false;
 
@@ -193,11 +239,18 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
   const craft = buildFighter(shipModel);
   const fighter = craft.group;
   scene.add(fighter);
+  // A race's rival, and the ghost of the fastest run on its course with this ship
+  const rival = buildFighter(rivalFor(shipModel));
+  rival.paint(RIVAL_COLOURS);
+  scene.add(rival.group);
+  const ghost = buildFighter(shipModel);
+  ghost.fade(GHOST_OPACITY);
+  scene.add(ghost.group);
   scene.add(new THREE.AmbientLight(0x8fa6c0, 1.1));
   const sun = new THREE.DirectionalLight(0xfff0e0, 1.5);
   sun.position.set(-0.5, 0.8, 0.6);
   scene.add(sun);
-  const environment = new Environment(renderer, (map) => craft.reflect(map));
+  const environment = new Environment(renderer, (map) => [craft, rival, ghost].forEach((each) => each.reflect(map)));
   const weapons = new Weapons(scene, Math.random, shared.uPx);
   const trails = new Trails(scene);
   const flashes = new Flashes();
@@ -213,8 +266,14 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     badges.milestones.map((_, i) => badges.picture(i)),
     badges.milestones.map((m) => m.name),
   );
-  const home = new HomeMarker(element('markers'));
+  const home = new SpotMarker(element('markers'), 'home', 'The city');
+  const gateMarker = new SpotMarker(element('markers'), 'gate', 'Next gate');
   const run = new Run(badges.milestones.length > 0 && badges.earned.size === 0);
+  const raceList = raceYears(cal);
+  const records = new RaceRecords(cal.login);
+  const courses = new Map<number, Course>();
+  const raceHud = new RaceHud();
+  const gates = new Gates(scene);
 
   const composer = new EffectComposer(
     renderer,
@@ -270,7 +329,15 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
   let reviewing = false;
   let nextBeat = 0;
   let captionUntil = 0;
-  const review = reviewYear(cal, lastYear);
+  /** The year being flown in Your year, or last flown. */
+  let review: YearReview | null = null;
+  /** The camera's slow push in on a year's block while its number is up, or null. */
+  let opening: { from: THREE.Vector3; to: THREE.Vector3; aim: THREE.Vector3; t: number } | null = null;
+  /** The day the caption on screen is about, which stays lit while it's up, or -1. */
+  let beatDay = -1;
+  let summaryTimer = 0;
+  /** Set while a change of mode is part of a year's flight, which keeps the year's edition on through it. */
+  let keepEdition = false;
   let shake = 0;
   let redAlert = 0;
   let hitGlow = 0;
@@ -303,6 +370,27 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
   /** When each nearby tower last whooshed past. */
   const passed = new Map<number, number>();
   let firing = false;
+  /** A barrel roll under way, to the left (-1) or right (1), and how far through it is, from 0 to 1. */
+  let roll: { side: -1 | 1; t: number } | null = null;
+  const taps = new DoubleTap();
+  /** Whether the ship is flying on its side, from the up key held with a direction. */
+  let onEdge = false;
+  /** The race being flown, or null. Its near misses and the run recorded for its ghost go with it. */
+  let race: Race | null = null;
+  let near = new NearMisses();
+  let recorder = new Recorder();
+  let ghostTrack: Track | null = null;
+  /** The challenge or day's course the race being flown answers, if any. */
+  let raceFrom: Challenge | null = null;
+  /** The challenge this page was opened with, which the Race panel marks. */
+  let challenge: Challenge | null = null;
+  /** The last race finished, for racing it again or sending it as a challenge. */
+  let lastResult: { year: number; time: number; ship: Ship; from: Challenge | null } | null = null;
+  /** Whether a race's result is up. The ship waits under it, as it does under a panel. */
+  let resultUp = false;
+  let goUntil = 0;
+  /** Where the ship was at the start of this frame, to tell whether it flew through a gate. */
+  const lastPos = new THREE.Vector3();
   let contactCooldown = 0;
   let dimGoal = 1;
   let time = 0;
@@ -366,11 +454,22 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
   const nose = newPose();
   const behind = newPose();
   const ahead = newPose();
+  const rivalPose = newPose();
+  const rivalNose = newPose();
+  const ghostPose: GhostPose = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, bank: 0 };
 
   const viewFor = (): THREE.Vector3 => {
     if (scope.key === 'all') return LANDING;
     return new THREE.Vector3(WIDTH / 2 + 30, 68, map.blockZ(scope.key) + DEPTH / 2 + 118);
   };
+  /**
+   * Where a year's flight opens and closes: low in front of its block and looking across it, so the sky above shows,
+   * with its aurora, and the fireworks have somewhere to burst. `aim` is the point the camera looks at.
+   */
+  const stageFor = (year: number) => ({
+    at: new THREE.Vector3(WIDTH / 2 + 20, 26, map.blockZ(year) + DEPTH / 2 + 120),
+    aim: new THREE.Vector3(WIDTH / 2, 12, map.blockZ(year) + DEPTH / 2),
+  });
   const focusFor = (): THREE.Vector3 =>
     scope.key === 'all' ? CENTRE : new THREE.Vector3(WIDTH / 2, 4, map.blockZ(scope.key) + DEPTH / 2);
 
@@ -476,9 +575,16 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     if (!arrived) {
       if (holdSeconds > 0) {
         if (!paused) holdSeconds -= dt;
+        if (opening && !paused) {
+          opening.t = Math.min(1, opening.t + dt / OPENER_SECONDS);
+          camera.position.lerpVectors(opening.from, opening.to, smooth(opening.t));
+          camera.lookAt(opening.aim);
+        }
         return;
       }
       if (!jump) {
+        opening = null;
+        hud.hideOpener();
         beginJump(() => {
           arrived = true;
           snap = true;
@@ -487,7 +593,7 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
       return;
     }
     if (!paused && !dragging() && !(jump && jump.t < 0.5)) {
-      flight.s += poseAt(flight, flight.s, here).pace * dt;
+      flight.s += poseAt(flight, flight.s, here).pace * dt * (reviewing ? REVIEW_PACE : 1);
       if (flight.s >= flight.len) {
         flight.s = flight.len;
         if (!jump) beginJump(endFlight);
@@ -498,12 +604,33 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     poseFromRoute(flight, dt);
   }
   function endFlight(): void {
-    const finished = reviewing && review;
-    camera.position.copy(viewFor());
-    camera.lookAt(scope.key === 'all' ? LANDING_AIM : focusFor());
+    const finished = reviewing ? review : null;
+    const stage = finished ? stageFor(finished.year) : null;
+    camera.position.copy(stage?.at ?? viewFor());
+    camera.lookAt(stage?.aim ?? (scope.key === 'all' ? LANDING_AIM : focusFor()));
+    // The year's edition stays on for its fireworks and its card
+    keepEdition = finished !== null;
     setMode('orbit');
-    if (finished) hud.showSummary(reviewTitle(review.year), reviewFacts(review, cal));
+    keepEdition = false;
+    if (finished) closeYear(finished);
     else offerControls();
+  }
+  /** A year's flight ends with fireworks over its block, and then its card. */
+  function closeYear(year: YearReview): void {
+    const card = () => hud.showSummary(reviewTitle(year.year), cal.login, year.total, reviewFacts(year, cal));
+    sound.fanfare();
+    if (reduced) {
+      card();
+      return;
+    }
+    const shells = fireworks.start(camera, towerPalette((edition ? EDITION_COLOURS : colours).towers).ramp[3]);
+    sound.fireworks(shells);
+    for (const { at: burst, centre, colour } of shells) {
+      const [r, g, b] = colour.map((v) => v * 1.4);
+      flashes.add({ x: centre.x, y: centre.y, z: centre.z, r, g, b, reach: 95, start: time + burst, life: 0.9 });
+    }
+    clearTimeout(summaryTimer);
+    summaryTimer = window.setTimeout(card, CARD_AFTER * 1000);
   }
   /** After watching a flight is the moment to offer one. The offer goes when it's taken, or another mode is. */
   function offerControls(): void {
@@ -553,6 +680,8 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     ship.live = true;
   }
   function bump(day: number, headOn: boolean): void {
+    // Any contact loses a race's chain of near misses, however soon it comes after the last
+    if (race?.phase === 'racing' && near.clip(day) > 0) raceHud.lost();
     if (contactCooldown > 0) return;
     contactCooldown = 0.35;
     ship.speed *= speedKept(power, headOn);
@@ -597,19 +726,26 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     let sx = turning ? keyX : stick.x;
     let sy = climbing ? keyY : stick.y;
     if (invertY) sy = -sy;
+    // The up key held with a direction puts the ship on its side, and pulls it round that way instead of climbing
+    onEdge = up && !down && turning !== 0;
+    if (onEdge) sy = 0;
     const boosting = keys.has('ShiftLeft') || keys.has('ShiftRight') || boostHeld;
     if (boosting) parkedUntil = 0;
     if (boosting && !wasBoosting && !panelOpen) sound.ignite();
     wasBoosting = boosting;
     // Holds steady at a badge. Lining up the shot extends the hold, because moving off would overshoot the badge.
     if (aiming && time < parkedUntil && (turning || climbing)) parkedUntil = time + PARKED_SECONDS;
-    // An open panel stops the ship, so nothing goes wrong while the mouse is busy with it
-    const holding = panelOpen || time < parkedUntil;
-    if (panelOpen) {
+    // An open panel stops the ship, so nothing goes wrong while the mouse is busy with it. A race's countdown and its
+    // result hold it too.
+    const waiting = panelOpen || resultUp || race?.phase === 'countdown';
+    const holding = waiting || time < parkedUntil;
+    if (waiting) {
       sx = 0;
       sy = 0;
+      onEdge = false;
+      roll = null;
     }
-    ship.yaw -= sx * 2 * power.turn * dt;
+    ship.yaw -= sx * 2 * power.turn * (onEdge ? EDGE_TURN : 1) * dt;
     ship.pitch = clamp(ship.pitch - sy * 1.5 * power.turn * dt, -1.3, 1.3);
     const braked = power.hover ? 0 : BRAKE;
     const wanted = holding ? 0 : boosting ? BOOST * power.boost : keys.has('KeyC') || brakeHeld ? braked : CRUISE;
@@ -623,6 +759,16 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     ship.slide.lerp(v2, 1 - Math.exp(-7 * dt));
     v2.copy(ship.slide).applyQuaternion(q1);
     ship.vel.copy(ship.fwd).multiplyScalar(ship.speed).add(v2);
+    // A barrel roll carries the ship one alley across, level with the ground whatever its pitch
+    let spin = 0;
+    if (roll) {
+      roll.t = Math.min(1, roll.t + dt / ROLL_SECONDS);
+      v2.set(-ship.fwd.z, 0, ship.fwd.x);
+      if (v2.lengthSq() > 1e-6) ship.vel.addScaledVector(v2.normalize(), roll.side * rollDrift(roll.t));
+      // The ship's right wing goes down for a roll to the right, as it does in a right turn
+      spin = -roll.side * rollSpin(roll.t);
+      if (roll.t >= 1) roll = null;
+    }
 
     // Small steps, so a boosting ship can't jump a tower on a slow frame
     const steps = Math.ceil((ship.vel.length() * dt) / 0.35);
@@ -636,10 +782,11 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     ship.pos.x = clamp(ship.pos.x, -300, WIDTH + 300);
     ship.pos.z = clamp(ship.pos.z, -300, map.depth + 300);
 
-    ship.bank += (-sx * 1.05 - ship.bank) * (1 - Math.exp(-5 * dt));
+    const bankGoal = onEdge ? -Math.sign(turning) * ON_EDGE : -sx * 1.05;
+    ship.bank += (bankGoal - ship.bank) * (1 - Math.exp(-5 * dt));
     bankNow = ship.bank;
     fighter.position.copy(ship.pos);
-    fighter.quaternion.copy(ship.quat).multiply(q2.setFromAxisAngle(ROLL_AXIS, ship.bank + victoryRoll));
+    fighter.quaternion.copy(ship.quat).multiply(q2.setFromAxisAngle(ROLL_AXIS, ship.bank + victoryRoll + spin));
 
     const d = chaseDistance();
     v3.copy(ship.pos).addScaledVector(ship.fwd, 9);
@@ -651,7 +798,14 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     } else {
       v1.copy(ship.pos);
     }
-    aimCamera(v1, v3, ship.bank * (d > 0 ? 0.4 : 0.8), dt);
+    // The chase view stays near level through a roll. From the cockpit the city turns over, unless motion is reduced.
+    aimCamera(v1, v3, d > 0 ? ship.bank * 0.4 : ship.bank * 0.8 + (reduced ? 0 : spin), dt);
+  }
+  /** Starts a barrel roll to one side, from a double tap of that direction. */
+  function startRoll(side: -1 | 1): void {
+    if (!ship.live || roll || panelOpen || resultUp || race?.phase === 'countdown' || (jump && jump.t < 0.5)) return;
+    roll = { side, t: 0 };
+    sound.whoosh(side * 0.6, 0.9);
   }
 
   /* ---------- targeting computer ---------- */
@@ -724,10 +878,23 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     if (!(mode === 'pilot' && ship.live && !(jump && jump.t < 0.5))) {
       markers.hideAll();
       home.place(null, 0);
+      gateMarker.place(null, 0);
       return;
     }
     const width = stage.clientWidth;
     const height = stage.clientHeight;
+    // In a race, the one marker is on the gate to fly through next
+    if (race) {
+      markers.hideAll();
+      home.place(null, 0);
+      const { at } = race.course.gates[race.next];
+      const behind = sight.copy(at).applyMatrix4(camera.matrixWorldInverse).z > 0;
+      sight.copy(at).project(camera);
+      const placed = placeMarker(sight.x, sight.y, behind, width, height, insets);
+      gateMarker.place(placed.inside ? placed : pin(sight.x, sight.y, behind, width, height), ship.pos.distanceTo(at));
+      return;
+    }
+    gateMarker.place(null, 0);
     const candidates = badges.milestones
       .map((_, i) => {
         if (!badges.isStanding(i, play) || i === locked) return null;
@@ -796,7 +963,8 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
       return;
     }
 
-    const i = flying ? towerAlong(map, standing, ship.pos, ship.fwd, AIM_RANGE) : -1;
+    // A race has its gates to look at, so towers aren't read out during one
+    const i = flying && !race ? towerAlong(map, standing, ship.pos, ship.fwd, AIM_RANGE) : -1;
     if (i < 0) {
       bracket.hidden = lock.hidden = true;
       if (mode !== 'orbit') shared.uHover.value = -1;
@@ -858,6 +1026,14 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     const wasFlying = mode === 'fly' && arrived && !(jump && jump.t < 0.5);
     withdrawOffer();
     withdrawArrival();
+    withdrawChallenge();
+    endRace();
+    closeResult();
+    clearTimeout(summaryTimer);
+    if (!keepEdition) {
+      undressEdition();
+      element('summary').hidden = true;
+    }
     if (next !== 'fly') stopReview();
     mode = next;
     glide = null;
@@ -892,7 +1068,8 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     }
     syncPlay();
   }
-  function setScope(key: 'all' | number): void {
+  /** Shows one year, or the whole history, without moving the ship or the camera. */
+  function applyScope(key: 'all' | number): void {
     scope = scopeFor(key);
     shared.uMin.value = scope.a;
     shared.uMax.value = key === 'all' ? days - 1 : scope.b;
@@ -902,12 +1079,18 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     });
     element('year').textContent = key === 'all' ? 'All years' : String(key);
     hud.setScope(scope);
+  }
+  function setScope(key: 'all' | number): void {
+    undressEdition();
+    element('summary').hidden = true;
+    applyScope(key);
     if (mode === 'fly') {
       startFlight(0);
       return;
     }
     playGoal = SETTLED;
     if (mode === 'pilot') {
+      endRace();
       ship.live = false;
       beginJump(() => spawnShip(spawnYear()));
     } else {
@@ -949,6 +1132,7 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     standDownReset();
     if (open !== null) withdrawArrival();
     if (open === 'explore') explorer.open();
+    if (open === 'race') drawRaceList();
   }
 
   /* ---------- colours ---------- */
@@ -958,16 +1142,21 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
   } catch {
     // Blocked storage just means the default.
   }
+  /** Paints the city and the ship in the visitor's colours, or the year's own during a year's flight. */
   function paintScene(): void {
-    const palette = towerPalette(colours.towers);
+    const scheme = edition ? EDITION_COLOURS : colours;
+    const palette = towerPalette(scheme.towers);
     world.paintTowers(palette);
     environment.paint(palette, time);
-    craft.paint(colours);
+    craft.paint(scheme);
+    ghost.paint(colours);
     hud.setAccent(palette.ramp[3]);
+    // Settings shows the visitor's own choices, whatever is on screen
     hud.syncColours(colours);
   }
   function setColours(next: Colours): void {
     colours = next;
+    undressEdition();
     paintScene();
     try {
       localStorage.setItem(COLOUR_KEY, JSON.stringify(next));
@@ -987,9 +1176,14 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     element('shipPower').textContent = `${power.name}. ${power.blurb}`;
   }
   function setShip(next: Ship): void {
+    // Bests are kept for each ship, so a race can't change ship partway
+    endRace();
+    undressEdition();
     shipModel = next;
     power = POWERS[next];
     craft.setModel(next);
+    rival.setModel(rivalFor(next));
+    ghost.setModel(next);
     readCockpit = fitCockpit(element('canopy'), next);
     showroom = true;
     showShip();
@@ -1022,31 +1216,64 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
       .multiply(q1.setFromAxisAngle(UP, time * 0.8));
   }
 
+  /* ---------- the year's own edition ---------- */
+  /**
+   * Whether a year's flight is dressed in its limited edition: its own ship in its own colours, a gold city under an
+   * aurora by night, with snow falling, and bells in the music. Nothing of it can be picked in Settings, and everything
+   * goes back to the visitor's own choices once the flight and its card are over.
+   */
+  let edition = false;
+  function dressEdition(): void {
+    if (edition) return;
+    edition = true;
+    craft.setModel(EDITION_SHIP);
+    readCockpit = fitCockpit(element('canopy'), EDITION_SHIP);
+    if (shown !== 'night') dressScene('night');
+    paintScene();
+    world.festive(true, !reduced);
+    sound.setFestive(true);
+  }
+  /** Puts back the visitor's own ship, colours, look and music. */
+  function undressEdition(): void {
+    if (!edition) return;
+    edition = false;
+    craft.setModel(shipModel);
+    readCockpit = fitCockpit(element('canopy'), shipModel);
+    if (shown !== skin) dressScene();
+    paintScene();
+    world.festive(false, false);
+    sound.setFestive(false);
+  }
+
   /* ---------- look ---------- */
   let skin: Skin = readSkin(recallText(SKIN_KEY));
-  function dressScene(): void {
-    const { bloom: glow } = LOOKS[skin];
-    world.setSkin(skin);
-    environment.setSkin(skin, time);
-    fireworks.setSkin(skin);
+  /** The look on screen, which is the visitor's own except during a year's flight. */
+  let shown: Skin = skin;
+  function dressScene(look: Skin = skin): void {
+    shown = look;
+    const { bloom: glow } = LOOKS[look];
+    world.setSkin(look);
+    environment.setSkin(look, time);
+    fireworks.setSkin(look);
     bloom.strength = glow.strength;
     bloom.radius = glow.radius;
     bloom.threshold = glow.threshold;
     // The pass over the finished frame imitates an old screen in some looks
-    finish.material.defines = definesFor(skin);
+    finish.material.defines = definesFor(look);
     finish.material.needsUpdate = true;
     sizeScreen();
     // The page's own styles can follow the look
-    document.body.dataset.skin = skin;
+    document.body.dataset.skin = look;
     SKINS.forEach((name) => element(`skin-${name}`).setAttribute('aria-pressed', String(name === skin)));
   }
   /** Sets the size of an old screen's big pixels, which are square whatever shape the view is. */
   function sizeScreen(): void {
-    const side = pixelSize(skin, stage.clientHeight);
+    const side = pixelSize(shown, stage.clientHeight);
     finish.uniforms.uGrid.value.set(side / Math.max(1, stage.clientWidth), side / Math.max(1, stage.clientHeight));
   }
   function setSkin(next: Skin): void {
     skin = next;
+    undressEdition();
     dressScene();
     try {
       localStorage.setItem(SKIN_KEY, next);
@@ -1098,8 +1325,14 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     aiming = false;
     // A parked ship stays for the show. One already flying carries on underneath it.
     if (time < parkedUntil) parkedUntil = time + (cleared ? FINALE_SECONDS : BLAST_WATCH);
-    if (cleared) sound.fanfare();
-    else sound.chime();
+    if (cleared) {
+      sound.fanfare();
+      stamp(cal.login, data.name, (entry) => {
+        entry.cleared = true;
+      });
+    } else {
+      sound.chime();
+    }
     if (!reduced) {
       const at = badges.position(index);
       blasts[nextBlast++ % BLASTS].start(at);
@@ -1150,6 +1383,8 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
   /** Jumps the ship to where it lines up on a badge, and holds it there while the shot is taken. */
   function visitBadge(index: number): void {
     showPanel(null);
+    endRace();
+    closeResult();
     const to = approach(index);
     run.jumped();
     const arrive = () => {
@@ -1174,31 +1409,283 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     else beginJump(arrive);
   }
 
+  /* ---------- races ---------- */
+  function courseFor(year: number): Course {
+    let course = courses.get(year);
+    if (!course) {
+      course = buildCourse(map, year);
+      courses.set(year, course);
+    }
+    return course;
+  }
+  /** Takes the ship to a year's start line and counts down. `from` is the challenge or day's course it answers. */
+  function startRace(year: number, from: Challenge | null = null): void {
+    const course = courseFor(year);
+    showPanel(null);
+    withdrawOffer();
+    withdrawArrival();
+    withdrawChallenge();
+    closeResult();
+    stopReview();
+    endRace();
+    if (scope.key !== year) applyScope(year);
+    playGoal = SETTLED;
+    if (mode !== 'pilot') setMode('pilot');
+    ship.live = false;
+    const arrive = () => {
+      const { route } = course;
+      poseAt(route, 0, rivalPose);
+      poseAt(route, 1, rivalNose);
+      v1.subVectors(rivalNose.p, rivalPose.p).normalize();
+      // Left of the line, with the rival to the right of it
+      ship.pos.copy(rivalPose.p).add(v2.set(v1.z, 0, -v1.x).normalize().multiplyScalar(START_SIDE));
+      ship.yaw = Math.atan2(-v1.x, -v1.z);
+      ship.pitch = Math.asin(clamp(v1.y, -1, 1));
+      ship.bank = 0;
+      ship.speed = 0;
+      ship.slide.set(0, 0, 0);
+      ship.live = true;
+      snap = true;
+      aiming = false;
+      parkedUntil = 0;
+      race = new Race(course);
+      near = new NearMisses();
+      recorder = new Recorder();
+      raceFrom = from;
+      ghostTrack = readGhost(cal.login, year, shipModel);
+      gates.set(course);
+      element('hint').hidden = true;
+    };
+    if (jump && !jump.done) jump.mid = arrive;
+    else beginJump(arrive);
+  }
+  /** Calls off a race in progress, or tidies away one that has finished. A result stays up until it is closed. */
+  function endRace(): void {
+    if (!race) return;
+    race = null;
+    ghostTrack = null;
+    gates.set(null);
+    rival.group.visible = false;
+    ghost.group.visible = false;
+    raceHud.show(null);
+    raceHud.countdown(null);
+    gateMarker.place(null, 0);
+  }
+  function closeResult(): void {
+    resultUp = false;
+    raceHud.hideResult();
+  }
+  /** Runs the race on by a frame, in which the ship flew from `lastPos` to where it is now. */
+  function updateRace(dt: number): void {
+    const current = race;
+    if (!current) return;
+    for (const event of current.update(dt, lastPos, ship.pos)) {
+      if (event.kind === 'count') {
+        sound.count(false);
+      } else if (event.kind === 'go') {
+        sound.count(true);
+        goUntil = time + GO_SECONDS;
+      } else if (event.kind === 'gate') {
+        sound.gate();
+      } else {
+        finishRace(current, event.time);
+      }
+    }
+    if (race !== current || current.phase !== 'racing') return;
+    const { x, y, z } = ship.pos;
+    near.update(dt, map, standing, x, y, z, ship.vel.length());
+    recorder.note(current.elapsed, x, y, z, ship.yaw, ship.pitch, ship.bank);
+  }
+  function finishRace(finished: Race, time: number): void {
+    const { year, rivalTime } = finished.course;
+    near.bank();
+    const points = near.score;
+    const won = time < rivalTime;
+    const before = records.best(year, shipModel);
+    const { fastest, highest } = records.record(year, shipModel, time, points, won);
+    if (fastest) {
+      const track = recorder.finish(time);
+      if (track) saveGhost(cal.login, year, shipModel, track);
+    }
+    stamp(cal.login, data.name, (entry) => {
+      addYear(entry.raced, year);
+      if (won) addYear(entry.won, year);
+    });
+    if (won) sound.fanfare();
+    else sound.chime();
+    // A first time is the fastest by default, so only one that beats an earlier one is called that
+    const facts: [string, string][] = [
+      ['Time', `${formatLap(time)}${fastest && before ? ', your fastest' : ''}`],
+      ['Rival', formatLap(rivalTime)],
+      ['Near misses', `${formatCount(points)} points${highest && before ? ', your best' : ''}`],
+    ];
+    const target = raceFrom?.year === year ? raceFrom.beat : null;
+    if (target !== null) {
+      const by = Math.abs(target - time).toFixed(1);
+      facts.push(['Challenge', time < target ? `Beaten by ${by} s` : `Missed by ${by} s`]);
+    }
+    facts.push(['Ship', SHIP_LABELS[shipModel]]);
+    lastResult = { year, time, ship: shipModel, from: raceFrom };
+    const margin = Math.abs(rivalTime - time).toFixed(1);
+    raceHud.showResult(won ? `You beat the rival by ${margin} s` : `The rival won by ${margin} s`, facts);
+    resultUp = true;
+    endRace();
+  }
+  /** The race readout and countdown for this frame. */
+  function showRace(): void {
+    if (!race) return;
+    const { course, next, elapsed } = race;
+    const total = course.gates.length;
+    const gap = race.gap;
+    const target = raceFrom?.year === course.year ? raceFrom.beat : null;
+    const readout: Readout = {
+      gate: next >= total - 1 ? `${course.year} · Finish` : `${course.year} · Gate ${next + 1} of ${total}`,
+      clock: formatLap(elapsed),
+      gap: gap === null ? '' : `${Math.abs(gap).toFixed(1)} s ${gap < 0 ? 'ahead of' : 'behind'} the rival`,
+      target: target === null ? '' : `To beat ${formatLap(target)}`,
+      score: `Near misses ${formatCount(near.score)}`,
+      chain: near.count ? `+${formatCount(near.pending)} ×${multiplier(near.count).toFixed(1)}` : '',
+    };
+    raceHud.show(readout);
+    raceHud.countdown(race.phase === 'countdown' ? String(race.count) : time < goUntil ? 'Go' : null);
+    gates.update(next, time);
+  }
+  /** Flies the rival down the course, and the ghost along the run it recorded. */
+  function updateRivals(dt: number): void {
+    const current = race;
+    rival.group.visible = current !== null && ship.live;
+    ghost.group.visible = false;
+    if (!current || !ship.live) return;
+    const { route } = current.course;
+    const s = current.rivalS;
+    // Its heading from the stretch just ahead, or just behind once it reaches the end
+    const from = Math.min(s, route.len - 0.9);
+    poseAt(route, from, rivalNose);
+    poseAt(route, from + 0.9, ahead);
+    poseAt(route, s, rivalPose);
+    v1.subVectors(ahead.p, rivalNose.p).normalize();
+    v2.set(-v1.z, 0, v1.x)
+      .normalize()
+      .multiplyScalar(START_SIDE * (1 - smooth(clamp(s / MERGE, 0, 1))));
+    rival.group.position.copy(rivalPose.p).add(v2);
+    m1.lookAt(rivalPose.p, v3.copy(rivalPose.p).add(v1), UP);
+    rival.group.quaternion.setFromRotationMatrix(m1).multiply(q2.setFromAxisAngle(ROLL_AXIS, rivalPose.roll));
+    const going = current.phase === 'racing' && s < route.len;
+    rival.update(time, dt, going ? rivalPose.pace / CRUISE : 0);
+
+    if (current.phase !== 'racing' || !ghostTrack || !ghostAt(ghostTrack, current.elapsed, ghostPose)) return;
+    ghost.group.visible = true;
+    ghost.group.position.set(ghostPose.x, ghostPose.y, ghostPose.z);
+    ghost.group.quaternion
+      .setFromEuler(e1.set(ghostPose.pitch, ghostPose.yaw, 0, 'YXZ'))
+      .multiply(q2.setFromAxisAngle(ROLL_AXIS, ghostPose.bank));
+    ghost.update(time, dt, 1);
+  }
+  /** The years that can be raced, with the rival's time and this ship's best on each. */
+  function drawRaceList(): void {
+    raceHud.renderList(
+      raceList.map((year) => {
+        const best = records.best(year, shipModel);
+        const marked = challenge?.year === year;
+        return {
+          year,
+          rival: formatLap(courseFor(year).rivalTime),
+          best: best ? formatLap(best.time) : null,
+          won: records.won(year),
+          tag: marked ? (challenge?.daily ? "Today's course" : 'Challenge') : null,
+        };
+      }),
+      SHIP_LABELS[shipModel],
+      (year) => startRace(year, challenge?.year === year ? challenge : null),
+    );
+  }
+  /** Shows the card a challenge link or the day's course opens with. */
+  function offerChallenge(next: Challenge): void {
+    challenge = next;
+    const { year, beat, ship: set, daily } = next;
+    let text = `A race through ${year}.`;
+    if (daily) {
+      text =
+        daily === today()
+          ? `Today's course: ${year}. Everyone who opens today's course gets this one.`
+          : `The course for ${writtenDay(daily)}: ${year}.`;
+    } else if (beat !== null) {
+      text = `A challenge: fly ${year} in under ${formatLap(beat)}${set ? `, set in the ${SHIP_LABELS[set]}` : ''}.`;
+    }
+    raceHud.showChallenge(text);
+  }
+  function withdrawChallenge(): void {
+    raceHud.showChallenge(null);
+  }
+  /** The year to race from the end of an Autopilot flight: the one just flown, or the latest with any contributions. */
+  const yearToRace = (): number => (scope.key !== 'all' && raceList.includes(scope.key) ? scope.key : raceList[0]);
+
   /* ---------- your year ---------- */
   function stopReview(): void {
     reviewing = false;
+    opening = null;
+    beatDay = -1;
     hud.hideCaption();
+    hud.hideOpener();
+    hud.showYearCount(null, 0);
   }
-  function startReview(): void {
-    if (!review) return;
+  /**
+   * Opens a year's flight: its number over its empty block while the camera pushes in, with a fanfare, then the jump in.
+   * The year then rises as the flight goes, with its count running and its moments lit as the date reaches them.
+   */
+  function startReview(year: number): void {
+    const told = reviewYear(cal, year, badges.milestones);
+    if (!told) return;
+    review = told;
     element('summary').hidden = true;
+    clearTimeout(summaryTimer);
     showPanel(null);
-    setScope(review.year);
-    if (mode !== 'fly') setMode('fly');
+    applyScope(told.year);
+    keepEdition = true;
+    if (mode !== 'fly') setMode('fly', OPENER_SECONDS);
+    else startFlight(OPENER_SECONDS);
+    keepEdition = false;
+    dressEdition();
     reviewing = true;
     nextBeat = 0;
     captionUntil = 0;
+    beatDay = -1;
+    play = scope.a;
+    const { at, aim } = stageFor(told.year);
+    camera.position.copy(at);
+    camera.lookAt(aim);
+    opening = reduced ? null : { from: at, to: at.clone().lerp(aim, 0.3), aim, t: 0 };
+    hud.showOpener(told.year, cal.login);
+    sound.fanfare();
   }
   function updateCaption(): void {
-    if (!reviewing || !review || !arrived || time < captionUntil) return;
+    if (!reviewing || !review || !arrived) return;
+    if (time < captionUntil) {
+      if (beatDay >= 0) {
+        shared.uHit.value = beatDay;
+        hitGlow = Math.max(hitGlow, 0.85);
+      }
+      return;
+    }
+    beatDay = -1;
     const beat = review.beats[nextBeat];
     if (beat && play >= beat.day) {
-      hud.showCaption(beat.title, beat.detail);
+      hud.showCaption(beat.title, beat.detail, beat.badge ? badges.pictureFor(beat.badge) : null);
       nextBeat++;
       captionUntil = time + CAPTION_SECONDS;
+      celebrate(beat.day);
     } else {
       hud.hideCaption();
     }
+  }
+  /** A moment of the year: its tower lit, a burst over it, and a chime. */
+  function celebrate(day: number): void {
+    beatDay = day;
+    sound.chime();
+    if (reduced) return;
+    const at = new THREE.Vector3(map.cx[day], map.top[day] + 1.4, map.cz[day]);
+    blasts[nextBlast++ % BLASTS].start(at);
+    flashes.add({ x: at.x, y: at.y, z: at.z, r: 3.2, g: 1.7, b: 0.6, reach: 30, start: time, life: 1.4 });
   }
 
   function togglePlay(): void {
@@ -1348,7 +1835,10 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     brakeHeld = false;
   });
   document.addEventListener('keydown', (e) => {
-    if (e.code === 'Escape') showPanel(null);
+    if (e.code === 'Escape') {
+      showPanel(null);
+      closeResult();
+    }
     const typing = e.target instanceof HTMLInputElement;
     if (e.code === 'Space' && !typing && !(e.target instanceof HTMLButtonElement)) {
       e.preventDefault();
@@ -1361,6 +1851,8 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     if (mode === 'pilot' && !typing && !e.metaKey && !e.ctrlKey) {
       if (e.code === 'KeyI' && !e.repeat) setInvert(!invertY);
       if (e.code === 'KeyM' && !e.repeat) setMouseSteer(!mouseSteer);
+      const side = SIDES[e.code];
+      if (side && !e.repeat && taps.press(side, e.timeStamp / 1000)) startRoll(side);
       keys.add(e.code);
       if (e.code.startsWith('Arrow')) e.preventDefault();
     }
@@ -1432,19 +1924,38 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     element('ships').append(button);
   });
   showShip();
+  element('summaryAgain').addEventListener('click', () => {
+    if (review) startReview(review.year);
+  });
   element('summaryClose').addEventListener('click', () => {
     element('summary').hidden = true;
+    undressEdition();
   });
+  /** The address of a year's flight, which link previews show as that year's card. */
+  const yearLink = (year: number) => `${location.origin}/${cal.login}/${year}`;
   element('summaryShare').addEventListener('click', (e) => {
     const button = e.currentTarget as HTMLElement;
+    if (!review) return;
     void navigator.clipboard
-      .writeText(`${location.origin}/${cal.login}${REVIEW_HASH}`)
+      .writeText(yearLink(review.year))
       .then(() => {
         button.textContent = 'Copied';
       })
       .catch(() => {});
   });
-  element('review').addEventListener('click', startReview);
+  // Phones and some browsers can hand the link straight to another app
+  element('summaryNative').hidden = typeof navigator.share !== 'function';
+  element('summaryNative').addEventListener('click', () => {
+    if (!review) return;
+    const { year, total } = review;
+    navigator
+      .share({
+        title: `${cal.login}'s ${year} on GitHub`,
+        text: `${formatCount(total)} contribution${total === 1 ? '' : 's'} in ${year}, flown as a city.`,
+        url: yearLink(year),
+      })
+      .catch(() => {});
+  });
   element('fire').addEventListener('pointerdown', (e) => {
     e.preventDefault();
     firePointer = e.pointerId;
@@ -1461,6 +1972,33 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     brakeHeld = true;
   });
   element('offerPilot').addEventListener('click', () => setMode('pilot'));
+  element('offerRace').addEventListener('click', () => startRace(yearToRace()));
+  element('challengeGo').addEventListener('click', () => {
+    if (challenge) startRace(challenge.year, challenge);
+  });
+  element('challengeLater').addEventListener('click', withdrawChallenge);
+  element('raceAgain').addEventListener('click', () => {
+    if (lastResult) startRace(lastResult.year, lastResult.from);
+  });
+  element('raceResultClose').addEventListener('click', closeResult);
+  element('raceCopy').addEventListener('click', (e) => {
+    const button = e.currentTarget as HTMLElement;
+    if (!lastResult) return;
+    const { year, time, ship: flown } = lastResult;
+    void navigator.clipboard
+      .writeText(`${location.origin}/${cal.login}${challengeHash(year, time, flown)}`)
+      .then(() => {
+        button.textContent = 'Copied';
+      })
+      .catch(() => {});
+  });
+  // A challenge or the day's course followed from this same city changes only the fragment, so the page stays loaded
+  window.addEventListener('hashchange', () => {
+    const next = readChallenge(location.hash, raceList, cal, cal.login);
+    if (!next) return;
+    showPanel(null);
+    offerChallenge(next);
+  });
   element('arrivalMore').addEventListener('click', () => {
     explorer.show('city');
     showPanel('explore');
@@ -1526,13 +2064,19 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
   credit.textContent = 'A Sheet Solved project.';
   element('note').append(' ', credit);
   const previewing = location.hash === REVIEW_HASH;
-  if (review && (previewing || new Date().getMonth() === 11)) {
+  // December offers the year ending, and early January the one just ended. A preview link offers the latest at any time.
+  const offered = previewing ? lastYear : reviewSeason(new Date(), lastYear);
+  if (offered !== null && reviewYear(cal, offered)) {
     const button = element('review');
-    button.textContent = reviewTitle(review.year);
+    button.textContent = reviewTitle(offered);
     button.hidden = false;
+    button.addEventListener('click', () => startReview(offered));
   }
   addChip('all', 'All', cal.total);
   [...years].reverse().forEach((y) => addChip(y, String(y), cal.yearTotal(y)));
+  element('race').hidden = raceList.length === 0;
+  element('offerRace').hidden = raceList.length === 0;
+  stamp(cal.login, data.name);
 
   /* ---------- loop ---------- */
   function resize(): void {
@@ -1607,9 +2151,14 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
         controls.target.lerp(orbitGoal, 1 - Math.exp(-3 * dt));
         controls.update();
       } else {
+        lastPos.copy(ship.pos);
         updatePilot(dt);
+        // An open panel holds the race as it holds the ship
+        if (ship.live && !panelOpen && !(jump && jump.t < 0.5)) updateRace(dt);
       }
     }
+    updateRivals(dt);
+    showRace();
 
     const flying = aboard() && chaseDistance() > 0;
     const seated = aboard() && chaseDistance() === 0;
@@ -1678,7 +2227,8 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
       trails.visible = false;
     }
     world.dustVelocity.copy(ship.vel).multiplyScalar(moving ? 1 : 0);
-    world.dust.visible = moving;
+    // In a year's flight the specks are snow, which falls whether or not the camera moves
+    world.dust.visible = moving || edition;
     shared.uWarp.value = warp;
     world.warpLines.visible = warp > 0.01;
     const fov = baseFov + (moving ? clamp((speed - 18) / 28, 0, 1) * 10 : 0) + warp * 50;
@@ -1708,10 +2258,18 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
     shared.uLights.value = lightsOn ? flashes.fill(time, shared.uLightPos.value, shared.uLightCol.value) : 0;
     environment.flush(time);
     updateCaption();
+    // A year's count runs up with its towers, once the flight is under way
+    if (reviewing && review && mode === 'fly' && arrived) {
+      const upTo = Math.min(Math.floor(play), scope.b);
+      hud.showYearCount(upTo >= scope.a ? cal.sum(scope.a, upTo) : 0, review.year);
+    } else if (reviewing) {
+      hud.showYearCount(null, 0);
+    }
     // The clock counts the time the ship is in the visitor's hands
     const flown = mode === 'pilot' && ship.live && !panelOpen && !(jump && jump.t < 0.5);
     if (flown) run.tick(dt);
-    hud.showRun(mode === 'pilot' && run.timed ? `Clear ${formatClock(run.seconds)}` : null);
+    // A race has a clock of its own
+    hud.showRun(mode === 'pilot' && run.timed && !race ? `Clear ${formatClock(run.seconds)}` : null);
     world.followCamera(camera);
     camera.updateMatrixWorld();
     updateTargeting();
@@ -1733,13 +2291,18 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
   setScope('all');
   setMode(reduced ? 'orbit' : 'fly', 1.5);
   if (reduced) controls.autoRotate = false;
-  if (previewing && review) startReview();
+  // A link to a year opens on its flight, as the preview link opens on the latest
+  if (linkedYear !== null) startReview(linkedYear);
+  else if (previewing) startReview(lastYear);
   explorer.describe(data);
   explorer.host();
   // Opened while the city was still loading, so the app takes it over as it stands
   if (!element('explorePanel').hidden) showPanel('explore');
   const pickedFrom = takeArrival(data.login);
   if (pickedFrom) greet(pickedFrom);
+  // After the opening mode is set, which would withdraw it
+  const linked = readChallenge(location.hash, raceList, cal, cal.login);
+  if (linked) offerChallenge(linked);
   requestAnimationFrame(frame);
 
   if (import.meta.env.DEV || import.meta.env.MODE === 'test') {
@@ -1765,6 +2328,22 @@ export function startApp(data: Contributions, example: boolean, explorer: Explor
         approach,
         run,
         stick,
+        startRace,
+        courseFor,
+        rival: rival.group,
+        ghost: ghost.group,
+        get race() {
+          return race;
+        },
+        get roll() {
+          return roll;
+        },
+        get onEdge() {
+          return onEdge;
+        },
+        get near() {
+          return near;
+        },
         get firing() {
           return firing;
         },

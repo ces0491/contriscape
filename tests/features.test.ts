@@ -3,7 +3,7 @@ import type { Contributions } from '../shared/contract';
 import { BADGE_ART } from '../src/badge-art';
 import { Calendar } from '../src/calendar';
 import { findMilestones } from '../src/milestones';
-import { reviewFacts, reviewYear } from '../src/review';
+import { MOST_BEATS, reviewFacts, reviewSeason, reviewYear } from '../src/review';
 import { formatClock, Run } from '../src/run';
 
 const SNAPSHOT = '2026-12-15';
@@ -216,7 +216,7 @@ describe('reviewYear', () => {
   it('tells the story in date order, inside the year', () => {
     const beats = review?.beats ?? [];
     const { a, b } = cal.span(2026);
-    expect(beats[0].title).toBe('Your 2026 on GitHub');
+    expect(beats[0].title).toBe('The first of the year');
     beats.forEach((beat, i) => {
       expect(beat.day).toBeGreaterThanOrEqual(a);
       expect(beat.day).toBeLessThanOrEqual(b);
@@ -224,7 +224,40 @@ describe('reviewYear', () => {
     });
   });
 
+  it("adds the year's badges, but not one on a day the year already tells, nor one from another year", () => {
+    const day = (date: string) => cal.dayFromDate(date) as number;
+    const badges = [
+      { id: 'old', name: 'Old', detail: 'Before', day: day('2025-05-05') },
+      { id: 'summit', name: 'Summit', detail: 'Busiest day', day: day('2026-03-09') },
+      { id: 'thousand-club', name: 'Thousand Club', detail: 'Contribution number 1,000', day: day('2026-11-20') },
+    ];
+    const told = reviewYear(cal, 2026, badges)?.beats ?? [];
+    expect(told.filter((beat) => beat.badge).map((beat) => beat.badge)).toEqual(['thousand-club']);
+    expect(told.find((beat) => beat.badge)?.title).toBe('Badge: Thousand Club');
+  });
+
+  it('stops for no more moments than the flight has time for', () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({
+      id: `badge-${i}`,
+      name: `Badge ${i}`,
+      detail: '',
+      day: (cal.dayFromDate('2026-04-01') as number) + i,
+    }));
+    expect(reviewYear(cal, 2026, many)?.beats).toHaveLength(MOST_BEATS);
+  });
+
   it('has nothing to say about an empty year', () => {
     expect(reviewYear(calendar({ '2025-03-03': 1 }), 2026)).toBeNull();
+  });
+});
+
+describe('reviewSeason', () => {
+  it('offers the year ending through December, and the one just ended through mid January', () => {
+    expect(reviewSeason(new Date(2026, 11, 1), 2026)).toBe(2026);
+    expect(reviewSeason(new Date(2026, 11, 31), 2026)).toBe(2026);
+    expect(reviewSeason(new Date(2027, 0, 1), 2027)).toBe(2026);
+    expect(reviewSeason(new Date(2027, 0, 15), 2027)).toBe(2026);
+    expect(reviewSeason(new Date(2027, 0, 16), 2027)).toBeNull();
+    expect(reviewSeason(new Date(2026, 10, 30), 2026)).toBeNull();
   });
 });

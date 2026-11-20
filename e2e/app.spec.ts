@@ -38,13 +38,26 @@ interface CityDebug {
   approach: (index: number) => { x: number; y: number; z: number; pitch: number };
   run: { timed: boolean; seconds: number };
   map: { top: ArrayLike<number> };
+  cal: { span(year: number): { a: number; b: number } };
   ship: {
     live: boolean;
     speed: number;
     yaw: number;
     pitch: number;
+    bank: number;
     pos: { x: number; y: number; z: number; set(x: number, y: number, z: number): void };
   };
+  race: {
+    phase: string;
+    next: number;
+    course: {
+      year: number;
+      gates: { at: { x: number; y: number; z: number }; normal: { x: number; y: number; z: number } }[];
+    };
+  } | null;
+  roll: { side: number; t: number } | null;
+  onEdge: boolean;
+  rival: { visible: boolean };
   camera: { matrixWorld: { elements: number[] } };
   weapons: { activeBolts: number };
   badges: { tokens: { visible: boolean }[]; milestones: { id: string; name: string }[]; earned: Set<string> };
@@ -338,7 +351,8 @@ test('Explore lists other cities, and one picked there opens saying whose it is'
   await cityReady(page);
   await page.click('#explore');
   await expect(page.locator('#explorePanel')).toBeVisible();
-  await expect(page.locator('#exploreGroups button')).toHaveText(['Statistics', 'Most-starred repos']);
+  // The lists from the file, then the cities flown in this browser, which already has this one
+  await expect(page.locator('#exploreGroups button')).toHaveText(['Statistics', 'Most-starred repos', 'Flown here']);
   await expect(page.locator('#exploreNote')).toContainText('2 Nov 2026');
   await expect(page.locator('#about')).toBeHidden();
   await expect(page.locator('#explorePeople a[aria-current]')).toContainText('Octo Dev');
@@ -1828,6 +1842,7 @@ test('each panel closes from its own button', async ({ page }) => {
     ['#explore', '#explorePanel'],
     ['#badges', '#badgePanel'],
     ['#year', '#yearPanel'],
+    ['#race', '#racePanel'],
     ['#settings', '#settingsPanel'],
     ['#guide', '#guidePanel'],
   ]) {
@@ -1854,15 +1869,28 @@ test.describe('your year on GitHub', () => {
     await cityReady(page);
     await expect(page.locator('#review')).toHaveText('Your 2026 on GitHub');
     await page.click('#review');
-    await expect(page.locator('#caption')).toContainText('Your 2026 on GitHub', { timeout: 30_000 });
+    // It opens on the year's number, over its block with nothing built yet
+    await expect(page.locator('#opener')).toBeVisible();
+    await expect(page.locator('#openerYear')).toHaveText('2026');
+    await expect(page.locator('#openerName')).toHaveText('octo-dev');
     await expect(page.locator('#scopeLabel')).toContainText('2026');
+    expect(await page.evaluate(() => window.__city.play)).toBeLessThan(
+      await page.evaluate(() => window.__city.cal.span(2026).a + 1),
+    );
 
+    // The flight ends in fireworks, and the card follows them
     await page.evaluate(() => window.__city.endFlight());
+    await expect(page.locator('#opener')).toBeHidden();
+    await expect.poll(() => page.evaluate(() => window.__city.fireworks.active)).toBe(true);
     await expect(page.locator('#summary')).toBeVisible();
-    await expect(page.locator('#summaryFacts')).toContainText('Contributions');
+    await expect(page.locator('#summaryKicker')).toHaveText('octo-dev');
+    await expect(page.locator('#summaryTotal b')).toHaveText(/^\d{1,3}(,\d{3})*$/);
     await expect(page.locator('#summaryFacts')).toContainText('On 2025');
-    await page.click('#summaryClose');
+    await page.click('#summaryAgain');
     await expect(page.locator('#summary')).toBeHidden();
+    await expect(page.locator('#opener')).toBeVisible();
+    await page.click('#m-orbit');
+    await expect(page.locator('#opener')).toBeHidden();
   });
 
   test('keeps the link that opened it in the address bar', async ({ page }) => {
@@ -1877,7 +1905,7 @@ test.describe('your year on GitHub', () => {
     await stubApi(page, { body: busy('octo-dev') });
     await page.goto('/octo-dev#your-year');
     await cityReady(page);
-    await expect(page.locator('#caption')).toContainText('Your 2026 on GitHub', { timeout: 30_000 });
+    await expect(page.locator('#openerYear')).toHaveText('2026');
   });
 
   test('stays away from a year with no contributions', async ({ page }) => {
@@ -1887,6 +1915,230 @@ test.describe('your year on GitHub', () => {
     await cityReady(page);
     await expect(page.locator('#review')).toBeHidden();
   });
+});
+
+/**
+ * Flies a race's gates for the test: after each of the game's frames, puts the ship just short of the next gate and
+ * aims it through, so the following frame carries it across. Runs until the race is over.
+ */
+async function flyGates(page: Page) {
+  await page.evaluate(() => {
+    const drive = () => {
+      const { race, ship } = window.__city;
+      if (!race || race.phase === 'finished') return;
+      requestAnimationFrame(drive);
+      if (race.phase !== 'racing') return;
+      const { at, normal: n } = race.course.gates[race.next];
+      ship.pos.set(at.x - n.x * 0.1, at.y - n.y * 0.1, at.z - n.z * 0.1);
+      ship.yaw = Math.atan2(-n.x, -n.z);
+      ship.pitch = Math.asin(n.y);
+      ship.speed = Math.max(ship.speed, 17);
+    };
+    requestAnimationFrame(drive);
+  });
+}
+
+test('a race counts down, is flown through its gates in turn, and keeps the best time for the ship', async ({
+  page,
+  context,
+}) => {
+  const faults = watchForFaults(page);
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#race');
+  await expect(page.locator('#raceList button b')).toHaveText(['2026', '2025', '2024']);
+  await expect(page.locator('#raceList button').first()).toContainText(/Rival 0:\d\d\.\d/);
+  await page.locator('#raceList button[data-year="2025"]').click();
+
+  await expect(page.locator('#countdown b')).toHaveText(/^[123]$/, { timeout: 60_000 });
+  await expect(page.locator('#raceGate')).toHaveText(/^2025 · Gate 1 of \d+$/);
+  await expect.poll(() => page.evaluate(() => window.__city.rival.visible)).toBe(true);
+  // The ship waits on the line until the start
+  expect(await page.evaluate(() => window.__city.ship.speed)).toBeLessThan(1);
+
+  await flyGates(page);
+  // A frame moves the game on 0.05 s at most, so the countdown alone is 60 frames, a minute at CI's frame rate
+  await expect(page.locator('#raceResult')).toBeVisible({ timeout: 200_000 });
+  await expect(page.locator('#raceResultTitle')).toHaveText(/^You beat the rival by \d+\.\d s$/);
+  await expect(page.locator('#raceResultFacts')).toContainText('Interceptor');
+  await expect(page.locator('#raceHud')).toBeHidden();
+  expect(await page.evaluate(() => window.__city.rival.visible)).toBe(false);
+
+  await page.click('#raceCopy');
+  await expect(page.locator('#raceCopy')).toHaveText('Copied');
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(
+    /\/octo-dev#race=2025&beat=\d+\.\d&ship=interceptor$/,
+  );
+  await page.click('#raceResultClose');
+  await page.click('#race');
+  const row = page.locator('#raceList button[data-year="2025"]');
+  await expect(row).toContainText('Beaten');
+  await expect(row).toContainText(/Best 0:\d\d\.\d/);
+  expect(faults).toEqual([]);
+});
+
+test('a challenge link opens with the time to beat, which the race shows', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev#race=2024&beat=12.3&ship=rocket');
+  await cityReady(page);
+  await expect(page.locator('#challengeText')).toHaveText('A challenge: fly 2024 in under 0:12.3, set in the Rocket.');
+  await page.click('#challengeGo');
+  await expect(page.locator('#raceTarget')).toHaveText('To beat 0:12.3', { timeout: 30_000 });
+  expect(await page.evaluate(() => window.__city.race?.course.year)).toBe(2024);
+  // Any other way of flying calls the race off
+  await page.click('#m-orbit');
+  await expect(page.locator('#raceHud')).toBeHidden();
+  expect(await page.evaluate(() => window.__city.race)).toBeNull();
+});
+
+test("the day's course is in Explore, and opens on a year of that city's", async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-11-20T12:00:00Z'));
+  await stubExplore(page);
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#explore');
+  const link = page.locator('#daily a');
+  await expect(link).toHaveAttribute('href', /^\/(octo-dev|ada-l)#daily=2026-11-20$/);
+  await link.click();
+  await cityReady(page);
+  await expect(page.locator('#challengeText')).toHaveText(
+    /^Today's course: 202[456]\. Everyone who opens today's course gets this one\.$/,
+  );
+  await page.click('#race');
+  await expect(page.locator('#raceList em.tag')).toHaveText(["Today's course"]);
+});
+
+test('the site root goes back to the city opened last, and to the example if that account has gone', async ({
+  page,
+}) => {
+  const asked: string[] = [];
+  await page.route('**/api/contributions/*', (route) => {
+    const login = new URL(route.request().url()).pathname.split('/').pop() ?? '';
+    asked.push(login);
+    return login === 'gone-user'
+      ? route.fulfill({ status: 404, json: { error: 'not-found' } })
+      : route.fulfill({ json: busy(login) });
+  });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.goto('/');
+  await cityReady(page);
+  expect(asked).toEqual(['octo-dev', 'octo-dev']);
+  await expect(page).toHaveURL(/\/octo-dev$/);
+  await expect(page.locator('#login')).toHaveText('octo-dev');
+  await expect(page.locator('#hint')).not.toContainText('Example city');
+
+  await page.evaluate(() =>
+    localStorage.setItem(
+      'contriscape:passport',
+      JSON.stringify([
+        { login: 'gone-user', name: null, first: '2026-11-01', last: '2026-11-01', cleared: false, raced: [], won: [] },
+      ]),
+    ),
+  );
+  asked.length = 0;
+  await page.goto('/');
+  await cityReady(page);
+  expect(asked).toEqual(['gone-user', 'torvalds']);
+  await expect(page.locator('#login')).toHaveText('torvalds');
+  const kept = await page.evaluate(() => localStorage.getItem('contriscape:passport') ?? '');
+  expect(kept).not.toContain('gone-user');
+});
+
+test("a link to a year opens on that year's flight in the year's own edition, and gives back the visitor's look", async ({
+  page,
+  context,
+}) => {
+  const faults = watchForFaults(page);
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.addInitScript(() => localStorage.setItem('contriscape:skin', 'blocks'));
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/Octo-Dev/2025');
+  await cityReady(page);
+  await expect(page).toHaveURL(/\/octo-dev\/2025$/);
+  await expect(page.locator('#openerYear')).toHaveText('2025');
+  // The year's own look is the night, whatever the visitor picked, with the year's own ship
+  await expect(page.locator('body')).toHaveAttribute('data-skin', 'night');
+  await expect(page.locator('#skin-blocks')).toHaveAttribute('aria-pressed', 'true');
+
+  await page.evaluate(() => window.__city.endFlight());
+  await expect(page.locator('#summary')).toBeVisible();
+  await expect(page.locator('body')).toHaveAttribute('data-skin', 'night');
+  await page.click('#summaryShare');
+  await expect(page.locator('#summaryShare')).toHaveText('Copied');
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/\/octo-dev\/2025$/);
+  await page.click('#summaryClose');
+  await expect(page.locator('body')).toHaveAttribute('data-skin', 'blocks');
+  expect(faults).toEqual([]);
+});
+
+test('a year in the address that is not a year is refused, without asking for the city', async ({ page }) => {
+  let asked = false;
+  await page.route('**/api/contributions/*', (route) => {
+    asked = true;
+    return route.fulfill({ json: busy('octo-dev') });
+  });
+  await page.goto('/octo-dev/twenty');
+  await expect(page.locator('#status')).toContainText("isn't a valid GitHub username");
+  expect(asked).toBe(false);
+});
+
+test('Explore marks the cities flown here, and lists them', async ({ page }) => {
+  await stubExplore(page);
+  await page.goto('/ada-l');
+  await cityReady(page);
+  await page.click('#explore');
+  await page.click('#exploreGroups button:has-text("Statistics")');
+  await expect(page.locator('#explorePeople a[href="/ada-l"] em')).toHaveText('Flown');
+  await expect(page.locator('#explorePeople a[href="/octo-dev"] em')).toHaveCount(0);
+  await page.click('#exploreGroups button:has-text("Flown here")');
+  await expect(page.locator('#explorePeople a')).toHaveCount(1);
+  await expect(page.locator('#explorePeople a')).toContainText('Flown.');
+});
+
+test('a double tap rolls the ship one alley across, and up with a direction flies it on its side', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#m-pilot');
+  await shipLive(page);
+  // High over the towers and heading east, so the ship's right is south
+  const level = () =>
+    page.evaluate(() => {
+      const { ship } = window.__city;
+      ship.pos.y = 60;
+      ship.pitch = 0;
+      ship.yaw = -Math.PI / 2;
+      return ship.pos.z;
+    });
+  const z = await level();
+  // Sent from the page, because under software rendering each press the test makes waits on a frame, which puts two
+  // quick presses half a second apart
+  await page.evaluate(() => {
+    for (let n = 0; n < 2; n++) {
+      document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD', bubbles: true }));
+      document.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyD', bubbles: true }));
+    }
+  });
+  await expect.poll(() => page.evaluate(() => window.__city.roll?.side ?? 0)).toBe(1);
+  await expect.poll(() => page.evaluate(() => window.__city.roll), { timeout: 30_000 }).toBeNull();
+  const across = (await page.evaluate(() => window.__city.ship.pos.z)) - z;
+  expect(across).toBeGreaterThan(2);
+  expect(across).toBeLessThan(3);
+
+  await level();
+  await page.keyboard.down('KeyA');
+  await page.keyboard.down('KeyW');
+  await expect.poll(() => page.evaluate(() => window.__city.onEdge)).toBe(true);
+  // On its left side, the nose neither rising nor falling
+  const pitch = await page.evaluate(() => window.__city.ship.pitch);
+  await expect.poll(() => page.evaluate(() => window.__city.ship.bank), { timeout: 30_000 }).toBeGreaterThan(1.4);
+  expect(await page.evaluate(() => window.__city.ship.pitch)).toBeCloseTo(pitch, 6);
+  await page.keyboard.up('KeyA');
+  await page.keyboard.up('KeyW');
+  await expect.poll(() => page.evaluate(() => window.__city.onEdge)).toBe(false);
 });
 
 test('respects reduced motion by starting still, in Orbit', async ({ browser }) => {
@@ -1907,7 +2159,7 @@ test('the tool buttons all fit the narrowest phone in December, in Pilot', async
   await page.goto('/octo-dev');
   await cityReady(page);
   await page.tap('#m-pilot');
-  for (const id of ['#review', '#year', '#badges', '#settings', '#guide']) {
+  for (const id of ['#review', '#year', '#race', '#badges', '#settings', '#guide']) {
     const box = await page.locator(id).boundingBox();
     expect(box?.x, id).toBeGreaterThanOrEqual(0);
     expect((box?.x ?? 0) + (box?.width ?? 0), id).toBeLessThanOrEqual(320);
