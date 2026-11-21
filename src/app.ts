@@ -15,7 +15,16 @@ import { pushOut } from './collision';
 import { COLOUR_ROWS, DEFAULT_COLOURS, EDITION_COLOURS, readColours, towerPalette, type Colours } from './colours';
 import { Environment } from './environment';
 import { takeArrival, writtenDay, type Explorer } from './explorer';
-import { buildFighter, EDITION_SHIP, readShip, SHIP_LABELS, SHIPS, Weapons, type Ship } from './fighter';
+import {
+  buildFighter,
+  EDITION_SHIP,
+  readShip,
+  SHIP_HALF_SPAN,
+  SHIP_LABELS,
+  SHIPS,
+  Weapons,
+  type Ship,
+} from './fighter';
 import { FINALE_SECONDS, Fireworks } from './fireworks';
 import { Hud, type Scope } from './hud';
 import { Flashes } from './lights';
@@ -1387,11 +1396,11 @@ export function startApp(
     );
     drawBadges();
   }
-  /** Where a ship lines up on a badge: to its south, clear of towers and aimed straight at it. */
+  /** Where a ship lines up on a badge: to its south, aimed straight at it, with room to fly in clear of the towers. */
   function approach(index: number): { x: number; y: number; z: number; pitch: number } {
     const target = badges.position(index);
     // Against the finished city, because every tower is up by the time the ship arrives
-    const height = approachHeight(map, target, BADGE_APPROACH);
+    const height = approachHeight(map, target, BADGE_APPROACH, SHIP_HALF_SPAN);
     return {
       x: target.x,
       y: height,

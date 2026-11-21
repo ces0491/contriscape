@@ -120,9 +120,24 @@ describe('approachHeight', () => {
     }
   });
 
+  it('leaves a ship room to fly the line in, clear of the roofs it passes over', () => {
+    const walled = city({ [TALL]: 1, [MIDDLE]: 25, [TALL + 21]: 100 });
+    const target = { x: walled.cx[TALL], y: walled.top[TALL] + 2, z: walled.cz[TALL] };
+    const margin = 0.42;
+    const thin = approachHeight(walled, target, 10);
+    const wide = approachHeight(walled, target, 10, margin);
+    expect(wide).toBeGreaterThan(thin);
+    for (let k = 0; k <= 40; k++) {
+      const y = wide + ((target.y - wide) * k) / 40;
+      walled.towersNear(target.x, target.z + (10 * (40 - k)) / 40, margin, (day) => {
+        expect(y).toBeGreaterThanOrEqual(walled.top[day] + margin);
+      });
+    }
+  });
+
   it('stops looking at its ceiling', () => {
     const target = at(LOW, 4, 0, -CELL * 2);
-    const height = approachHeight(map, target, 10, 6);
+    const height = approachHeight(map, target, 10, 0, 6);
     expect(height).toBeGreaterThanOrEqual(target.y + 6);
     expect(height).toBeLessThan(target.y + 8);
   });

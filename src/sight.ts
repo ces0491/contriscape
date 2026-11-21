@@ -1,5 +1,5 @@
 import { Vector3 } from 'three';
-import type { CityMap } from './map';
+import { TOWER, type CityMap } from './map';
 
 /** A tower's height at the moment, which is lower than its full height while it is still rising. */
 export type Roof = (day: number) => number;
@@ -68,20 +68,31 @@ export function clearReach(map: CityMap, roof: Roof, a: Vector3, b: Vector3, mar
 }
 
 /**
- * The height to come at a point from, starting `distance` to its south: the lowest from which the straight line in is
- * clear of the finished city, looking no more than `ceiling` above the point.
+ * The height to come at a point from, starting `distance` to its south: the lowest from which the straight line in
+ * clears the finished city by `margin`, looking no more than `ceiling` above the point. A bolt needs no margin, but a
+ * ship flown in along the line needs its own width, or it skims a roof or glances off a wall on the way.
  */
 export function approachHeight(
   map: CityMap,
   target: { x: number; y: number; z: number },
   distance: number,
+  margin = 0,
   ceiling = 40,
 ): number {
+  const reach = TOWER / 2 + margin;
   const clearFrom = (height: number) => {
+    const yAt = (z: number) => target.y + ((height - target.y) * (z - target.z)) / distance;
+    // Points half a unit apart find every tower the line passes within `margin` of. The line is straight, so over a
+    // tower and the margin round it, it is lowest at one end.
     for (let k = 0; k <= 20; k++) {
-      const y = height + ((target.y - height) * k) / 20;
       const z = target.z + (distance * (20 - k)) / 20;
-      if (map.towerAt(target.x, y, z) >= 0) return false;
+      let walled = false;
+      map.towersNear(target.x, z, margin, (day) => {
+        const near = Math.max(target.z, map.cz[day] - reach);
+        const far = Math.min(target.z + distance, map.cz[day] + reach);
+        if (Math.min(yAt(near), yAt(far)) < map.top[day] + margin) walled = true;
+      });
+      if (walled) return false;
     }
     return true;
   };
