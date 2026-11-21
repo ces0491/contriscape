@@ -162,7 +162,8 @@ void main(){
 /*
  * A tower as a 16-bit console's artist shaded a pillar: the buildings' colour in flat bands across each face, lightest
  * at one edge and darkest at the other, a dark line at each storey, and a pale roof with a rim. Nothing is blended from
- * one shade to the next. The bands and lines fade out where a face is only a few pixels wide, where they would flicker.
+ * one shade to the next. The bands, lines and rim fade out where they would be finer than a pixel, where they would
+ * break into dashes.
  */
 void main(){
   vec3 n=normalize(vN);
@@ -178,12 +179,12 @@ void main(){
     vec3 base=mix(mix(vec3(1.),uRamp[3],.45),uRamp[3],t);
     if(n.y>.5){
       float rim=1.-step(.16,min(min(l.x,1.-l.x),min(l.y,1.-l.y)));
-      col=mix(base,vec3(1.),.35)*mix(1.,.78,rim);
+      col=mix(base,vec3(1.),.35)*mix(1.,.78,rim*(1.-smoothstep(.11,.16,max(fwidth(l.x),fwidth(l.y)))));
     }else{
       float u=abs(n.x)>.5?l.y:l.x;
       float storey=up/${BLOCK_GLSL};
-      float wide=1.-clamp(fwidth(u)*9.,0.,1.);
-      float tall=1.-clamp(fwidth(storey)*3.,0.,1.);
+      float wide=1.-smoothstep(.11,.16,fwidth(u));
+      float tall=1.-smoothstep(.11,.15,fwidth(storey));
       float band=u<.2?1.2:u<.62?1.:u<.84?.82:.66;
       col=base*face*mix(1.,band,wide)*(1.-.28*step(fract(storey),.14)*tall);
       col*=mix(.84,1.,clamp(up/1.6,0.,1.));
@@ -197,6 +198,9 @@ void main(){
  * A tower as a shooter of the early 1990s textured a wall: plates of dull metal, laid like bricks and bolted at the
  * corners, with a strip of light up the middle in the buildings' colour, brighter for a busier day. Walls facing north
  * and south are a step brighter than those facing east and west, and all of it dims with distance in steps.
+ * The metal is tan in one year's block and grey in the next. One or the other to a tower at random was a confetti of
+ * the two from far off. Seams, bolts and the gaps in the strip each go where they would be finer than a pixel, and
+ * a strip that narrow becomes a tint over the whole wall, because a line thinner than a pixel is drawn in dashes.
  */
 void main(){
   vec3 n=normalize(vN);
@@ -214,15 +218,17 @@ void main(){
     }else{
       float u=abs(n.x)>.5?l.y:l.x;
       vec2 g=vec2(u*2.,up/${BLOCK_GLSL});
+      float rows=fwidth(g.y);
+      float small=max(fwidth(u)*2.,rows);
+      float gaps=1.-smoothstep(.12,.18,rows);
+      float strip=mix(.3,1.-step(.1,abs(u-.5)),1.-smoothstep(.12,.2,fwidth(u)))*mix(.82,step(.18,fract(g.y)),gaps);
       g.x+=.5*mod(floor(g.y),2.);
       vec2 id=floor(g),e=min(fract(g),1.-fract(g));
-      float crisp=1.-clamp(max(fwidth(u)*2.,fwidth(g.y))*2.4,0.,1.);
-      float seam=(1.-step(.07,min(e.x,e.y)))*crisp;
-      float bolt=(1.-step(.055,length(e-.17)))*crisp;
-      col=mix(vec3(.47,.39,.31),vec3(.37,.38,.42),step(.5,hash(vec2(vSeed*17.3,2.))));
-      col*=1.+(hash(id+vSeed*91.7)-.5)*.2*crisp;
+      float seam=(1.-step(.07,min(e.x,e.y)))*(1.-smoothstep(.1,.14,small));
+      float bolt=(1.-step(.06,max(abs(e.x-.17),abs(e.y-.17))))*(1.-smoothstep(.07,.1,small));
+      col=mix(vec3(.47,.39,.31),vec3(.37,.38,.42),mod(floor((vW.z+${(ROAD / 2).toFixed(1)})/${YEAR_PITCH.toFixed(1)}),2.));
+      col*=1.+(hash(id+vSeed*91.7)-.5)*.2*(1.-smoothstep(.25,.4,small));
       col*=(1.-.5*seam)*(1.+.6*bolt)*(abs(n.z)>.5?1.:.72);
-      float strip=(1.-step(.1,abs(u-.5)))*step(.18,fract(up/${BLOCK_GLSL}));
       lamp=mix(uRamp[2],uRamp[3],t)*(.45+1.2*t)*strip;
       col*=1.-strip;
     }
@@ -371,8 +377,9 @@ gl_FragColor=vec4(mix(c,uFog,f),1.);}
 ${HASH}
 void main(){float d=length(vV);
 vec2 g=vP.xz/${(CELL * 2).toFixed(2)};vec2 e=min(fract(g),1.-fract(g));
-float crisp=1.-clamp(max(fwidth(g.x),fwidth(g.y))*2.,0.,1.);
-vec3 c=vec3(.36,.32,.28)*(1.+(hash(floor(g))-.5)*.22*crisp)*(1.-.5*(1.-step(.04,min(e.x,e.y)))*crisp);
+float small=max(fwidth(g.x),fwidth(g.y));
+float crisp=1.-clamp(small*2.,0.,1.);
+vec3 c=vec3(.36,.32,.28)*(1.+(hash(floor(g))-.5)*.22*crisp)*(1.-.5*(1.-step(.04,min(e.x,e.y)))*(1.-smoothstep(.06,.09,small)));
 float z=mod(vP.z+${ROAD.toFixed(1)},${YEAR_PITCH.toFixed(1)});
 float street=step(-1.5,vP.x)*step(vP.x,uCity.x+1.5)*step(-${ROAD.toFixed(1)},vP.z)*step(vP.z,uCity.y+${ROAD.toFixed(1)})*step(z,${ROAD.toFixed(1)});
 float kerb=step(.7,z)*(1.-step(1.2,z))+step(${(ROAD - 1.2).toFixed(1)},z)*(1.-step(${(ROAD - 0.7).toFixed(1)},z));
@@ -659,7 +666,12 @@ gl_PointSize=clamp(46./-mv.z,1.,7.)*uPx;
 vC=mix(vec3(.9,.95,1.),vec3(1.,.42,.16),aWarm);
 gl_PointSize=clamp(60./-mv.z,.9,10.)*uPx;
 #endif
-gl_Position=projectionMatrix*mv;}`;
+gl_Position=projectionMatrix*mv;
+#ifdef PIXELS
+// The smallest thing an old screen can draw is one big pixel, which is a lot for a far one. Only the near are drawn.
+if(gl_PointSize<.75)gl_Position=vec4(0.,0.,2.,1.);
+#endif
+}`;
 
 export const TRAFFIC_FRAGMENT = /* glsl */ `varying vec3 vC;
 void main(){
@@ -862,43 +874,34 @@ export const FINISH_VERTEX = /* glsl */ `varying vec2 vUv;void main(){vUv=uv;gl_
  * The last pass: at speed the view streaks outward from the centre with colour fringes at the edges, then a vignette,
  * the jump's flash, the red of a collision, and a fine grain that stops the dark sky banding.
  *
- * A look with an old screen then cuts the frame down to it. `PIXELS` reads the frame in big squares, `uGrid` being one
- * square's size as a share of the view. A square takes four readings spread over it, so a tower a pixel wide dims
- * rather than flickering in and out as the view moves. While the view streaks at speed it takes two readings at each
- * of four steps along the streak, which costs what the eight single readings of the other looks do. `LEVELS` keeps
- * that many steps each of red, green and blue.
- * Nothing is dithered and no grain is laid over it, because both put noise inside the squares, and the vignette is left
- * off because those screens had none.
+ * A look with an old screen (`PIXELS`) arrives here already drawn at that screen's resolution, and this pass scales it
+ * up. Each of the display's pixels takes the one big pixel it falls in, read at its middle, so a big pixel is a square
+ * of a single colour with hard edges. `uRes` is how many big pixels the frame is across and down. The frame can
+ * overhang the view by part of a big pixel each way, and `uCover` is the view's share of it, then where the view starts.
+ * `LEVELS` keeps that many steps each of red, green and blue. The flash and the red are worked out for a big pixel
+ * whole. It has no streak, fringes, vignette or grain: those screens had none, and each blurs or speckles the squares.
+ * Nothing is dithered.
  */
-export const FINISH_FRAGMENT = /* glsl */ `uniform sampler2D tDiffuse;uniform float uFlash,uRed,uSpeed,uTime,uGrain;uniform vec2 uGrid;varying vec2 vUv;
-float grain(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
+export const FINISH_FRAGMENT = /* glsl */ `uniform sampler2D tDiffuse;uniform float uFlash,uRed,uSpeed,uTime,uGrain;uniform vec2 uRes;uniform vec4 uCover;varying vec2 vUv;
 #ifdef PIXELS
-vec2 at(vec2 uv){return (floor(uv/uGrid)+.5)*uGrid;}
-vec3 still(vec2 uv){vec2 o=uGrid*.25;
-return (texture2D(tDiffuse,uv+o).rgb+texture2D(tDiffuse,uv-o).rgb+texture2D(tDiffuse,uv+vec2(o.x,-o.y)).rgb+texture2D(tDiffuse,uv+vec2(-o.x,o.y)).rgb)*.25;}
-vec3 streak(vec2 uv,vec2 reach){vec2 o=uGrid*.25;vec3 sum=vec3(0.);
-for(int i=0;i<4;i++){vec2 p=at(uv-reach*float(i)/3.);sum+=texture2D(tDiffuse,p+o).rgb+texture2D(tDiffuse,p-o).rgb;}
-return sum/8.;}
-#else
-vec2 at(vec2 uv){return uv;}
-vec3 still(vec2 uv){return texture2D(tDiffuse,uv).rgb;}
-vec3 streak(vec2 uv,vec2 reach){vec3 sum=vec3(0.);
-for(int i=0;i<8;i++){sum+=texture2D(tDiffuse,uv-reach*float(i)/7.).rgb;}
-return sum/8.;}
-#endif
-void main(){vec2 uv=at(vUv);vec2 q=uv-.5;float r=dot(q,q);vec3 c;
-if(uSpeed>.001){c=streak(uv,q*uSpeed*.045);
-vec2 fringe=q*uSpeed*.012;c.r=mix(c.r,texture2D(tDiffuse,at(uv+fringe)).r,.7);c.b=mix(c.b,texture2D(tDiffuse,at(uv-fringe)).b,.7);}
-else c=still(uv);
-#ifndef PIXELS
-c*=1.-r*.85;
-#endif
-c=mix(c,vec3(.86,.93,1.),uFlash);c+=vec3(.75,.06,.03)*uRed*smoothstep(.06,.5,r);
-#ifdef PIXELS
+void main(){vec2 here=(floor((vUv*uCover.xy+uCover.zw)*uRes)+.5)/uRes;
+vec2 q=(here-uCover.zw)/uCover.xy-.5;
+vec3 c=texture2D(tDiffuse,here).rgb;
+c=mix(c,vec3(.86,.93,1.),uFlash);c+=vec3(.75,.06,.03)*uRed*smoothstep(.06,.5,dot(q,q));
 #ifdef LEVELS
 c=floor(clamp(c,0.,1.)*float(LEVELS)+.5)/float(LEVELS);
 #endif
+gl_FragColor=vec4(c,1.);}
 #else
+float grain(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
+void main(){vec2 q=vUv-.5;float r=dot(q,q);vec3 c;
+if(uSpeed>.001){vec2 reach=q*uSpeed*.045;c=vec3(0.);
+for(int i=0;i<8;i++){c+=texture2D(tDiffuse,vUv-reach*float(i)/7.).rgb;}
+c/=8.;
+vec2 fringe=q*uSpeed*.012;c.r=mix(c.r,texture2D(tDiffuse,vUv+fringe).r,.7);c.b=mix(c.b,texture2D(tDiffuse,vUv-fringe).b,.7);}
+else c=texture2D(tDiffuse,vUv).rgb;
+c*=1.-r*.85;
+c=mix(c,vec3(.86,.93,1.),uFlash);c+=vec3(.75,.06,.03)*uRed*smoothstep(.06,.5,r);
 c+=(grain(gl_FragCoord.xy+fract(uTime*7.)*91.)-.5)*uGrain;
-#endif
-gl_FragColor=vec4(c,1.);}`;
+gl_FragColor=vec4(c,1.);}
+#endif`;

@@ -5,6 +5,7 @@ import * as glsl from './shaders';
 
 const MAX_BOLTS = 30;
 const SPARKS = 70;
+const SPARK_SIZE = 0.2;
 const IMPACTS = 8;
 const BOLT_SPEED = 130;
 const COOLDOWN = 0.13;
@@ -84,6 +85,16 @@ function glowTexture(stops: [number, string][]): THREE.CanvasTexture {
     g.fillRect(0, 0, 64, 64);
   }
   return new THREE.CanvasTexture(canvas);
+}
+
+/**
+ * How big the frame being drawn is beside the canvas it ends up on: 1, or a fraction in a look drawn at an old screen's
+ * resolution. three.js sizes its own points by the canvas, whatever they are drawn into, so each size set here is
+ * multiplied by this.
+ */
+let frameScale = 1;
+export function setFrameScale(scale: number): void {
+  frameScale = scale;
 }
 
 function glowPoints(
@@ -804,14 +815,14 @@ export function buildFighter(ship: Design = DEFAULT_SHIP): Fighter {
     update(time, dt, throttle) {
       flameUniforms.uThrottle.value = throttle;
       flameUniforms.uTime.value = time;
-      glow.material.size = (0.14 + 0.05 * Math.min(throttle, 2.7)) * breadth;
+      glow.material.size = (0.14 + 0.05 * Math.min(throttle, 2.7)) * breadth * frameScale;
       const flashing = time % STROBE_EVERY < STROBE_SECONDS;
       strobes.forEach((strobe) => {
         strobe.visible = flashing;
       });
       muzzleLeft = Math.max(0, muzzleLeft - dt);
       muzzles.visible = muzzleLeft > 0;
-      muzzles.material.size = 0.22 + 0.32 * (muzzleLeft / MUZZLE_SECONDS);
+      muzzles.material.size = (0.22 + 0.32 * (muzzleLeft / MUZZLE_SECONDS)) * frameScale;
     },
     muzzle() {
       muzzleLeft = MUZZLE_SECONDS;
@@ -850,6 +861,7 @@ export class Weapons {
   private readonly velocities = new Float32Array(SPARKS * 3);
   private readonly life = new Float32Array(SPARKS);
   private readonly sparks = new THREE.BufferGeometry();
+  private readonly sparkPaint: THREE.PointsMaterial;
   private readonly impacts = new THREE.BufferGeometry();
   private readonly impactAt = new Float32Array(IMPACTS * 3);
   private readonly impactAge = new Float32Array(IMPACTS).fill(IMPACT_SECONDS);
@@ -886,16 +898,14 @@ export class Weapons {
 
     this.sparks.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
     this.sparks.setAttribute('color', new THREE.BufferAttribute(this.colours, 3));
-    const points = new THREE.Points(
-      this.sparks,
-      new THREE.PointsMaterial({
-        size: 0.2,
-        vertexColors: true,
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      }),
-    );
+    this.sparkPaint = new THREE.PointsMaterial({
+      size: SPARK_SIZE,
+      vertexColors: true,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const points = new THREE.Points(this.sparks, this.sparkPaint);
     points.frustumCulled = false;
     scene.add(points);
 
@@ -1002,6 +1012,7 @@ export class Weapons {
     }
     this.sparks.attributes.position.needsUpdate = true;
     this.sparks.attributes.color.needsUpdate = true;
+    this.sparkPaint.size = SPARK_SIZE * frameScale;
 
     for (let i = 0; i < IMPACTS; i++) this.impactAge[i] = Math.min(IMPACT_SECONDS, this.impactAge[i] + dt);
     this.impacts.attributes.position.needsUpdate = true;

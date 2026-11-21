@@ -231,15 +231,20 @@ function finale(map: CityMap, year: number, last: Waypoint, day: number): Waypoi
   return exitPoints({ x: last.x + 7, y: 4.5, z: last.z, day, pace: 10, gaze: 0 }, 1, 0);
 }
 
+/** The years busy enough to fly through, oldest first, or none in a history with no contributions. */
+export function busyYears(cal: Calendar): number[] {
+  const biggest = Math.max(...cal.years.map((y) => cal.yearTotal(y)));
+  return biggest ? cal.years.filter((y) => cal.yearTotal(y) >= biggest * BUSY_SHARE) : [];
+}
+
 /**
  * The years a whole-history flight flies through: the busiest year and the latest busy one, so the flight shows where
  * the history's weight is as well as where it has got to. When those are the same year, the busy year before it comes
  * too.
  */
 export function featuredYears(cal: Calendar): number[] {
-  const biggest = Math.max(...cal.years.map((y) => cal.yearTotal(y)));
-  if (!biggest) return [cal.lastYear];
-  const busy = cal.years.filter((y) => cal.yearTotal(y) >= biggest * BUSY_SHARE);
+  const busy = busyYears(cal);
+  if (!busy.length) return [cal.lastYear];
   const latest = busy[busy.length - 1];
   const heaviest = busy.reduce((best, y) => (cal.yearTotal(y) >= cal.yearTotal(best) ? y : best));
   return heaviest === latest ? busy.slice(-MAX_RUNS) : [heaviest, latest];

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { Contributions } from '../shared/contract';
+import { screenGrid, type Grid } from '../src/skins';
 
 const SNAPSHOT = '2026-11-02';
 
@@ -72,6 +73,11 @@ interface CityDebug {
     children: { material: { color: { getHexString(): string } } }[];
   };
   shared: { uRamp: { value: { b: number }[] } };
+  saver: { orbitLeft: number } | null;
+  aboard: boolean;
+  idleFor: (seconds: number) => void;
+  /** The sound's private rig, read for the engine's level. */
+  sound: { rig: { engine: { gain: number } } | null };
 }
 interface Heard {
   contexts: AudioContext[];
@@ -969,6 +975,94 @@ test('when an Autopilot flight ends it offers the controls, and taking them star
   await expect(offer).toBeHidden();
 });
 
+test('the screensaver flies year after year with only the view on screen, and a move of the mouse or a key ends it', async ({
+  page,
+}) => {
+  const faults = watchForFaults(page);
+  await listenForSound(page);
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#settings');
+  await page.click('#saverStart');
+  await expect(page.locator('body')).toHaveClass(/screensaver/);
+  await expect(page.locator('header.top')).toBeHidden();
+  await expect(page.locator('.deck')).toBeHidden();
+  await expect(page.locator('#settingsPanel')).toBeHidden();
+  await expect(page.locator('#saverName')).toHaveText('octo-dev');
+  await expect(page.locator('#saverLeave')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(true);
+  expect(await page.evaluate(() => window.__city.mode)).toBe('fly');
+
+  // A flight ends in an Orbit of the city, and then another flight starts
+  const first = await page.locator('#saverYears').textContent();
+  await page.evaluate(() => window.__city.endFlight());
+  expect(await page.evaluate(() => window.__city.mode)).toBe('orbit');
+  await page.evaluate(() => {
+    const saver = window.__city.saver;
+    if (saver) saver.orbitLeft = 0.05;
+  });
+  await expect.poll(() => page.evaluate(() => window.__city.mode)).toBe('fly');
+  await expect(page.locator('#saverYears')).not.toHaveText(first ?? '');
+  await expect(page.locator('#saverLeave')).toBeHidden();
+
+  // The engine is quiet once the ship is under way, with nobody flying it. The music isn't checked: it is booked on
+  // the audio clock, which barely moves in headless Chromium.
+  await expect.poll(() => page.evaluate(() => window.__heard.contexts[0]?.state)).toBe('running');
+  await expect.poll(() => page.evaluate(() => window.__city.aboard), { timeout: 120_000 }).toBe(true);
+  expect(await page.evaluate(() => window.__city.sound.rig?.engine.gain)).toBe(0);
+
+  // A twitch of the mouse leaves it running, and a move ends it, back at the visitor's own distance. The jump into the
+  // flight takes longer than the second in which a hand letting go of the mouse is ignored.
+  await page.mouse.move(300, 300);
+  await page.mouse.move(304, 303);
+  expect(await page.evaluate(() => window.__city.saver)).not.toBeNull();
+  await page.mouse.move(340, 330);
+  await expect(page.locator('body')).not.toHaveClass(/screensaver/);
+  await expect(page.locator('header.top')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+  await expect.poll(() => page.evaluate(() => Math.abs(window.__city.zoom - 1) < 0.02)).toBe(true);
+  await expect.poll(() => page.evaluate(() => (window.__city.sound.rig?.engine.gain ?? 0) > 0)).toBe(true);
+
+  // The key that ends it does nothing else, so Space doesn't also pause the flight
+  await page.click('#settings');
+  await page.click('#saverStart');
+  await expect(page.locator('body')).toHaveClass(/screensaver/);
+  await page.keyboard.press('Space');
+  await expect(page.locator('body')).not.toHaveClass(/screensaver/);
+  await expect(page.locator('#play')).toHaveText('Pause');
+  expect(faults).toEqual([]);
+});
+
+test('a screensaver link opens straight into it, and one can start after two minutes alone', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev#screensaver');
+  await cityReady(page);
+  await expect(page.locator('body')).toHaveClass(/screensaver/);
+  await page.keyboard.press('KeyX');
+  await expect(page.locator('body')).not.toHaveClass(/screensaver/);
+  // A reload would otherwise open it again
+  await expect(page).toHaveURL(/\/octo-dev$/);
+
+  // Off until the visitor switches it on, and remembered
+  await page.click('#settings');
+  await expect(page.locator('#saverIdle')).toHaveAttribute('aria-pressed', 'false');
+  await page.click('#saverIdle');
+  await expect(page.locator('#saverIdle')).toHaveAttribute('aria-pressed', 'true');
+  expect(await page.evaluate(() => localStorage.getItem('contriscape:screensaver-idle'))).toBe('1');
+
+  // Never over an open panel, which someone could be reading
+  await page.evaluate(() => window.__city.idleFor(150));
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  expect(await page.evaluate(() => window.__city.saver)).toBeNull();
+
+  await page.click('#settingsPanel .panel-close');
+  await page.evaluate(() => window.__city.idleFor(150));
+  await expect(page.locator('body')).toHaveClass(/screensaver/);
+  // Nothing clicked, so the browser keeps its window
+  expect(await page.evaluate(() => document.fullscreenElement)).toBeNull();
+});
+
 test('a city flown clear from its first badge is timed, and a jump from the list stops the clock', async ({ page }) => {
   await stubApi(page, { body: busy('octo-dev') });
   await page.goto('/octo-dev');
@@ -1202,6 +1296,76 @@ test('every look draws the city, with no shader left broken', async ({ page }) =
       expect(levels[bright], `${bright} ${dark}`).toBeGreaterThan(levels[dark] + 40);
   }
   expect(shaders).toEqual([]);
+  expect(faults).toEqual([]);
+});
+
+test('an old screen draws big pixels that are each one flat colour, whatever the size of the view', async ({
+  page,
+}) => {
+  const faults = watchForFaults(page);
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#m-orbit');
+  await page.click('#settings');
+  // The second view isn't a whole number of big pixels either way, so the frame it is drawn in overhangs it
+  for (const [look, width, height] of [
+    ['console', 1440, 900],
+    ['shooter', 1001, 613],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await page.click(`#skin-${look}`);
+    await expect(page.locator('body')).toHaveAttribute('data-skin', look);
+    const canvas = page.locator('#gl');
+    await expect.poll(() => canvas.evaluate((gl: HTMLCanvasElement) => gl.clientWidth)).toBe(width);
+    const size = await canvas.evaluate((gl: HTMLCanvasElement) => ({ width: gl.width, height: gl.height }));
+    const grid = screenGrid(look, size.width, size.height);
+    expect(grid, look).not.toBeNull();
+    const seen = await page.evaluate(
+      ({ side, cols, rows, left, top }) =>
+        new Promise<{ mixed: number; colours: number }>((resolve) => {
+          // A frame drawn at the new size, then one read straight after it is drawn
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => {
+              const gl = document.getElementById('gl') as HTMLCanvasElement;
+              const { width: w, height: h } = gl;
+              const copy = document.createElement('canvas');
+              copy.width = w;
+              copy.height = h;
+              const g = copy.getContext('2d') as CanvasRenderingContext2D;
+              g.drawImage(gl, 0, 0);
+              const { data } = g.getImageData(0, 0, w, h);
+              const colours = new Set<number>();
+              let mixed = 0;
+              for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                  const x0 = Math.max(0, c * side - left);
+                  const x1 = Math.min(w, (c + 1) * side - left);
+                  const y0 = Math.max(0, r * side - top);
+                  const y1 = Math.min(h, (r + 1) * side - top);
+                  const first = (y0 * w + x0) * 4;
+                  let flat = true;
+                  for (let y = y0; y < y1 && flat; y++) {
+                    for (let x = x0; x < x1 && flat; x++) {
+                      const i = (y * w + x) * 4;
+                      flat =
+                        data[i] === data[first] && data[i + 1] === data[first + 1] && data[i + 2] === data[first + 2];
+                    }
+                  }
+                  if (!flat) mixed++;
+                  colours.add((data[first] << 16) | (data[first + 1] << 8) | data[first + 2]);
+                }
+              }
+              resolve({ mixed, colours: colours.size });
+            }),
+          );
+        }),
+      grid as Grid,
+    );
+    // A blurred or misplaced frame has big pixels of more than one colour, and a blank one has a single colour
+    expect(seen.mixed, look).toBe(0);
+    expect(seen.colours, look).toBeGreaterThan(8);
+  }
   expect(faults).toEqual([]);
 });
 

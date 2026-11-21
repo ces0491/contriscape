@@ -37,6 +37,7 @@ Let anyone enter a GitHub username and fly through a 3D city of that person's pu
 - [x] The site root opens the city the browser opened last, and Explore lists the cities flown there
 - [x] Your year opens on the year's number, counts up as it rises, celebrates its moments and badges, ends in fireworks, and flies a limited edition ship, colours, look and music
 - [x] A year has its own address, which link previews show as a card of that year
+- [x] A screensaver flies a city's busier years and whole history in turn with only the view on screen, from Settings, a link, or after two minutes idle where the visitor switches that on, and any input ends it
 - [x] Unit tests, browser tests under the production CSP, lint and typecheck all pass
 - [x] Name confirmed by Ces
 - [x] Deployed to production with a real token, verified on the live URL
@@ -80,3 +81,5 @@ Ces, after flying a stranger's city on the live URL from a phone and a laptop.
 - 2026-11-20: replaced the Handheld and Arcade looks, which Ces found unplayable, with 16-bit and VGA; gave each ship a power and a cockpit; showed a picked ship beside Settings; took the plant rooms off the night's roofs; put something on each look's horizon; and softened the planet's shadow on its ring, at Ces's request
 - 2026-11-20: added racing, with near misses, ghosts, challenge links, a day's course and the passport; the barrel roll and flying on the side; the root opening on the last city; and a Your year with an opening, a running count, celebrated moments, fireworks, a limited edition and its own share link and card, at Ces's request
 - 2026-11-20: badges can be earned by flying into them, and races gained a time attack through rings against the clock, at Ces's request
+- 2026-11-21: added a screensaver, at Ces's request
+- 2026-11-21: redrew 16-bit and VGA at an old screen's own resolution, with hard-edged pixels and no glow or streak, after Ces found them blurry and glitchy

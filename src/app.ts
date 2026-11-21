@@ -19,6 +19,7 @@ import {
   buildFighter,
   EDITION_SHIP,
   readShip,
+  setFrameScale,
   SHIP_HALF_SPAN,
   SHIP_LABELS,
   SHIPS,
@@ -35,8 +36,17 @@ import { averageFrame, countedFrame, tooSlow } from './quality';
 import { reviewFacts, reviewSeason, reviewTitle, reviewYear, type YearReview } from './review';
 import { buildRoute, lengthAtDay, newPose, poseAt, RISE, type Route } from './routes';
 import { formatClock, formatLap, Run } from './run';
+import {
+  IDLE_SECONDS,
+  NAME_SECONDS,
+  ORBIT_SECONDS,
+  Programme,
+  saverScopes,
+  Wake,
+  type SaverScope,
+} from './screensaver';
 import { FINISH_FRAGMENT, FINISH_VERTEX } from './shaders';
-import { definesFor, LOOKS, pixelSize, readSkin, SKINS, type Skin } from './skins';
+import { definesFor, LOOKS, readSkin, screenGrid, SKINS, type Grid, type Skin } from './skins';
 import { approachHeight, blockedBetween, clearReach, towerAlong } from './sight';
 import { Sound, stereo } from './sound';
 import { DoubleTap, EDGE_TURN, keyTurn, ON_EDGE, ROLL_SECONDS, rollDrift, rollSpin } from './steering';
@@ -86,6 +96,9 @@ const MUSIC_KEY = 'contriscape:music';
 const COLOUR_KEY = 'contriscape:colours';
 const SKIN_KEY = 'contriscape:skin';
 const SHIP_KEY = 'contriscape:ship';
+const SAVER_KEY = 'contriscape:screensaver-idle';
+/** The address fragment that opens a city straight into its screensaver. */
+const SAVER_HASH = '#screensaver';
 /**
  * A ship picked in Settings is held this close to the camera and drawn this much smaller. It looks the size it would
  * at 3.2 units, and is nearer than a tower can be to a camera the ship's own hull keeps off the walls, so nothing in
@@ -293,9 +306,17 @@ export function startApp(
   const raceHud = new RaceHud();
   const gates = new Gates(scene);
 
+  /** How many readings smooth each pixel's edges, in a look drawn at the display's own resolution. */
+  const SMOOTHING = pixelRatio < 2 ? 4 : 2;
+  /**
+   * And in a look drawn at an old screen's. Two leave an edge one half tone at most. With one, edges are hardest, and
+   * a big city sparkles as Orbit turns. With four it is as still as the other looks and as soft as the blur this
+   * replaced.
+   */
+  const SCREEN_SMOOTHING = 2;
   const composer = new EffectComposer(
     renderer,
-    new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: pixelRatio < 2 ? 4 : 2 }),
+    new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: SMOOTHING }),
   );
   composer.addPass(new RenderPass(scene, camera));
   const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.38, 0.6, 0.74);
@@ -308,7 +329,8 @@ export function startApp(
       uSpeed: { value: 0 },
       uTime: { value: 0 },
       uGrain: { value: GRAIN },
-      uGrid: { value: new THREE.Vector2(1, 1) },
+      uRes: { value: new THREE.Vector2(1, 1) },
+      uCover: { value: new THREE.Vector4(1, 1, 0, 0) },
     },
     vertexShader: FINISH_VERTEX,
     fragmentShader: FINISH_FRAGMENT,
@@ -369,6 +391,8 @@ export function startApp(
   let speedFx = true;
   /** Flashes lighting the towers, which a slow GPU goes without. */
   let lightsOn = true;
+  /** The glow around bright things, which a slow GPU goes without, and so does a look that has none. */
+  let glowOn = true;
   /** The badge the targeting computer is locked on to, or -1. */
   let locked = -1;
   /** How far the ship has flown since a jump from the Badges list. Far enough, and a badge it wins was flown to. */
@@ -416,6 +440,21 @@ export function startApp(
   let lastTick = Infinity;
   /** Where the ship was at the start of this frame, to tell whether it flew through a gate. */
   const lastPos = new THREE.Vector3();
+  /** The screensaver while it runs, with what it gives back when it ends. */
+  let saver: {
+    /** The visitor's own zoom, which the screensaver's flights change. */
+    zoom: number;
+    /** Whether it took the whole screen, which it gives back. */
+    full: boolean;
+    wake: Wake;
+    /** Seconds left of the Orbit between two flights, and 0 during a flight. */
+    orbitLeft: number;
+  } | null = null;
+  let saverIdle = recall(SAVER_KEY);
+  /** When the visitor last pressed, clicked, tapped, scrolled or moved the mouse, in milliseconds. */
+  let lastInput = performance.now();
+  let saverTimer = 0;
+  const programme = new Programme(saverScopes(cal), Math.random);
   let contactCooldown = 0;
   let dimGoal = 1;
   let time = 0;
@@ -519,7 +558,8 @@ export function startApp(
       mid();
       return;
     }
-    sound.jump(JUMP_SECONDS);
+    // The screensaver keeps the music and drops the effects, which nobody is flying to need
+    if (!saver) sound.jump(JUMP_SECONDS);
     jump = { t: 0, mid, done: false, from: rewind ? Math.min(play, scope.b + RISE) : null };
   }
   function updateJump(dt: number): void {
@@ -638,6 +678,7 @@ export function startApp(
     setMode('orbit');
     keepEdition = false;
     if (finished) closeYear(finished);
+    else if (saver) saver.orbitLeft = ORBIT_SECONDS;
     else offerControls();
   }
   /** A year's flight ends with fireworks over its block, and then its card. */
@@ -1020,6 +1061,8 @@ export function startApp(
     orbit: touch ? 'Drag to rotate · Pinch to zoom' : 'Drag to rotate · Scroll to zoom',
   };
   function showHint(m: Mode): void {
+    // Nothing would see it, and the introduction to the example city waits for the screensaver to end
+    if (saver) return;
     const hint = element('hint');
     const introducing = introduce;
     introduce = false;
@@ -1042,7 +1085,7 @@ export function startApp(
   }
   function syncCursor(): void {
     const steering = mode === 'pilot' && mouseSteer;
-    canvas.style.cursor = steering ? 'crosshair' : mode === 'orbit' ? 'grab' : 'default';
+    canvas.style.cursor = saver ? 'none' : steering ? 'crosshair' : mode === 'orbit' ? 'grab' : 'default';
   }
   function spawnYear(): number {
     return scope.key === 'all' ? lastYear : scope.key;
@@ -1145,6 +1188,84 @@ export function startApp(
     stick.set(0, 0);
     syncCursor();
   }
+
+  /* ---------- screensaver ---------- */
+  /**
+   * Flies the city's years and its whole history in turn with nothing else on screen, orbiting the city between
+   * flights, until the visitor moves the mouse, presses a key, clicks, taps or scrolls. `full` asks for the whole
+   * screen, which browsers grant only during a click or key press.
+   */
+  function startSaver(full: boolean): void {
+    if (saver) return;
+    showPanel(null);
+    closeResult();
+    stopReview();
+    saver = { zoom: zoomGoal, full: false, wake: new Wake(performance.now()), orbitLeft: 0 };
+    document.body.classList.add('screensaver');
+    hud.hideTip();
+    pickAt = null;
+    shared.uHover.value = -1;
+    if (full && document.fullscreenEnabled && !document.fullscreenElement) {
+      Promise.resolve(document.documentElement.requestFullscreen())
+        .then(() => {
+          if (saver) saver.full = true;
+          // Ended before the browser got there
+          else void document.exitFullscreen().catch(() => {});
+        })
+        .catch(() => {});
+    }
+    nextShot(true);
+  }
+  /** The next flight, opened by a line naming the city and its years. The first also says how to leave. */
+  function nextShot(first = false): void {
+    if (!saver) return;
+    const shot = programme.next();
+    saver.orbitLeft = 0;
+    zoomGoal = shot.zoom;
+    applyScope(shot.scope);
+    setMode('fly');
+    nameShot(shot.scope, first);
+  }
+  function nameShot(key: SaverScope, first: boolean): void {
+    element('saverYears').textContent = key === 'all' ? `${firstYear}–${lastYear}` : String(key);
+    element('saverLeave').hidden = !first;
+    const name = element('saver');
+    name.classList.add('shown');
+    clearTimeout(saverTimer);
+    saverTimer = window.setTimeout(() => name.classList.remove('shown'), NAME_SECONDS * 1000);
+  }
+  /** Gives the page back, with the view where the screensaver left it, from the visitor's own distance. */
+  function leaveSaver(): void {
+    const ending = saver;
+    if (!ending) return;
+    saver = null;
+    lastInput = performance.now();
+    clearTimeout(saverTimer);
+    element('saver').classList.remove('shown');
+    document.body.classList.remove('screensaver');
+    zoomGoal = ending.zoom;
+    if (ending.full && document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    // A link that opened it would open it again on a reload
+    if (location.hash === SAVER_HASH) history.replaceState(null, '', location.pathname + location.search);
+    syncCursor();
+    measureInsets();
+    showHint(mode);
+  }
+  function setSaverIdle(on: boolean): void {
+    saverIdle = on;
+    element('saverIdle').setAttribute('aria-pressed', String(on));
+    remember(SAVER_KEY, on);
+  }
+  /** Nothing is up that someone could be reading or in the middle of, so the screensaver can start by itself. */
+  const unattended = () =>
+    !panelOpen &&
+    !race &&
+    !reviewing &&
+    !resultUp &&
+    !dragging() &&
+    !document.hidden &&
+    element('summary').hidden &&
+    element('challenge').hidden;
 
   /* ---------- panels ---------- */
   function showPanel(open: Panel | null): void {
@@ -1280,21 +1401,74 @@ export function startApp(
     world.setSkin(look);
     environment.setSkin(look, time);
     fireworks.setSkin(look);
-    bloom.strength = glow.strength;
-    bloom.radius = glow.radius;
-    bloom.threshold = glow.threshold;
+    bloom.enabled = glowOn && glow !== null;
+    if (glow) {
+      bloom.strength = glow.strength;
+      bloom.radius = glow.radius;
+      bloom.threshold = glow.threshold;
+    }
     // The pass over the finished frame imitates an old screen in some looks
     finish.material.defines = definesFor(look);
     finish.material.needsUpdate = true;
-    sizeScreen();
+    sizeFrame();
     // The page's own styles can follow the look
     document.body.dataset.skin = look;
     SKINS.forEach((name) => element(`skin-${name}`).setAttribute('aria-pressed', String(name === skin)));
   }
-  /** Sets the size of an old screen's big pixels, which are square whatever shape the view is. */
-  function sizeScreen(): void {
-    const side = pixelSize(shown, stage.clientHeight);
-    finish.uniforms.uGrid.value.set(side / Math.max(1, stage.clientWidth), side / Math.max(1, stage.clientHeight));
+  /** The old screen the look on show is drawn on, if it has one, and that screen's size in the display's pixels. */
+  let grid: Grid | null = null;
+  const screenSize = new THREE.Vector2();
+  const drawn = new THREE.Vector2();
+  /**
+   * Sizes what the scene is drawn into. Most looks are drawn at the display's own resolution. A look with an old
+   * screen is drawn at that screen's resolution, and the last pass scales it up with hard edges. Drawn at full size
+   * and cut down afterwards, as it once was, every edge came out as a blend of what lay either side of it, and
+   * anything finer than a big pixel as specks.
+   */
+  function sizeFrame(): void {
+    renderer.getDrawingBufferSize(drawn);
+    grid = screenGrid(shown, drawn.x, drawn.y);
+    const samples = grid ? SCREEN_SMOOTHING : SMOOTHING;
+    for (const target of [composer.renderTarget1, composer.renderTarget2]) {
+      if (target.samples === samples) continue;
+      target.samples = samples;
+      target.dispose();
+    }
+    if (grid) {
+      screenSize.set(grid.cols * grid.side, grid.rows * grid.side);
+      composer.setPixelRatio(1);
+      composer.setSize(grid.cols, grid.rows);
+      finish.uniforms.uRes.value.set(grid.cols, grid.rows);
+      // The view's share of the frame, then where it starts, which a picture measures from the bottom
+      const { x: across, y: down } = screenSize;
+      finish.uniforms.uCover.value.set(
+        drawn.x / across,
+        drawn.y / down,
+        grid.left / across,
+        (down - drawn.y - grid.top) / down,
+      );
+      shared.uPx.value = pixelRatio / grid.side;
+    } else {
+      composer.setPixelRatio(pixelRatio);
+      composer.setSize(Math.max(1, stage.clientWidth), Math.max(1, stage.clientHeight));
+      shared.uPx.value = pixelRatio;
+    }
+    setFrameScale(grid ? 1 / grid.side : 1);
+  }
+  /**
+   * Draws the frame. Where an old screen's big pixels overhang the view, the camera takes in that much more for the
+   * drawing, then goes back to the view alone, which is what the markers and the mouse are worked out from.
+   */
+  function draw(dt: number): void {
+    if (!grid || screenSize.equals(drawn)) {
+      composer.render(dt);
+      return;
+    }
+    const { aspect } = camera;
+    camera.setViewOffset(drawn.x, drawn.y, -grid.left, -grid.top, screenSize.x, screenSize.y);
+    composer.render(dt);
+    camera.aspect = aspect;
+    camera.clearViewOffset();
   }
   function setSkin(next: Skin): void {
     skin = next;
@@ -1894,6 +2068,39 @@ export function startApp(
     zoomGoal = nextZoom(zoomGoal, factor);
   };
 
+  // Anything the visitor does ends the screensaver, and the event that ends it goes no further. The window's capture
+  // phase hears it first, after only the sound's own listeners, so it still lets the sound start.
+  const wake = (e: Event) => {
+    lastInput = performance.now();
+    if (!saver) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    leaveSaver();
+  };
+  for (const type of ['keydown', 'pointerdown', 'wheel'] as const) {
+    window.addEventListener(type, wake, { capture: true, passive: false });
+  }
+  window.addEventListener(
+    'pointermove',
+    (e) => {
+      lastInput = performance.now();
+      if (!saver) return;
+      // Nothing under the pointer reacts while the screensaver runs, so no tower lights up under a resting mouse
+      e.stopImmediatePropagation();
+      // A finger lands before it moves, and the landing ends it. Screen pixels hold still when the screen goes full.
+      if (e.pointerType !== 'touch' && saver.wake.moved(performance.now(), e.screenX, e.screenY)) leaveSaver();
+    },
+    true,
+  );
+  document.addEventListener('fullscreenchange', () => {
+    // Esc leaves full screen before the page hears the key
+    if (saver?.full && !document.fullscreenElement) leaveSaver();
+  });
+  document.addEventListener('visibilitychange', () => {
+    // A tab that was away counts from its return, rather than coming back straight into the screensaver
+    if (!document.hidden) lastInput = performance.now();
+  });
+
   canvas.addEventListener('pointermove', (e) => {
     if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (touches.size === 2 && mode !== 'orbit') {
@@ -2043,6 +2250,14 @@ export function startApp(
     setSound(!sound.enabled);
     (e.currentTarget as HTMLElement).blur();
   });
+  element('saverStart').addEventListener('click', (e) => {
+    (e.currentTarget as HTMLElement).blur();
+    startSaver(true);
+  });
+  element('saverIdle').addEventListener('click', (e) => {
+    setSaverIdle(!saverIdle);
+    (e.currentTarget as HTMLElement).blur();
+  });
   element('music').addEventListener('click', (e) => {
     setMusic(!sound.musicEnabled);
     (e.currentTarget as HTMLElement).blur();
@@ -2163,6 +2378,10 @@ export function startApp(
   });
   // A challenge or the day's course followed from this same city changes only the fragment, so the page stays loaded
   window.addEventListener('hashchange', () => {
+    if (location.hash === SAVER_HASH) {
+      startSaver(false);
+      return;
+    }
     const next = readChallenge(location.hash, raceList, cal, cal.login);
     if (!next) return;
     showPanel(null);
@@ -2214,6 +2433,10 @@ export function startApp(
   element('mouseSteer').hidden = touch;
   element('sound').setAttribute('aria-pressed', String(sound.enabled));
   element('music').setAttribute('aria-pressed', String(sound.musicEnabled));
+  element('saverIdle').setAttribute('aria-pressed', String(saverIdle));
+  element('saverIdle').textContent = `After ${IDLE_SECONDS / 60} minutes idle`;
+  element('saverName').textContent = cal.login;
+  element('saverLeave').textContent = touch ? 'Tap to leave' : 'Move the mouse or press a key to leave';
   hud.renderColours(COLOUR_ROWS, (key, hex) => {
     setColours({ ...colours, [key]: hex });
     // A new colour for the ship is shown on the ship
@@ -2255,9 +2478,7 @@ export function startApp(
     baseFov = width < height ? 74 : 58;
     camera.updateProjectionMatrix();
     renderer.setSize(width, height, false);
-    composer.setPixelRatio(pixelRatio);
-    composer.setSize(width, height);
-    sizeScreen();
+    sizeFrame();
     hud.drawTimeline();
     measureInsets();
   }
@@ -2278,11 +2499,11 @@ export function startApp(
     frameAverage = 16;
     if (quality === 1 && pixelRatio > 1) {
       pixelRatio = 1;
-      shared.uPx.value = 1;
       renderer.setPixelRatio(1);
       resize();
     } else {
       quality = 2;
+      glowOn = false;
       bloom.enabled = false;
       speedFx = false;
       lightsOn = false;
@@ -2304,6 +2525,12 @@ export function startApp(
     shared.uDim.value += (dimGoal - shared.uDim.value) * (1 - Math.exp(-5 * dt));
     zoom += (zoomGoal - zoom) * (1 - Math.exp(-7 * dt));
     contactCooldown -= dt;
+    // Where the visitor allows it, a city left alone long enough starts its screensaver
+    if (saverIdle && !saver && now - lastInput > IDLE_SECONDS * 1000 && unattended()) startSaver(false);
+    if (saver && saver.orbitLeft > 0) {
+      saver.orbitLeft -= dt;
+      if (saver.orbitLeft <= 0) nextShot();
+    }
 
     updateJump(dt);
     if (mode === 'fly') {
@@ -2385,8 +2612,8 @@ export function startApp(
       });
     }
     // Autopilot is watched rather than flown, so its engine sits further back in the mix
-    sound.engine(aboard() ? speed / BOOST : null, mode === 'pilot' ? 1 : 0.5);
-    if (moving && !(jump && jump.t < 0.5)) whooshPast(speed);
+    sound.engine(aboard() && !saver ? speed / BOOST : null, mode === 'pilot' ? 1 : 0.5);
+    if (moving && !saver && !(jump && jump.t < 0.5)) whooshPast(speed);
     if (mode === 'fly' && arrived && !paused) sound.cue({ kind: 'history', day: play });
     else if (mode === 'pilot' && ship.live) sound.cue({ kind: 'flight', day: map.cellIndex(ship.pos.x, ship.pos.z) });
     else sound.cue({ kind: 'still' });
@@ -2413,6 +2640,7 @@ export function startApp(
       camera.fov += (fov - camera.fov) * (1 - Math.exp(-8 * dt));
       camera.updateProjectionMatrix();
     }
+    // An old screen's last pass has no streak, which smeared its big pixels and fringed them in red and blue
     finish.uniforms.uSpeed.value = speedFx && !reduced ? surge * 0.8 + warp * 1.4 : 0;
     // Held still for reduced motion, where it still breaks up banding without shimmering
     finish.uniforms.uTime.value = reduced ? 0 : time;
@@ -2456,7 +2684,7 @@ export function startApp(
       pick(pickAt);
       pickAt = null;
     }
-    composer.render(dt);
+    draw(dt);
     adapt(ms);
   }
 
@@ -2471,6 +2699,8 @@ export function startApp(
   // A link to a year opens on its flight, as the preview link opens on the latest
   if (linkedYear !== null) startReview(linkedYear);
   else if (previewing) startReview(lastYear);
+  // For a screen left showing the city. Opened by a link, it has no click to go full screen with.
+  else if (location.hash === SAVER_HASH) startSaver(false);
   explorer.describe(data);
   explorer.host();
   // Opened while the city was still loading, so the app takes it over as it stands
@@ -2528,6 +2758,16 @@ export function startApp(
         },
         get showroom() {
           return showroom;
+        },
+        get saver() {
+          return saver;
+        },
+        get aboard() {
+          return aboard();
+        },
+        /** Makes the visitor seem to have done nothing for this many seconds, which only a real wait could otherwise. */
+        idleFor(seconds: number) {
+          lastInput = performance.now() - seconds * 1000;
         },
         get power() {
           return power;

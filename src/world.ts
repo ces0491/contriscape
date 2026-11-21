@@ -20,6 +20,8 @@ const RING_INNER = 430;
 const RING_OUTER = 720;
 /** Lamps stand this far in from each kerb, one a cell along. */
 const KERB = 0.7;
+/** How opaque the ground's lettering has to be at a point to be drawn there, in a look with an old screen. */
+const HARD_EDGE = 0.3;
 const FACE = '"Mona Sans","Segoe UI",system-ui,sans-serif';
 const MONO = '"JetBrains Mono",Consolas,monospace';
 
@@ -472,6 +474,7 @@ function addTraffic(scene: THREE.Scene, map: CityMap, shared: Shared, random: ()
 function addLettering(scene: THREE.Scene, map: CityMap, renderer: THREE.WebGLRenderer): (look: Look) => void {
   const { cal } = map;
   const painters: (() => void)[] = [];
+  const paints: THREE.MeshBasicMaterial[] = [];
   let { ink, paths } = LOOKS.night as Look;
   // Some looks write a name the way a path is written, lower case with a slash after it
   const written = (text: string) => (paths ? `${text.toLowerCase()}/` : text);
@@ -497,10 +500,9 @@ function addLettering(scene: THREE.Scene, map: CityMap, renderer: THREE.WebGLRen
     };
     paint();
     painters.push(paint);
-    const mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(w, h),
-      new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false }),
-    );
+    const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false });
+    paints.push(material);
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), material);
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.set(x, 0.05, z);
     mesh.renderOrder = 2;
@@ -550,6 +552,13 @@ function addLettering(scene: THREE.Scene, map: CityMap, renderer: THREE.WebGLRen
   return (look) => {
     ({ ink, paths } = look);
     painters.forEach((paint) => paint());
+    // On an old screen a letter's soft edge would be a fringe of big pixels in half tones, so each is paint or isn't
+    const hard = look.screen ? HARD_EDGE : 0;
+    for (const material of paints) {
+      if (material.alphaTest === hard) continue;
+      material.alphaTest = hard;
+      material.needsUpdate = true;
+    }
   };
 }
 

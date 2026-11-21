@@ -161,6 +161,12 @@
       <span id="openerName"></span>
     </div>
     <div id="yearCount" hidden><b id="yearCountNumber"></b><span id="yearCountLabel"></span></div>
+    <div id="saver">
+      <b id="saverName"></b>
+      <span id="saverYears"></span>
+      <small>contriscape · Not affiliated with GitHub</small>
+      <small id="saverLeave" hidden></small>
+    </div>
     <section id="yearPanel" class="panel" aria-labelledby="yearTitle" hidden>
       <div class="panel-head">
         <h2 id="yearTitle">Years</h2>
@@ -233,6 +239,15 @@
         <button id="invert" type="button" aria-pressed="false">Invert Y</button>
       </div>
       <div class="colour-row">
+        <h3>Screensaver</h3>
+        <div class="saver-row">
+          <button id="saverStart" type="button">Start</button>
+          <div class="toggles">
+            <button id="saverIdle" type="button" aria-pressed="false">When idle</button>
+          </div>
+        </div>
+      </div>
+      <div class="colour-row">
         <h3>Look</h3>
         <div class="looks" id="looks" role="group" aria-label="Look"></div>
       </div>
@@ -274,6 +289,13 @@
         </dd>
         <dt>Orbit</dt>
         <dd>Rotate and zoom around the finished city. Point at a tower to read it.</dd>
+        <dt>Screensaver</dt>
+        <dd>
+          Start it from Settings. It fills the screen, hides everything but the view, and flies this city's busier years
+          and the whole history in turn, orbiting the city between flights. Move the mouse, press a key, click or tap to
+          leave. The engine goes quiet and the music plays on. Switch on After 2 minutes idle and it starts by itself
+          when the page is left alone. A link ending in #screensaver opens a city straight into it.
+        </dd>
         <dt>Race</dt>
         <dd>
           Race Autopilot down a year's alleys and once round its busiest day, through gold gates in turn. The next gate
@@ -409,17 +431,17 @@
         </dd>
         <dt>Settings</dt>
         <dd>
-          Sound, music, mouse steering, Invert Y, the look, the ship, and the colours of the buildings and ship. Sound
-          starts at your first click, tap or key press, because browsers hold it back until then, and an iPhone in
-          silent mode keeps it quiet. The music plays the history: in Autopilot each note is the busiest day just
-          passed, higher for a busier day, and in Pilot the towers you fly over play. With mouse steering on, the ship
-          turns towards the cursor. It's off by default, so the mouse stays free for the buttons. Look redraws the city:
-          Night, Blocks (the city by day, in stacked blocks), Poster (flat colour on paper), Vector (glowing outlines),
-          16-bit (a bright afternoon in big pixels and flat bands of colour) and VGA (bolted metal walls and a painted
-          dusk, in bigger pixels still). Ship model swaps the ship, shows it turning beside the panel, and names its
-          power: the Interceptor locks on from further off, the Dart turns faster, the Rocket boosts faster, the Saucer
-          brakes to a stop, and the Brick keeps its speed when it clips a tower. Each ship has its own cockpit, with a
-          speed dial and lamps for a lock and for boost. Scroll all the way in to sit in it.
+          Sound, music, mouse steering, Invert Y, the screensaver, the look, the ship, and the colours of the buildings
+          and ship. Sound starts at your first click, tap or key press, because browsers hold it back until then, and an
+          iPhone in silent mode keeps it quiet. The music plays the history: in Autopilot each note is the busiest day
+          just passed, higher for a busier day, and in Pilot the towers you fly over play. With mouse steering on, the
+          ship turns towards the cursor. It's off by default, so the mouse stays free for the buttons. Look redraws the
+          city: Night, Blocks (the city by day, in stacked blocks), Poster (flat colour on paper), Vector (glowing
+          outlines), 16-bit (a bright afternoon in big pixels and flat bands of colour) and VGA (bolted metal walls and
+          a painted dusk, in the same big pixels). Ship model swaps the ship, shows it turning beside the panel, and
+          names its power: the Interceptor locks on from further off, the Dart turns faster, the Rocket boosts faster,
+          the Saucer brakes to a stop, and the Brick keeps its speed when it clips a tower. Each ship has its own
+          cockpit, with a speed dial and lamps for a lock and for boost. Scroll all the way in to sit in it.
         </dd>
         <dt>Your year on GitHub</dt>
         <dd>

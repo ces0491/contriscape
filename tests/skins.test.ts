@@ -1,7 +1,7 @@
 import { AdditiveBlending, NormalBlending, ShaderMaterial } from 'three';
 import { describe, expect, it } from 'vitest';
 import * as glsl from '../src/shaders';
-import { DEFAULT_SKIN, definesFor, dress, LOOKS, pixelSize, readSkin, SKINS } from '../src/skins';
+import { DEFAULT_SKIN, definesFor, dress, LOOKS, readSkin, screenGrid, SKINS } from '../src/skins';
 
 /** The shaders that draw the scene, which branch on which scene it is. */
 const SCENE_SHADERS = ['TOWER_FRAGMENT', 'SOLID_FRAGMENT', 'GROUND_FRAGMENT', 'SKY_FRAGMENT'] as const;
@@ -53,7 +53,8 @@ describe('the looks', () => {
     const bright = SKINS.filter((skin) => !LOOKS[skin].dark);
     expect(bright).toEqual(['blocks', 'poster', 'console']);
     for (const skin of bright) {
-      expect(LOOKS[skin].bloom.threshold, skin).toBeGreaterThanOrEqual(1);
+      // A look with no glow at all passes too
+      expect(LOOKS[skin].bloom?.threshold ?? 1, skin).toBeGreaterThanOrEqual(1);
       for (const channel of LOOKS[skin].fog) expect(channel, skin).toBeLessThan(1);
     }
   });
@@ -66,12 +67,24 @@ describe('the looks', () => {
     expect(SKINS.map((skin) => LOOKS[skin].label)).toEqual(['Night', 'Blocks', 'Poster', 'Vector', '16-bit', 'VGA']);
   });
 
-  it('give the two old screens their own scenes, in the rows those machines had, with nothing dithered', () => {
-    expect(LOOKS.console).toMatchObject({ dark: false, screen: { rows: 224, levels: 31 } });
-    expect(LOOKS.shooter).toMatchObject({ dark: true, screen: { rows: 200, levels: 63 } });
+  it('give the two old screens their own scenes, in the colours those machines had, with nothing dithered', () => {
+    expect(LOOKS.console).toMatchObject({ dark: false, screen: { rows: 320, levels: 31 } });
+    expect(LOOKS.shooter).toMatchObject({ dark: true, screen: { rows: 320, levels: 63 } });
     for (const skin of ['night', 'blocks', 'poster', 'vector'] as const) expect(LOOKS[skin].screen).toBeUndefined();
     // Dithering a small palette turned a dense city into noise, which is why the two looks before these went
     expect(glsl.FINISH_FRAGMENT).not.toMatch(/bayer|dither/i);
+  });
+
+  it('give an old screen no glow, which spread over big pixels is a blur, and every other look one', () => {
+    for (const skin of SKINS) expect(LOOKS[skin].bloom === null, skin).toBe(LOOKS[skin].screen !== undefined);
+  });
+
+  it("scale an old screen's frame up with one reading to a pixel, so a big pixel is one flat colour", () => {
+    const [, screen, rest] = glsl.FINISH_FRAGMENT.split(/#ifdef PIXELS|#else/);
+    expect(count(screen, /texture2D\(/g)).toBe(1);
+    // The streak and its red and blue fringes belong to the other looks
+    expect(screen).not.toContain('uSpeed');
+    expect(rest).toContain('uSpeed');
   });
 
   it('keep the stars off a sky that has hills painted on it', () => {
@@ -99,17 +112,72 @@ describe('definesFor', () => {
   });
 });
 
-describe('pixelSize', () => {
+describe('screenGrid', () => {
+  /** Views in the display's own pixels: this laptop's, a desktop's, a phone's both ways up, and some awkward ones. */
+  const VIEWS = [
+    [1920, 1037],
+    [1920, 950],
+    [2880, 1600],
+    [780, 1688],
+    [1688, 780],
+    [1603, 876],
+    [1501, 919],
+    [641, 401],
+    [3, 2],
+  ] as const;
+
   it('is nothing for a look without a screen', () => {
-    for (const skin of ['night', 'blocks', 'poster', 'vector'] as const) expect(pixelSize(skin, 720)).toBe(0);
+    for (const skin of ['night', 'blocks', 'poster', 'vector'] as const)
+      expect(screenGrid(skin, 1920, 1080)).toBeNull();
   });
 
-  it('cuts the view into about as many rows as the screen had, and never into single pixels', () => {
-    expect(pixelSize('console', 720)).toBe(3);
-    expect(pixelSize('console', 1080)).toBe(5);
-    expect(pixelSize('shooter', 720)).toBe(4);
-    expect(pixelSize('shooter', 300)).toBe(2);
-    expect(pixelSize('console', 1)).toBe(2);
+  it("makes a big pixel a whole number of the display's, and never a single one", () => {
+    expect(screenGrid('console', 1920, 1037)?.side).toBe(3);
+    expect(screenGrid('shooter', 1920, 1037)?.side).toBe(3);
+    expect(screenGrid('console', 2880, 1600)?.side).toBe(5);
+    expect(screenGrid('console', 640, 400)?.side).toBe(2);
+    for (const [width, height] of VIEWS) {
+      const side = screenGrid('console', width, height)?.side ?? 0;
+      expect(Number.isInteger(side), `${width}x${height}`).toBe(true);
+      expect(side, `${width}x${height}`).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('goes by the shorter side, so a phone held upright has as many big pixels across as one on its side has down', () => {
+    expect(screenGrid('console', 780, 1688)).toMatchObject({ side: 2, cols: 390, rows: 844 });
+    expect(screenGrid('console', 1688, 780)).toMatchObject({ side: 2, cols: 844, rows: 390 });
+  });
+
+  it('covers the view, overhanging it by less than one big pixel each way', () => {
+    for (const [width, height] of VIEWS) {
+      const { side, cols, rows } = screenGrid('shooter', width, height) ?? { side: 0, cols: 0, rows: 0 };
+      expect(cols * side - width, `${width}x${height}`).toBeGreaterThanOrEqual(0);
+      expect(cols * side - width, `${width}x${height}`).toBeLessThan(side);
+      expect(rows * side - height, `${width}x${height}`).toBeGreaterThanOrEqual(0);
+      expect(rows * side - height, `${width}x${height}`).toBeLessThan(side);
+    }
+  });
+
+  it('starts a whole number of pixels outside the view, so no pixel sits on the line between two big ones', () => {
+    expect(screenGrid('console', 1920, 1037)).toMatchObject({ cols: 640, rows: 346, left: 0, top: 0 });
+    expect(screenGrid('console', 1501, 919)).toMatchObject({ cols: 501, rows: 307, left: 1, top: 1 });
+    for (const [width, height] of VIEWS) {
+      const { side, cols, rows, left, top } = screenGrid('console', width, height) ?? {
+        side: 0,
+        cols: 0,
+        rows: 0,
+        left: 0.5,
+        top: 0.5,
+      };
+      for (const [start, over] of [
+        [left, cols * side - width],
+        [top, rows * side - height],
+      ]) {
+        expect(Number.isInteger(start), `${width}x${height}`).toBe(true);
+        expect(start, `${width}x${height}`).toBeGreaterThanOrEqual(0);
+        expect(start, `${width}x${height}`).toBeLessThanOrEqual(over);
+      }
+    }
   });
 });
 
