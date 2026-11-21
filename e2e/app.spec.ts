@@ -1352,13 +1352,17 @@ test('at a middling width the header keeps to one row, so the hint sits under it
   await stubApi(page, { body: busy('a-really-long-github-username-of-39-cha') });
   await page.goto('/octo-dev');
   await cityReady(page);
-  // The hint hides itself nine seconds after the city loads, so it is measured first
-  const hint = await page.locator('#hint').boundingBox();
-  const modes = await page.locator('.modes').boundingBox();
-  const find = await page.locator('.find').boundingBox();
-  expect(Math.abs((modes?.y ?? 0) - (find?.y ?? 99))).toBeLessThan(12);
-  expect(hint?.y).toBeGreaterThanOrEqual((modes?.y ?? 0) + (modes?.height ?? 0) - 1);
-  expect((modes?.x ?? 0) + (modes?.width ?? 0)).toBeLessThanOrEqual(900);
+  // The hint hides itself nine seconds after it shows, which a slow runner can pass while the city loads. Its place is
+  // what's tested, so it is shown here and measured in the same step as the header.
+  const { hint, modes, find } = await page.evaluate(() => {
+    document.getElementById('hint')!.hidden = false;
+    const box = (selector: string) => document.querySelector(selector)!.getBoundingClientRect().toJSON() as DOMRect;
+    return { hint: box('#hint'), modes: box('.modes'), find: box('.find') };
+  });
+  expect(hint.height).toBeGreaterThan(0);
+  expect(Math.abs(modes.y - find.y)).toBeLessThan(12);
+  expect(hint.y).toBeGreaterThanOrEqual(modes.y + modes.height - 1);
+  expect(modes.x + modes.width).toBeLessThanOrEqual(900);
   await context.close();
 });
 
