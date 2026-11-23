@@ -2413,17 +2413,27 @@ test("the year's cards turn by themselves, and a press held on one stops them un
   await cityReady(page);
   await page.evaluate(() => window.__city.endFlight());
   const card = page.locator('#storyCard');
-  await expect(card).toHaveAttribute('aria-label', /^Contributions: /, { timeout: 30_000 });
-  const box = await page.locator('#storyFrame').boundingBox();
-  await page.mouse.move((box?.x ?? 0) + (box?.width ?? 0) / 2, (box?.y ?? 0) + (box?.height ?? 0) / 2);
-  await page.mouse.down();
+  await expect(card).toHaveAttribute('aria-label', /./);
+  // The press lands in the same step as the card is read, because a slow runner can take most of a card's six
+  // seconds over one mouse action. Returns the card it pressed on.
+  const held = await page.evaluate(() => {
+    const frame = document.getElementById('storyFrame') as HTMLElement;
+    frame.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    return document.getElementById('storyCard')?.getAttribute('aria-label') ?? '';
+  });
   // Longer than a card stays
   await page.waitForTimeout(8_000);
-  await expect(card).toHaveAttribute('aria-label', /^Contributions: /);
-  // Letting go of a long press doesn't also turn the card, and the clock picks up where it stopped
-  await page.mouse.up();
-  await expect(card).toHaveAttribute('aria-label', /^Contributions: /);
-  await expect(card).toHaveAttribute('aria-label', /^Active days: /, { timeout: 30_000 });
+  await expect(card).toHaveAttribute('aria-label', held);
+  // Letting go of a long press doesn't also turn the card, though a click follows it, and the clock picks up again
+  const released = await page.evaluate(() => {
+    const frame = document.getElementById('storyFrame') as HTMLElement;
+    frame.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    (document.getElementById('storyNext') as HTMLElement).click();
+    return document.getElementById('storyCard')?.getAttribute('aria-label') ?? '';
+  });
+  expect(released).toBe(held);
+  await expect(card).not.toHaveAttribute('aria-label', held, { timeout: 30_000 });
+  await expect(page.locator('#storyBars .live')).toHaveCount(1);
 });
 
 test("someone watching another person's year flies their own, the same year, from its cards", async ({ page }) => {
