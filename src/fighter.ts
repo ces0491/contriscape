@@ -547,65 +547,87 @@ function dart(kit: Kit): Fittings {
   };
 }
 
-/** The year's own ship: a slim hull with crescent wings, and a ring round its tail in the trim colour on three vanes. */
+/**
+ * The year's own ship: a short pod for the pilot under a gold-framed canopy, and two slim booms with an engine each,
+ * joined by a gold tailplane with a fin on each boom. Its guns sit under its chin.
+ */
 function comet(kit: Kit): Fittings {
   const { add } = kit;
   add(
     body(
       [
-        [0, -0.9],
-        [0.025, -0.8],
-        [0.05, -0.62],
-        [0.075, -0.4],
-        [0.09, -0.15],
-        [0.095, 0.1],
-        [0.09, 0.32],
-        [0.075, 0.48],
-        [0.05, 0.56],
-        [0, 0.57],
+        [0, -0.82],
+        [0.03, -0.72],
+        [0.065, -0.52],
+        [0.095, -0.28],
+        [0.105, -0.05],
+        [0.1, 0.12],
+        [0.08, 0.26],
+        [0.04, 0.34],
+        [0, 0.36],
       ],
       22,
       1,
-      0.85,
+      0.9,
     ),
     'hull',
   );
   const canopy = new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2);
-  canopy.scale(0.058, 0.06, 0.26);
-  add(canopy, 'glass', 0, 0.045, -0.34);
-  const bow = new THREE.TorusGeometry(1, 0.07, 5, 16, Math.PI);
-  bow.scale(0.055, 0.057, 0.055);
-  add(bow, 'trim', 0, 0.045, -0.44);
-
-  // A crescent: swept back along its leading edge and in again along its trailing edge, gold along the front
-  const crescent: Station[] = [
-    { x: 0.06, le: -0.11, te: 0.31, t: 0.022 },
-    { x: 0.3, le: 0.04, te: 0.22, t: 0.011 },
-    { x: 0.42, le: 0.22, te: 0.32, t: 0.007 },
-    { x: 0.46, le: 0.3, te: 0.345, t: 0.005 },
+  canopy.scale(0.062, 0.066, 0.24);
+  add(canopy, 'glass', 0, 0.05, -0.3);
+  const arch = new THREE.TorusGeometry(1, 0.07, 5, 16, Math.PI);
+  arch.scale(0.059, 0.062, 0.059);
+  add(arch, 'trim', 0, 0.05, -0.4);
+  const boom = body(
+    [
+      [0, -0.3],
+      [0.02, -0.26],
+      [0.036, -0.16],
+      [0.04, 0.1],
+      [0.04, 0.5],
+      [0.036, 0.57],
+    ],
+    16,
+    1,
+    1,
+  );
+  both(kit, boom, 'hull', 0.24);
+  both(kit, new THREE.TorusGeometry(0.036, 0.008, 6, 16), 'hot', 0.24, 0, 0.57);
+  const plan: Station[] = [
+    { x: 0.05, le: -0.14, te: 0.15, t: 0.026 },
+    { x: 0.24, le: -0.1, te: 0.13, t: 0.02 },
+    { x: 0.47, le: -0.02, te: 0.1, t: 0.009 },
   ];
-  both(kit, wing(crescent, [0.22, 1]), 'hull', 0, 0, 0, -0.05);
-  both(kit, wing(crescent, [0, 0.22]), 'trim', 0, 0, 0, -0.05);
-
-  add(new THREE.TorusGeometry(0.2, 0.018, 8, 40), 'trim', 0, 0, 0.42);
-  const vane = wing([
-    { x: 0.05, le: 0.35, te: 0.47, t: 0.012 },
-    { x: 0.2, le: 0.39, te: 0.45, t: 0.008 },
+  both(kit, wing(plan, [0.22, 1]), 'hull');
+  both(kit, wing(plan, [0, 0.22]), 'trim');
+  // The tailplane runs from boom to boom, in gold
+  both(
+    kit,
+    wing([
+      { x: 0, le: 0.4, te: 0.52, t: 0.012 },
+      { x: 0.24, le: 0.42, te: 0.52, t: 0.012 },
+    ]),
+    'trim',
+    0,
+    0.03,
+  );
+  const fin = wing([
+    { x: 0, le: 0.32, te: 0.54, t: 0.012 },
+    { x: 0.13, le: 0.44, te: 0.55, t: 0.006 },
   ]);
-  for (let n = 0; n < 3; n++) {
-    const turned = vane.clone();
-    turned.rotateZ(Math.PI / 2 + (n * Math.PI * 2) / 3);
-    add(turned, 'dark');
-  }
-  vane.dispose();
-  add(new THREE.TorusGeometry(0.052, 0.01, 6, 20), 'hot', 0, 0, 0.565);
-
-  const muzzle = guns(kit, 0.17, -0.009, [-0.15, 0.12, 0.019], -0.2, 'hull');
-
+  fin.rotateZ(Math.PI / 2);
+  both(kit, fin, 'trim', 0.24, 0.03);
+  const muzzle = guns(kit, 0.055, -0.06, [-0.6, -0.3, 0.018], -0.67, 'hull');
   return {
-    engines: [[0, 0, 0.57, 0.048]],
-    wingtip: new THREE.Vector3(0.455, -0.02, 0.33),
-    strobes: [[0, 0.2, 0.42]],
+    engines: [
+      [-0.24, 0, 0.575, 0.032],
+      [0.24, 0, 0.575, 0.032],
+    ],
+    wingtip: new THREE.Vector3(0.47, 0, 0.04),
+    strobes: [
+      [-0.24, 0.165, 0.5],
+      [0.24, 0.165, 0.5],
+    ],
     muzzle,
   };
 }

@@ -87,3 +87,4 @@ Ces, after flying a stranger's city on the live URL from a phone and a laptop.
 - 2026-11-23: built each ship's guns into its shape, gave wings and fins thickness, and put seams and plating on the metal, at Ces's request
 - 2026-11-23: made the engines glow hot on boost, at Ces's request
 - 2026-11-23: replaced the year's closing card with story cards that save and share as pictures, at Ces's request
+- 2026-11-23: redesigned the year's own ship as a twin boom, picked by Ces from four options

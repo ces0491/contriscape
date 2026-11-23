@@ -118,7 +118,7 @@ Poster takes its palette and its way of writing a name, as in `2026/`, from that
 
 ### Ships
 
-Settings has five ships: Interceptor, the swept delta the site started with, then Dart, Rocket, Saucer and Brick, which is built of boxes. A sixth, the Comet, flies only in Your year. Each takes the ship and trim colours, is the same size against the towers, and fires the same bolts from guns built into its own shape: in the Interceptor's wing roots and the Comet's wings, under the Dart's chin, on stubs either side of the Rocket, under the Saucer's rim, and as blocks on the Brick's wings. Each has one power of its own in Pilot:
+Settings has five ships: Interceptor, the swept delta the site started with, then Dart, Rocket, Saucer and Brick, which is built of boxes. A sixth, the Comet, a twin-boom ship with an engine on each boom, flies only in Your year. Each takes the ship and trim colours, is the same size against the towers, and fires the same bolts from guns built into its own shape: in the Interceptor's wing roots, under the Dart's and the Comet's chins, on stubs either side of the Rocket, under the Saucer's rim, and as blocks on the Brick's wings. Each has one power of its own in Pilot:
 
 | Ship        | Power       | What it does                               |
 | ----------- | ----------- | ------------------------------------------ |
