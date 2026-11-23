@@ -358,24 +358,4 @@ export class Hud {
       (choices.querySelector('input') as HTMLInputElement).value = current;
     });
   }
-
-  /** The card that closes a year's flight: whose year, its total, and the rest of its facts. */
-  showSummary(title: string, login: string, total: number, facts: [string, string][]): void {
-    element('summaryKicker').textContent = login;
-    element('summaryTitle').textContent = title;
-    const hero = element('summaryTotal');
-    (hero.firstElementChild as HTMLElement).textContent = formatCount(total);
-    (hero.lastElementChild as HTMLElement).textContent = total === 1 ? 'contribution' : 'contributions';
-    element('summaryShare').textContent = 'Copy link';
-    element('summaryFacts').replaceChildren(
-      ...facts.flatMap(([label, value]) => {
-        const term = document.createElement('dt');
-        const definition = document.createElement('dd');
-        term.textContent = label;
-        definition.textContent = value;
-        return [term, definition];
-      }),
-    );
-    element('summary').hidden = false;
-  }
 }

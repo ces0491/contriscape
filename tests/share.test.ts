@@ -359,6 +359,8 @@ describe('GET /api/share/:login', () => {
     expect(html).toContain(`<meta property="og:title" content="Octo-Dev's 2025 on GitHub · contriscape" />`);
     const description = /<meta property="og:description" content="([^"]*)"/.exec(html)?.[1] ?? '';
     expect(description.length).toBeGreaterThanOrEqual(100);
+    // The preview asks whoever sees it to fly their own year
+    expect(description).toMatch(/Then fly your own\.$/);
     expect(share(request('[login]?login=octo-dev&year=2025')).status).toBe(200);
     expect(share(request('octo-dev?year=1999')).status).toBe(400);
     // The rewrite can hand the function the address that was asked for, with the login added

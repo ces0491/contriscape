@@ -749,6 +749,30 @@ gl_FragColor=vec4(c,1.);}
 #endif`;
 
 /**
+ * Seams and plating on a ship's metal, laid out by where each point is on the ship, so they stay put as it flies. A
+ * surface gets a grid in the two directions it lies along, or rings and spokes on a round ship (`uRound`), and each
+ * panel is a shade off the next. A seam fades out where it would be thinner than a pixel, which on an old screen is
+ * one of its big pixels, so it never breaks into dashes.
+ */
+export const PLATING = /* glsl */ `uniform float uRound;varying vec3 vShipP,vShipN;
+float plateHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float seamAt(float d,float w,float gap){w=max(w,1e-5);return (1.-smoothstep(gap*.5-w*.5,gap*.5+w*.5,d))*clamp(gap/w-.5,0.,1.);}
+float seam(float t,float every){return seamAt(abs(fract(t/every+.5)-.5)*every,fwidth(t),.005);}
+void plating(inout vec3 c,inout float r){vec3 p=vShipP;float s;vec2 cell;
+/* The seams are all worked out before the way the surface faces picks among them, because a derivative taken in a
+ * branch that differs from one pixel to the next is undefined. A normal can be zero at a corner nothing is drawn from. */
+float x=seam(p.x,.12),y=seam(p.y,.09),z=seam(p.z,.16);
+if(uRound>.5){float rad=length(p.xz);float turn=atan(p.z,p.x)*2.546;
+s=max(seam(rad,.1),seamAt(abs(fract(turn+.5)-.5)*rad*.3927,fwidth(turn)*rad*.3927,.005));
+cell=vec2(floor(rad/.1),floor(turn));}
+else{vec3 n=abs(vShipN)/max(length(vShipN),1e-5);
+float top=step(max(n.x,n.z),n.y);float side=(1.-top)*step(n.z,n.x);float end=1.-top-side;
+s=top*max(x,z)+side*max(y,z)+end*max(x,y);
+cell=top*floor(p.xz/vec2(.12,.16))+side*(floor(p.yz/vec2(.09,.16))+17.)+end*(floor(p.xy/vec2(.12,.09))+41.);}
+float panel=plateHash(cell);
+c*=(1.-.3*s)*(.95+.1*panel);r=clamp(r+.1*s+.08*(panel-.5),.04,1.);}`;
+
+/**
  * The exhaust: a cone from the nozzle, longer and brighter with throttle, white at the nozzle and blue at the tip.
  * It flickers so it reads as burning rather than as a solid.
  */
@@ -761,9 +785,11 @@ gl_Position=projectionMatrix*mv;}`;
 
 /* `along` is clamped because interpolation can take it just below zero at the tip, and pow() of a negative is NaN, which
  * the bloom pass then spreads over the whole frame. */
-export const FLAME_FRAGMENT = /* glsl */ `uniform float uThrottle;varying float vT;varying vec3 vN,vV;
+export const FLAME_FRAGMENT = /* glsl */ `uniform float uThrottle,uHeat;varying float vT;varying vec3 vN,vV;
 void main(){float along=clamp(1.-vT,0.,1.);float edge=pow(abs(dot(normalize(vN),normalize(vV))),1.4);
 vec3 c=mix(vec3(.2,.42,1.1),vec3(1.1,1.25,1.5),pow(along,3.));
+/* On boost, bright bands stand in the nearer half of the flame, as in an afterburner's exhaust */
+c+=vec3(1.3,1.1,1.)*uHeat*pow(max(sin(along*24.),0.),8.)*smoothstep(.3,.75,along);
 gl_FragColor=vec4(c*pow(along,1.8)*edge*(.3+.35*min(uThrottle,2.)),1.);}`;
 
 /**

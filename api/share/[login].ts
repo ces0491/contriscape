@@ -27,7 +27,7 @@ export function GET(request: Request): Response {
   const description =
     year === null
       ? `Fly a starfighter through a city built from ${login}'s GitHub contributions, one tower per day. It runs in the browser, with nothing to install.`
-      : `Fly through ${login}'s ${year} on GitHub as a city, one tower per day, past the year's busiest day, biggest month and longest streak. It runs in the browser.`;
+      : `Fly through ${login}'s ${year} on GitHub as a city, one tower per day, past the year's busiest day, biggest month and longest streak. Then fly your own.`;
   const html = `<!doctype html>
 <html lang="en">
   <head>

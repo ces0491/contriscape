@@ -2,7 +2,7 @@ import { Quaternion, Scene, Vector3, Vector4 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { holdsLock, LOCK_CONE, LOCK_RANGE, lockCone, lockOn, turnTowards } from '../src/aim';
 import { BADGE_RADIUS, closestPass, TOUCH_REACH } from '../src/badges';
-import { SHIP_HALF_SPAN, Weapons } from '../src/fighter';
+import { EDITION_SHIP, muzzleOf, SHIP_HALF_SPAN, SHIPS, Weapons, type Design } from '../src/fighter';
 import { flashLevel, Flashes, LIGHT_SLOTS, type Flash } from '../src/lights';
 import { placeMarker, type Insets } from '../src/markers';
 import { TRAIL_FRAGMENT } from '../src/shaders';
@@ -62,11 +62,12 @@ describe('turnTowards', () => {
 });
 
 describe('Weapons', () => {
-  /** Fires one volley and runs it until it lands or dies, reporting whether it came within reach of the target. */
-  const volley = (target: Vector3 | null, aim: Vector3) => {
+  const designs: Design[] = [...SHIPS, EDITION_SHIP];
+  /** Fires one volley from a ship's guns and runs it until it lands or dies, reporting whether it reached the target. */
+  const volley = (target: Vector3 | null, aim: Vector3, ship: Design) => {
     const weapons = new Weapons(new Scene(), () => 0.5, { value: 1 });
     const goal = new Vector3(4, 0, -45);
-    weapons.fire(origin, aim, new Quaternion(), target);
+    weapons.fire(origin, aim, new Quaternion(), muzzleOf(ship), target);
     let hit = false;
     for (let n = 0; n < 120 && weapons.activeBolts > 0; n++) {
       weapons.update(
@@ -80,12 +81,12 @@ describe('Weapons', () => {
     return hit;
   };
 
-  it('misses a badge a few degrees off the line of fire', () => {
-    expect(volley(null, ahead)).toBe(false);
+  it.each(designs)('misses a badge a few degrees off the line of fire, from the %s', (ship) => {
+    expect(volley(null, ahead, ship)).toBe(false);
   });
 
-  it('curves a shot fired while locked on into the badge', () => {
-    expect(volley(new Vector3(4, 0, -45), ahead)).toBe(true);
+  it.each(designs)('curves a shot fired while locked on into the badge, from the %s', (ship) => {
+    expect(volley(new Vector3(4, 0, -45), ahead, ship)).toBe(true);
   });
 });
 

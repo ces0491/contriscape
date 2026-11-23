@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import type { Contributions } from '../shared/contract';
 import { screenGrid, type Grid } from '../src/skins';
@@ -70,7 +71,7 @@ interface CityDebug {
   fighter: {
     visible: boolean;
     position: { clone(): { project(camera: unknown): { x: number; y: number; z: number } } };
-    children: { material: { color: { getHexString(): string } } }[];
+    children: { material: { color: { getHexString(): string }; name: string; emissiveIntensity: number } }[];
   };
   shared: { uRamp: { value: { b: number }[] } };
   saver: { orbitLeft: number } | null;
@@ -1188,6 +1189,25 @@ test('on a phone, holding Boost speeds the ship up and letting go slows it', asy
   await context.close();
 });
 
+test('boost heats the turbines with a flash, and they cool once it is let go', async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev');
+  await cityReady(page);
+  await page.click('#m-pilot');
+  await shipLive(page);
+  // The metal round the nozzles, whose own light is the heat
+  const heat = () =>
+    page.evaluate(
+      () => window.__city.fighter.children.find((part) => part.material?.name === 'hot')?.material.emissiveIntensity,
+    );
+  expect(await heat()).toBe(0);
+  await page.keyboard.down('ShiftLeft');
+  await expect.poll(heat, { timeout: 30_000 }).toBeGreaterThan(1);
+  await page.keyboard.up('ShiftLeft');
+  // Cooling takes over a second of game time, which is dozens of frames at a slow renderer's 0.05 s step
+  await expect.poll(heat, { timeout: 180_000 }).toBeLessThan(0.3);
+});
+
 /**
  * How bright each of the next few frames is, from 0 for black to 255 for white. Bloom is held on, because it is what
  * spreads one bad pixel over a whole frame, and a slow renderer would have turned it off.
@@ -2058,16 +2078,16 @@ test('each panel closes from its own button', async ({ page }) => {
 });
 
 test.describe('your year on GitHub', () => {
-  test('stays hidden outside December', async ({ page }) => {
-    await page.clock.setFixedTime(new Date('2026-11-20T12:00:00Z'));
+  test('stays hidden before mid November', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-11-10T12:00:00Z'));
     await stubApi(page, { body: busy('octo-dev') });
     await page.goto('/octo-dev');
     await cityReady(page);
     await expect(page.locator('#review')).toBeHidden();
   });
 
-  test('appears in December and tells the story of the year', async ({ page }) => {
-    await page.clock.setFixedTime(new Date('2026-12-05T12:00:00Z'));
+  test('appears from mid November and tells the story of the year', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-11-20T12:00:00Z'));
     await stubApi(page, { body: busy('octo-dev') });
     await page.goto('/octo-dev');
     await cityReady(page);
@@ -2082,16 +2102,35 @@ test.describe('your year on GitHub', () => {
       await page.evaluate(() => window.__city.cal.span(2026).a + 1),
     );
 
-    // The flight ends in fireworks, and the card follows them
+    // The flight ends in fireworks, and the year's cards follow them
     await page.evaluate(() => window.__city.endFlight());
     await expect(page.locator('#opener')).toBeHidden();
     await expect.poll(() => page.evaluate(() => window.__city.fireworks.active)).toBe(true);
-    await expect(page.locator('#summary')).toBeVisible();
-    await expect(page.locator('#summaryKicker')).toHaveText('octo-dev');
-    await expect(page.locator('#summaryTotal b')).toHaveText(/^\d{1,3}(,\d{3})*$/);
-    await expect(page.locator('#summaryFacts')).toContainText('On 2025');
-    await page.click('#summaryAgain');
-    await expect(page.locator('#summary')).toBeHidden();
+    await expect(page.locator('#story')).toBeVisible();
+    await expect(page.locator('#storyCard')).toHaveAttribute('aria-label', /./);
+    // Stepped through in one go, because the cards also turn by themselves
+    const said = await page.evaluate(() => {
+      const card = document.getElementById('storyCard') as HTMLElement;
+      const press = (id: string) => (document.getElementById(id) as HTMLElement).click();
+      for (let n = 0; n < 12; n++) press('storyBack');
+      const seen = [card.getAttribute('aria-label') ?? ''];
+      for (let n = 0; n < 12; n++) {
+        press('storyNext');
+        seen.push(card.getAttribute('aria-label') ?? '');
+      }
+      return [...new Set(seen)];
+    });
+    expect(said[0]).toBe('octo-dev: 2026. Your year on GitHub, so far.');
+    expect(said[1]).toMatch(/^Contributions: [\d,]+, (Up|Down) [\d,]+% on 2025\.$/);
+    for (const kicker of ['Active days', 'Longest streak', 'Busiest day', 'Biggest month', 'Your style']) {
+      expect(
+        said.some((text) => text.startsWith(`${kicker}: `)),
+        kicker,
+      ).toBe(true);
+    }
+    expect(said[said.length - 1]).toMatch(/^octo-dev: 2026\. [\d,]+ contributions\.$/);
+    await page.click('#storyAgain');
+    await expect(page.locator('#story')).toBeHidden();
     await expect(page.locator('#opener')).toBeVisible();
     await page.click('#m-orbit');
     await expect(page.locator('#opener')).toBeHidden();
@@ -2115,6 +2154,21 @@ test.describe('your year on GitHub', () => {
   test('stays away from a year with no contributions', async ({ page }) => {
     await page.clock.setFixedTime(new Date('2026-12-05T12:00:00Z'));
     await stubApi(page, { body: empty });
+    await page.goto('/newcomer');
+    await cityReady(page);
+    await expect(page.locator('#review')).toBeHidden();
+  });
+
+  test('a link to a year outside the history opens the city', async ({ page }) => {
+    await stubApi(page, { body: busy('octo-dev') });
+    await page.goto('/octo-dev/2001');
+    await cityReady(page);
+    await expect(page.locator('#opener')).toBeHidden();
+  });
+
+  test('early January loads a history that starts in the new year', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2027-01-05T12:00:00Z'));
+    await stubApi(page, { body: { ...empty, years: { '2027': year(5, () => 2) } } });
     await page.goto('/newcomer');
     await cityReady(page);
     await expect(page.locator('#review')).toBeHidden();
@@ -2323,14 +2377,73 @@ test("a link to a year opens on that year's flight in the year's own edition, an
   await expect(page.locator('#skin-blocks')).toHaveAttribute('aria-pressed', 'true');
 
   await page.evaluate(() => window.__city.endFlight());
-  await expect(page.locator('#summary')).toBeVisible();
+  await expect(page.locator('#story')).toBeVisible();
   await expect(page.locator('body')).toHaveAttribute('data-skin', 'night');
-  await page.click('#summaryShare');
-  await expect(page.locator('#summaryShare')).toHaveText('Copied');
+  await page.click('#storyCopy');
+  await expect(page.locator('#storyCopy')).toHaveText('Copied');
   expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/\/octo-dev\/2025$/);
-  await page.click('#summaryClose');
+  await page.click('#storyClose');
   await expect(page.locator('body')).toHaveAttribute('data-skin', 'blocks');
   expect(faults).toEqual([]);
+});
+
+test("a card of the year saves as a picture the size of a phone's story, and Esc puts the story away", async ({
+  page,
+}) => {
+  const faults = watchForFaults(page);
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev#your-year');
+  await cityReady(page);
+  await page.evaluate(() => window.__city.endFlight());
+  await expect(page.locator('#storyCard')).toHaveAttribute('aria-label', /./);
+  const [download] = await Promise.all([page.waitForEvent('download'), page.click('#storySave')]);
+  expect(download.suggestedFilename()).toMatch(/^contriscape-octo-dev-2026-\d\d-[a-z]+\.png$/);
+  const png = readFileSync(await download.path());
+  expect(png.subarray(1, 4).toString()).toBe('PNG');
+  // The width and height, from the image's header
+  expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1080, 1920]);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#story')).toBeHidden();
+  expect(faults).toEqual([]);
+});
+
+test("the year's cards turn by themselves, and a press held on one stops them until it lets go", async ({ page }) => {
+  await stubApi(page, { body: busy('octo-dev') });
+  await page.goto('/octo-dev#your-year');
+  await cityReady(page);
+  await page.evaluate(() => window.__city.endFlight());
+  const card = page.locator('#storyCard');
+  await expect(card).toHaveAttribute('aria-label', /^Contributions: /, { timeout: 30_000 });
+  const box = await page.locator('#storyFrame').boundingBox();
+  await page.mouse.move((box?.x ?? 0) + (box?.width ?? 0) / 2, (box?.y ?? 0) + (box?.height ?? 0) / 2);
+  await page.mouse.down();
+  // Longer than a card stays
+  await page.waitForTimeout(8_000);
+  await expect(card).toHaveAttribute('aria-label', /^Contributions: /);
+  // Letting go of a long press doesn't also turn the card, and the clock picks up where it stopped
+  await page.mouse.up();
+  await expect(card).toHaveAttribute('aria-label', /^Contributions: /);
+  await expect(card).toHaveAttribute('aria-label', /^Active days: /, { timeout: 30_000 });
+});
+
+test("someone watching another person's year flies their own, the same year, from its cards", async ({ page }) => {
+  await stubExplore(page);
+  await page.goto('/octo-dev/2025');
+  await cityReady(page);
+  await page.evaluate(() => window.__city.endFlight());
+  await expect(page.locator('#story')).toBeVisible();
+  await expect(page.locator('#storyOwnLabel')).toHaveText('Fly your own 2025');
+  // Something that can't be a username goes nowhere
+  await page.fill('#storyOwnLogin', 'not a name');
+  await page.click('#storyOwn button');
+  await expect(page.locator('#story')).toBeVisible();
+  await expect(page).toHaveURL(/\/octo-dev\/2025$/);
+  await page.fill('#storyOwnLogin', '@ada-l');
+  await page.press('#storyOwnLogin', 'Enter');
+  await expect(page).toHaveURL(/\/ada-l\/2025$/);
+  await cityReady(page);
+  await expect(page.locator('#openerYear')).toHaveText('2025');
+  await expect(page.locator('#openerName')).toHaveText('ada-l');
 });
 
 test('a year in the address that is not a year is refused, without asking for the city', async ({ page }) => {

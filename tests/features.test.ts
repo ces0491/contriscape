@@ -249,15 +249,31 @@ describe('reviewYear', () => {
   it('has nothing to say about an empty year', () => {
     expect(reviewYear(calendar({ '2025-03-03': 1 }), 2026)).toBeNull();
   });
+
+  it('has nothing to say about a year outside the history', () => {
+    const cal = calendar({ '2025-03-03': 1 });
+    expect(reviewYear(cal, cal.firstYear - 1)).toBeNull();
+    expect(reviewYear(cal, cal.lastYear + 1)).toBeNull();
+  });
 });
 
 describe('reviewSeason', () => {
-  it('offers the year ending through December, and the one just ended through mid January', () => {
+  it('offers the year ending from mid November through December, and the one just ended through mid January', () => {
+    expect(reviewSeason(new Date(2026, 10, 14), 2026)).toBeNull();
+    expect(reviewSeason(new Date(2026, 10, 15), 2026)).toBe(2026);
+    expect(reviewSeason(new Date(2026, 10, 30), 2026)).toBe(2026);
     expect(reviewSeason(new Date(2026, 11, 1), 2026)).toBe(2026);
     expect(reviewSeason(new Date(2026, 11, 31), 2026)).toBe(2026);
     expect(reviewSeason(new Date(2027, 0, 1), 2027)).toBe(2026);
     expect(reviewSeason(new Date(2027, 0, 15), 2027)).toBe(2026);
     expect(reviewSeason(new Date(2027, 0, 16), 2027)).toBeNull();
-    expect(reviewSeason(new Date(2026, 10, 30), 2026)).toBeNull();
+    expect(reviewSeason(new Date(2026, 5, 1), 2026)).toBeNull();
+  });
+
+  it("offers the visitor's year around New Year, when the history's UTC year differs from it", () => {
+    // Late on 31 December west of UTC, a fresh history already holds the new year
+    expect(reviewSeason(new Date(2026, 11, 31), 2027)).toBe(2026);
+    // Early on 1 January east of UTC, or from a copy cached the day before, it doesn't yet
+    expect(reviewSeason(new Date(2027, 0, 1), 2026)).toBe(2026);
   });
 });

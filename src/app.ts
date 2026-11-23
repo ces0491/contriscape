@@ -26,14 +26,16 @@ import {
   Weapons,
   type Ship,
 } from './fighter';
-import { FINALE_SECONDS, Fireworks } from './fireworks';
+import { CLIMB_SECONDS, FINALE_SECONDS, Fireworks } from './fireworks';
 import { Hud, type Scope } from './hud';
 import { Flashes } from './lights';
 import { CityMap, DEPTH, PLINTH, TOWER, WIDTH } from './map';
 import { chooseMarkers, Markers, placeMarker, SpotMarker, type Insets, type Placed } from './markers';
 import { findMilestones, type Milestone } from './milestones';
 import { averageFrame, countedFrame, tooSlow } from './quality';
-import { reviewFacts, reviewSeason, reviewTitle, reviewYear, type YearReview } from './review';
+import { reviewSeason, reviewTitle, reviewYear, type YearReview } from './review';
+import { yearStory } from './story';
+import { StoryView } from './story-view';
 import { buildRoute, lengthAtDay, newPose, poseAt, RISE, type Route } from './routes';
 import { formatClock, formatLap, Run } from './run';
 import {
@@ -145,6 +147,8 @@ const BOOST = 46;
 const GRAIN = 0.022;
 /** How far the chase camera drops back on full boost, as a share of its distance. */
 const BOOST_PULL = 0.3;
+/** How far above cruise the rival flies before its turbines glow, as a boosted ship's do. */
+const RIVAL_GLOWS = 1.25;
 /** The largest city a single view frames well. Older years sit behind the opening camera. */
 const FRAMED_DEPTH = 189;
 /** How far either side of a race's line the ship and the rival start, so neither sits inside the other. */
@@ -376,6 +380,13 @@ export function startApp(
   /** The day the caption on screen is about, which stays lit while it's up, or -1. */
   let beatDay = -1;
   let summaryTimer = 0;
+  /** The year as cards, after its fireworks. Closing it puts the visitor's own ship, colours, look and music back. */
+  const story = new StoryView({
+    again: () => {
+      if (review) startReview(review.year);
+    },
+    closed: () => undressEdition(),
+  });
   /** Set while a change of mode is part of a year's flight, which keeps the year's edition on through it. */
   let keepEdition = false;
   let shake = 0;
@@ -683,7 +694,12 @@ export function startApp(
   }
   /** A year's flight ends with fireworks over its block, and then its card. */
   function closeYear(year: YearReview): void {
-    const card = () => hud.showSummary(reviewTitle(year.year), cal.login, year.total, reviewFacts(year, cal));
+    // The city for the first card and the last, in a warm light from over its block, taken before the first shell
+    // bursts. A burst in the picture could fill it, more so in a phone's tall view.
+    const { x, y, z } = focusFor();
+    flashes.add({ x, y: y + 26, z: z + 20, r: 1.5, g: 1.15, b: 0.6, reach: 120, start: time, life: 1.6 });
+    const city = cityPicture(Math.min(0.12, CLIMB_SECONDS / 2));
+    const card = () => void openStory(year, city);
     sound.fanfare();
     if (reduced) {
       card();
@@ -697,6 +713,36 @@ export function startApp(
     }
     clearTimeout(summaryTimer);
     summaryTimer = window.setTimeout(card, CARD_AFTER * 1000);
+  }
+  /**
+   * A picture of the city, `after` seconds from now. It is read in a frame callback, straight after the game's own has
+   * drawn, because a WebGL canvas reads back blank anywhere else.
+   */
+  function cityPicture(after: number): Promise<HTMLCanvasElement | null> {
+    return new Promise((done) =>
+      setTimeout(
+        () =>
+          requestAnimationFrame(() => {
+            try {
+              const copy = document.createElement('canvas');
+              copy.width = renderer.domElement.width;
+              copy.height = renderer.domElement.height;
+              copy.getContext('2d')?.drawImage(renderer.domElement, 0, 0);
+              done(copy);
+            } catch {
+              done(null);
+            }
+          }),
+        after * 1000,
+      ),
+    );
+  }
+  /** The year as cards, over the city as the flight left it. */
+  async function openStory(year: YearReview, city: Promise<HTMLCanvasElement | null>): Promise<void> {
+    const picture = await city;
+    // Something else began while the picture was taken
+    if (mode !== 'orbit' || !edition) return;
+    await story.open(yearStory(year, cal, badges.milestones, location.origin), picture);
   }
   /** After watching a flight is the moment to offer one. The offer goes when it's taken, or another mode is. */
   function offerControls(): void {
@@ -1100,7 +1146,7 @@ export function startApp(
     clearTimeout(summaryTimer);
     if (!keepEdition) {
       undressEdition();
-      element('summary').hidden = true;
+      story.close(false);
     }
     if (next !== 'fly') stopReview();
     mode = next;
@@ -1150,7 +1196,7 @@ export function startApp(
   }
   function setScope(key: 'all' | number): void {
     undressEdition();
-    element('summary').hidden = true;
+    story.close(false);
     applyScope(key);
     if (mode === 'fly') {
       startFlight(0);
@@ -1264,7 +1310,7 @@ export function startApp(
     !resultUp &&
     !dragging() &&
     !document.hidden &&
-    element('summary').hidden &&
+    !story.isOpen &&
     element('challenge').hidden;
 
   /* ---------- panels ---------- */
@@ -1887,7 +1933,8 @@ export function startApp(
     m1.lookAt(rivalPose.p, v3.copy(rivalPose.p).add(v1), UP);
     rival.group.quaternion.setFromRotationMatrix(m1).multiply(q2.setFromAxisAngle(ROLL_AXIS, rivalPose.roll));
     const going = current.phase === 'racing' && s < route.len;
-    rival.update(time, dt, going ? rivalPose.pace / CRUISE : 0);
+    // Its turbines glow where it flies well above cruise, as a boosted ship's do
+    rival.update(time, dt, going ? rivalPose.pace / CRUISE : 0, going && rivalPose.pace > CRUISE * RIVAL_GLOWS);
 
     if (current.phase !== 'racing' || !ghostTrack || !ghostAt(ghostTrack, current.elapsed, ghostPose)) return;
     ghost.group.visible = true;
@@ -1973,7 +2020,7 @@ export function startApp(
     const told = reviewYear(cal, year, badges.milestones);
     if (!told) return;
     review = told;
-    element('summary').hidden = true;
+    story.close(false);
     clearTimeout(summaryTimer);
     showPanel(null);
     applyScope(told.year);
@@ -2301,38 +2348,6 @@ export function startApp(
     element('ships').append(button);
   });
   showShip();
-  element('summaryAgain').addEventListener('click', () => {
-    if (review) startReview(review.year);
-  });
-  element('summaryClose').addEventListener('click', () => {
-    element('summary').hidden = true;
-    undressEdition();
-  });
-  /** The address of a year's flight, which link previews show as that year's card. */
-  const yearLink = (year: number) => `${location.origin}/${cal.login}/${year}`;
-  element('summaryShare').addEventListener('click', (e) => {
-    const button = e.currentTarget as HTMLElement;
-    if (!review) return;
-    void navigator.clipboard
-      .writeText(yearLink(review.year))
-      .then(() => {
-        button.textContent = 'Copied';
-      })
-      .catch(() => {});
-  });
-  // Phones and some browsers can hand the link straight to another app
-  element('summaryNative').hidden = typeof navigator.share !== 'function';
-  element('summaryNative').addEventListener('click', () => {
-    if (!review) return;
-    const { year, total } = review;
-    navigator
-      .share({
-        title: `${cal.login}'s ${year} on GitHub`,
-        text: `${formatCount(total)} contribution${total === 1 ? '' : 's'} in ${year}, flown as a city.`,
-        url: yearLink(year),
-      })
-      .catch(() => {});
-  });
   element('fire').addEventListener('pointerdown', (e) => {
     e.preventDefault();
     firePointer = e.pointerId;
@@ -2456,7 +2471,7 @@ export function startApp(
   credit.textContent = 'A Sheet Solved project.';
   element('note').append(' ', credit);
   const previewing = location.hash === REVIEW_HASH;
-  // December offers the year ending, and early January the one just ended. A preview link offers the latest at any time.
+  // Mid November to December offers the year ending, and early January the one just ended. A preview link offers the latest at any time.
   const offered = previewing ? lastYear : reviewSeason(new Date(), lastYear);
   if (offered !== null && reviewYear(cal, offered)) {
     const button = element('review');
@@ -2574,7 +2589,12 @@ export function startApp(
     element('canopy').toggleAttribute('hidden', !seated || presented);
 
     const homing = locked >= 0 ? badges.position(locked) : null;
-    if (firing && mode === 'pilot' && ship.live && weapons.fire(ship.pos, ship.fwd, fighter.quaternion, homing)) {
+    if (
+      firing &&
+      mode === 'pilot' &&
+      ship.live &&
+      weapons.fire(ship.pos, ship.fwd, fighter.quaternion, craft.gun, homing)
+    ) {
       sound.laser();
       craft.muzzle();
       const { x, y, z } = ship.pos;
@@ -2620,7 +2640,7 @@ export function startApp(
     surge +=
       ((mode === 'pilot' ? clamp((ship.speed - CRUISE) / (BOOST - CRUISE), 0, 1) : 0) - surge) *
       (1 - Math.exp(-4 * dt));
-    craft.update(time, dt, aboard() ? speed / CRUISE : 0);
+    craft.update(time, dt, aboard() ? speed / CRUISE : 0, aboard() && mode === 'pilot' && wasBoosting && !panelOpen);
     if (flying) {
       craft.wingtips(v1, v2);
       const turning = clamp(Math.abs(bankNow) * 1.1 - 0.15, 0, 1) * clamp((speed - 8) / 20, 0, 1);

@@ -14,7 +14,7 @@ Let anyone enter a GitHub username and fly through a 3D city of that person's pu
 - [x] Missing users, rate limits and outages each show a clear message
 - [x] Milestone badges sit on their real dates and can be earned by shooting them or flying into them, and reset, kept in the visitor's browser
 - [x] Earning a city's last badge sets off fireworks and a victory roll, and marks the Badges button, with reduced motion respected
-- [x] A December flight through the current year, with captions and a closing summary
+- [x] A flight through the current year from mid November through December, with captions, then the year as story cards, each one saved or shared as a picture
 - [x] Visitors can change the building and ship colours, choose mouse steering, and read a guide to the controls and badges on the page
 - [x] Sound effects that start only after the visitor's first click, tap or key press, and switch off from Settings or a key, with the choice kept in the visitor's browser
 - [x] Music made from the history, with its own switch in Settings, kept in the visitor's browser
@@ -83,3 +83,7 @@ Ces, after flying a stranger's city on the live URL from a phone and a laptop.
 - 2026-11-20: badges can be earned by flying into them, and races gained a time attack through rings against the clock, at Ces's request
 - 2026-11-21: added a screensaver, at Ces's request
 - 2026-11-21: redrew 16-bit and VGA at an old screen's own resolution, with hard-edged pixels and no glow or streak, after Ces found them blurry and glitchy
+- 2026-11-23: Your year opens on 15 November instead of 1 December, at Ces's request
+- 2026-11-23: built each ship's guns into its shape, gave wings and fins thickness, and put seams and plating on the metal, at Ces's request
+- 2026-11-23: made the engines glow hot on boost, at Ces's request
+- 2026-11-23: replaced the year's closing card with story cards that save and share as pictures, at Ces's request

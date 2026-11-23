@@ -445,10 +445,13 @@
         </dd>
         <dt>Your year on GitHub</dt>
         <dd>
-          Through December, and the first half of January for the year just ended, a flight through the year: its
-          number, its count rising with its towers, its biggest moments and badges, and fireworks at the end. It flies a
-          limited edition of its own, a ship, colours, look and music that can't be picked in Settings. The card at the
-          end gives the year's own link, which previews as a card of the year.
+          From mid November through December, and the first half of January for the year just ended, a flight through
+          the year: its number, its count rising with its towers, its biggest moments and badges, and fireworks at the
+          end. It flies a limited edition of its own, a ship, colours, look and music that can't be picked in Settings.
+          Then the year comes as cards, one fact to a card, sized for a phone's story: tap or use the arrow keys to move
+          through them, and hold one to pause. Each card can be saved or shared as a picture, and the last has all the
+          year's numbers. Fly your own takes a GitHub username to that person's flight through the same year. Copy link
+          gives the year's own link, which previews as a card of the year.
         </dd>
       </dl>
 
@@ -471,17 +474,34 @@
         flown, stay in this browser, which opens on the last of them. Fonts load from Google Fonts.
       </p>
     </section>
-    <section id="summary" class="panel" aria-labelledby="summaryTitle" hidden>
-      <p id="summaryKicker"></p>
-      <h2 id="summaryTitle"></h2>
-      <p id="summaryTotal"><b></b><span>contributions</span></p>
-      <dl id="summaryFacts"></dl>
-      <div class="summary-actions">
-        <button id="summaryAgain" type="button">Watch again</button>
-        <button id="summaryNative" type="button" hidden>Share</button>
-        <button id="summaryShare" type="button">Copy link</button>
-        <button id="summaryClose" type="button">Close</button>
+    <section id="story" aria-label="Your year, card by card" hidden>
+      <div id="storyFrame" class="story-frame">
+        <canvas id="storyCard" role="img" width="1080" height="1920"></canvas>
+        <div id="storyBars" class="story-bars" aria-hidden="true"></div>
+        <button id="storyBack" class="story-step" type="button" aria-label="Previous card"></button>
+        <button id="storyNext" class="story-step" type="button" aria-label="Next card"></button>
+        <button id="storyClose" class="story-close" type="button" aria-label="Close">&times;</button>
       </div>
+      <div class="story-actions">
+        <button id="storyShare" type="button" hidden>Share image</button>
+        <button id="storySave" type="button">Save image</button>
+        <button id="storyCopy" type="button">Copy link</button>
+        <button id="storyAgain" type="button">Watch again</button>
+      </div>
+      <form id="storyOwn" class="story-own" autocomplete="off">
+        <label id="storyOwnLabel" for="storyOwnLogin">Fly your own year</label>
+        <input
+          id="storyOwnLogin"
+          name="login"
+          placeholder="GitHub username"
+          maxlength="40"
+          spellcheck="false"
+          autocapitalize="none"
+          required
+        />
+        <button type="submit">Fly it</button>
+      </form>
+      <p id="storySaid" class="visually-hidden" aria-live="polite"></p>
     </section>
     <section id="raceResult" class="panel result" aria-labelledby="raceResultTitle" hidden>
       <h2 id="raceResultTitle"></h2>
